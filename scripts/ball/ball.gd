@@ -342,6 +342,11 @@ func _on_area_entered(other: Area2D) -> void:
 	if state == State.SETTLED or state == State.IDLE:
 		return
 	if other.is_in_group("cup"):
+		# Area overlap includes this ball's ~10px sensor; require center inside the cup.
+		var cs := other.get_child(0) as CollisionShape2D
+		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 7.0
+		if global_position.distance_to(other.global_position) > cup_r:
+			return
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
