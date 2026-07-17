@@ -14,7 +14,9 @@ enum State { IDLE, FLIGHT, ROLL, SETTLED }
 var state: State = State.IDLE
 var spin: float = 0.0
 var wind: Vector2 = Vector2.ZERO
-var green_slope: Vector2 = Vector2.ZERO
+var green_slope: Vector2 = Vector2.ZERO  ## fallback if no hole field
+var _slope_hole: HoleData = null
+var _green_center: Vector2 = Vector2.ZERO
 var _air_timer: float = 0.0
 var _air_duration: float = 1.0
 var _height: float = 0.0
@@ -93,7 +95,15 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	set_physics_process(false)
 
 
-func launch(result: ShotResult, target_pos: Vector2, club_max_yards: float, p_wind: Vector2, p_slope: Vector2) -> void:
+func launch(
+	result: ShotResult,
+	target_pos: Vector2,
+	club_max_yards: float,
+	p_wind: Vector2,
+	p_slope: Vector2,
+	p_hole: HoleData = null,
+	p_green_center: Vector2 = Vector2.ZERO
+) -> void:
 	var to_pin := target_pos - global_position
 	_pin_dir = to_pin.normalized()
 	if _pin_dir == Vector2.ZERO:
@@ -108,6 +118,8 @@ func launch(result: ShotResult, target_pos: Vector2, club_max_yards: float, p_wi
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
 	wind = Vector2.ZERO if _is_putt else p_wind
 	green_slope = p_slope
+	_slope_hole = p_hole
+	_green_center = p_green_center
 	_shot_origin = global_position
 	_launch_dir = launch_data["launch_dir"]
 	# Soft guard only: don't launch nearly backward; allow offline aim for break reads
@@ -269,6 +281,12 @@ func _begin_roll() -> void:
 	velocity = _launch_dir * speed
 
 
+func _slope_at_ball() -> Vector2:
+	if _slope_hole:
+		return _slope_hole.green_slope_at(global_position - _green_center)
+	return green_slope
+
+
 func _process_roll(delta: float) -> void:
 	_height = move_toward(_height, 0.0, delta * 80.0)
 	var friction := 2.4
@@ -286,15 +304,16 @@ func _process_roll(delta: float) -> void:
 		_:
 			friction = 3.0
 
+	var slope := _slope_at_ball()
 	if _is_putt:
 		# Break pulls offline; can fight aim (skill reads matter)
 		var right := Vector2(-_pin_dir.y, _pin_dir.x)
-		var break_amt := green_slope.dot(right) * 22.0
-		var along_break := green_slope.dot(_pin_dir) * 14.0
+		var break_amt := slope.dot(right) * 22.0
+		var along_break := slope.dot(_pin_dir) * 14.0
 		velocity += right * break_amt * delta
 		velocity += _pin_dir * along_break * delta
 	elif _lie == "Green":
-		velocity += green_slope * 16.0 * delta
+		velocity += slope * 16.0 * delta
 
 	velocity = velocity.move_toward(Vector2.ZERO, friction * 60.0 * delta)
 

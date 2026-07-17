@@ -371,66 +371,165 @@ func _add_fog_band() -> void:
 	course_root.add_child(spr)
 
 
-func _slope_dir() -> Vector2:
-	## green_slope pulls the ball = downhill.
-	var slope := hole.green_slope if hole else Vector2.ZERO
-	if slope.length() < 0.05:
-		return Vector2(1.0, 0.0)
-	return slope.normalized()
-
-
 func _build_green_book() -> void:
-	## Yardage-book read: heat (high/low) + topo contours. Aim-only. No flow arrows.
+	## Yardage-book from the same height field the ball samples. Aim-only.
 	_green_book = Node2D.new()
 	_green_book.name = "GreenBook"
 	_green_book.z_index = 3
 	_green_book.visible = false
 	add_child(_green_book)
 
-	var downhill := _slope_dir()
-	var uphill := -downhill
-	var perp := Vector2(-downhill.y, downhill.x)
 	var rx := hole.green_radius_x + 14.0
 	var ry := hole.green_radius_y + 14.0
-	var rmin := minf(rx, ry)
+	var n := 16
+	var h_min := INF
+	var h_max := -INF
+	var grid: PackedFloat32Array = PackedFloat32Array()
+	grid.resize(n * n)
+	for iy in n:
+		for ix in n:
+			var local := Vector2(
+				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
+				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
+			)
+			var inside := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry) <= 1.05
+			var h := hole.green_height_at(local) if inside else 0.0
+			grid[iy * n + ix] = h
+			if inside:
+				h_min = minf(h_min, h)
+				h_max = maxf(h_max, h)
+	if h_max - h_min < 0.001:
+		h_min = -1.0
+		h_max = 1.0
 
-	# Heat bands: cool (low / downhill) → warm (high / uphill)
-	var heat_colors := [
+	var drawer := _GreenBookDraw.new()
+	drawer.position = _green_center
+	_green_book.add_child(drawer)
+
+	var heat_lut := [
 		Color(0.25, 0.55, 0.95, 0.42),
 		Color(0.35, 0.75, 0.85, 0.38),
 		Color(0.55, 0.85, 0.45, 0.34),
 		Color(0.95, 0.75, 0.3, 0.4),
 		Color(0.95, 0.4, 0.25, 0.45),
 	]
-	for i in heat_colors.size():
-		var t := (float(i) / float(heat_colors.size() - 1)) * 2.0 - 1.0  # -1 low … +1 high
-		var band := Polygon2D.new()
-		band.color = heat_colors[i]
-		band.position = _green_center + uphill * (t * rmin * 0.42)
-		var brx := rx * (0.92 - absf(t) * 0.12)
-		var bry := ry * (0.55 - absf(t) * 0.08)
-		var pts := PackedVector2Array()
-		for j in 28:
-			var a := TAU * float(j) / 28.0
-			var local := Vector2(cos(a) * brx, sin(a) * bry)
-			pts.append(perp * local.x + downhill * local.y)
-		band.polygon = pts
-		_green_book.add_child(band)
+	var cell := Vector2(2.0 * rx / float(n - 1), 2.0 * ry / float(n - 1))
+	for iy in n - 1:
+		for ix in n - 1:
+			var local := Vector2(
+				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx + cell.x * 0.5,
+				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry + cell.y * 0.5
+			)
+			if (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry) > 1.0:
+				continue
+			var h := (
+				grid[iy * n + ix] + grid[iy * n + ix + 1]
+				+ grid[(iy + 1) * n + ix] + grid[(iy + 1) * n + ix + 1]
+			) * 0.25
+			var t := clampf((h - h_min) / (h_max - h_min), 0.0, 1.0)
+			var ci := mini(int(t * float(heat_lut.size() - 1) + 0.001), heat_lut.size() - 1)
+			var hx := cell.x * 0.52
+			var hy := cell.y * 0.52
+			drawer.heat.append({
+				"pts": PackedVector2Array([
+					local + Vector2(-hx, -hy),
+					local + Vector2(hx, -hy),
+					local + Vector2(hx, hy),
+					local + Vector2(-hx, hy),
+				]),
+				"color": heat_lut[ci],
+			})
 
-	# Topo contour ellipses — thin world width (camera zoom thickens on screen)
-	for i in 5:
-		var ring_scale := 0.35 + float(i) * 0.14
-		var line := Line2D.new()
-		line.width = 1.1
-		line.default_color = Color(0.08, 0.12, 0.1, 0.7)
-		line.closed = true
-		line.set_meta("screen_px", 2.2)
-		var cpts := PackedVector2Array()
-		for j in 32:
-			var a := TAU * float(j) / 32.0
-			cpts.append(_green_center + Vector2(cos(a) * rx * ring_scale, sin(a) * ry * ring_scale))
-		line.points = cpts
-		_green_book.add_child(line)
+	# Isolines of green_height_at — same field physics uses
+	for li in 5:
+		var level := lerpf(h_min, h_max, (float(li) + 0.5) / 5.0)
+		_append_height_contour(drawer, grid, n, rx, ry, level)
+	drawer.queue_redraw()
+
+
+func _append_height_contour(
+	drawer: _GreenBookDraw, grid: PackedFloat32Array, n: int, rx: float, ry: float, level: float
+) -> void:
+	for iy in n - 1:
+		for ix in n - 1:
+			var c00 := Vector2(
+				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
+				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
+			)
+			var c10 := Vector2(
+				(float(ix + 1) / float(n - 1) - 0.5) * 2.0 * rx,
+				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
+			)
+			var c11 := Vector2(
+				(float(ix + 1) / float(n - 1) - 0.5) * 2.0 * rx,
+				(float(iy + 1) / float(n - 1) - 0.5) * 2.0 * ry
+			)
+			var c01 := Vector2(
+				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
+				(float(iy + 1) / float(n - 1) - 0.5) * 2.0 * ry
+			)
+			var mid := (c00 + c11) * 0.5
+			if (mid.x * mid.x) / (rx * rx) + (mid.y * mid.y) / (ry * ry) > 1.02:
+				continue
+			var v00 := grid[iy * n + ix]
+			var v10 := grid[iy * n + ix + 1]
+			var v11 := grid[(iy + 1) * n + ix + 1]
+			var v01 := grid[(iy + 1) * n + ix]
+			var mask := (1 if v00 >= level else 0) | (2 if v10 >= level else 0) \
+				| (4 if v11 >= level else 0) | (8 if v01 >= level else 0)
+			if mask == 0 or mask == 15:
+				continue
+			for e in _ms_edges(mask, c00, c10, c11, c01, v00, v10, v11, v01, level):
+				drawer.segs.append(e[0])
+				drawer.segs.append(e[1])
+
+
+func _ms_lerp(a: Vector2, b: Vector2, va: float, vb: float, level: float) -> Vector2:
+	var t := 0.5 if absf(vb - va) < 0.0001 else (level - va) / (vb - va)
+	return a.lerp(b, clampf(t, 0.0, 1.0))
+
+
+func _ms_edges(
+	mask: int,
+	c00: Vector2, c10: Vector2, c11: Vector2, c01: Vector2,
+	v00: float, v10: float, v11: float, v01: float,
+	level: float
+) -> Array:
+	var top := _ms_lerp(c00, c10, v00, v10, level)
+	var right := _ms_lerp(c10, c11, v10, v11, level)
+	var bottom := _ms_lerp(c01, c11, v01, v11, level)
+	var left := _ms_lerp(c00, c01, v00, v01, level)
+	match mask:
+		1, 14:
+			return [[left, top]]
+		2, 13:
+			return [[top, right]]
+		3, 12:
+			return [[left, right]]
+		4, 11:
+			return [[right, bottom]]
+		6, 9:
+			return [[top, bottom]]
+		7, 8:
+			return [[left, bottom]]
+		5:
+			return [[left, top], [right, bottom]]
+		10:
+			return [[top, right], [left, bottom]]
+		_:
+			return []
+
+
+class _GreenBookDraw extends Node2D:
+	var heat: Array = []
+	var segs: PackedVector2Array = PackedVector2Array()
+	var contour_width: float = 1.1
+
+	func _draw() -> void:
+		for h in heat:
+			draw_colored_polygon(h["pts"], h["color"])
+		if segs.size() >= 2:
+			draw_multiline(segs, Color(0.08, 0.12, 0.1, 0.7), contour_width)
 
 
 func _should_show_green_book() -> bool:
@@ -473,6 +572,9 @@ func _sync_screen_line_widths() -> void:
 			if c is Line2D:
 				var target_px := float(c.get_meta("screen_px", 2.2))
 				(c as Line2D).width = target_px / z
+			elif c is _GreenBookDraw:
+				(c as _GreenBookDraw).contour_width = 2.2 / z
+				(c as _GreenBookDraw).queue_redraw()
 
 
 func _add_rect(parent: Node2D, rect: Rect2, color: Color, group: String, _monitor: bool, texture: Texture2D = null, tile_px: float = 300.0) -> Area2D:
@@ -821,7 +923,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 	if shot_result_panel and shot_result_panel.has_method("show_launch"):
 		shot_result_panel.show_launch(_last_report)
 	var slope: Vector2 = course_root.get_meta("slope", hole.green_slope)
-	ball.launch(result, _aim_target, shot_routine.club_max_yards, wind, slope)
+	ball.launch(result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center)
 	_follow_ball()
 	feedback.text = _last_report.summary_line()
 	if result.is_perfect() and result.stance_stability >= 0.72:
