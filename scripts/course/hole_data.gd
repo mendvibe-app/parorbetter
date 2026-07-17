@@ -35,6 +35,7 @@ enum CourseTheme { PARKLAND, LINKS, DESERT }
 @export var has_water: bool = false
 @export var complexity: float = 0.0  ## 0–1 difficulty composite
 @export var theme: CourseTheme = CourseTheme.PARKLAND
+@export var archetype: String = ""  ## generator identity (e.g. short_sharp)
 
 
 func shape_label() -> String:

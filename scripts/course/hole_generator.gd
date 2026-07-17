@@ -2,7 +2,7 @@ class_name HoleGenerator
 extends RefCounted
 
 ## Data-driven hole / course factory.
-## Randomness varies flavor within a band; hole number drives difficulty.
+## Archetype picks identity; difficulty_t only scales intensity inside that profile.
 
 const DEFAULT_HOLE_COUNT := 18
 const BUNKER_BASE_CHANCE := 0.75
@@ -33,6 +33,157 @@ const YARDAGE: Dictionary = {
 		"bands": [[450.0, 520.0], [520.0, 590.0], [590.0, 650.0]],
 		"weights": [0.30, 0.50, 0.20],
 	},
+}
+
+## Per-par archetypes. yardage/green are weight mults; bunker/water/fairway/bend are scalars.
+## t still nudges intensity, but these profiles own the hole's identity.
+const ARCHETYPES: Dictionary = {
+	3: [
+		{
+			"id": "long_iron",
+			"label": "Long Iron",
+			"yardage": [0.2, 0.55, 1.6],
+			"green": [0.45, 0.25, 0.15, 0.08, 0.04, 0.03],
+			"bunker": 0.95,
+			"water": 0.7,
+			"fairway": 1.05,
+			"green_size_bias": 0.08,
+			"bend": 0.35,
+			"hazard_side": 0.45,
+		},
+		{
+			"id": "short_pitch",
+			"label": "Short Pitch",
+			"yardage": [1.7, 0.45, 0.1],
+			"green": [0.25, 0.2, 0.2, 0.15, 0.08, 0.12],
+			"bunker": 1.25,
+			"water": 0.55,
+			"fairway": 0.9,
+			"green_size_bias": -0.18,
+			"bend": 0.4,
+			"hazard_side": 0.7,
+		},
+		{
+			"id": "island_green",
+			"label": "Island Green",
+			"yardage": [0.35, 1.1, 0.7],
+			"green": [0.05, 0.05, 0.1, 0.05, 0.65, 0.1],
+			"bunker": 0.55,
+			"water": 1.8,
+			"fairway": 0.95,
+			"green_size_bias": -0.12,
+			"bend": 0.5,
+			"hazard_side": 0.55,
+			"force_water": true,
+		},
+	],
+	4: [
+		{
+			"id": "short_sharp",
+			"label": "Short & Sharp",
+			"yardage": [1.85, 0.4, 0.1],
+			"green": [0.4, 0.3, 0.12, 0.1, 0.04, 0.04],
+			"bunker": 1.15,
+			"water": 0.7,
+			"fairway": 0.72,
+			"green_size_bias": -0.22,
+			"bend": 0.55,
+			"hazard_side": 0.65,
+			"prefer_layout": "chute_or_standard",
+		},
+		{
+			"id": "classic_dogleg",
+			"label": "Classic Dogleg",
+			"yardage": [0.35, 1.45, 0.45],
+			"green": [0.28, 0.42, 0.12, 0.08, 0.05, 0.05],
+			"bunker": 1.1,
+			"water": 0.9,
+			"fairway": 0.95,
+			"green_size_bias": 0.0,
+			"bend": 1.25,
+			"hazard_side": 0.75,
+			"prefer_dogleg": true,
+		},
+		{
+			"id": "long_bear",
+			"label": "Long Bear",
+			"yardage": [0.1, 0.45, 1.8],
+			"green": [0.5, 0.28, 0.1, 0.06, 0.03, 0.03],
+			"bunker": 0.65,
+			"water": 0.45,
+			"fairway": 1.28,
+			"green_size_bias": 0.1,
+			"bend": 0.35,
+			"hazard_side": 0.35,
+			"prefer_layout": "standard",
+		},
+		{
+			"id": "risk_reward",
+			"label": "Risk-Reward",
+			"yardage": [0.85, 1.0, 0.55],
+			"green": [0.22, 0.22, 0.12, 0.12, 0.18, 0.14],
+			"bunker": 1.45,
+			"water": 1.55,
+			"fairway": 0.88,
+			"green_size_bias": -0.08,
+			"bend": 1.45,
+			"hazard_side": 0.92,
+			"prefer_dogleg": true,
+		},
+		{
+			"id": "target_green",
+			"label": "Target Green",
+			"yardage": [0.4, 1.2, 0.55],
+			"green": [0.12, 0.15, 0.35, 0.18, 0.08, 0.12],
+			"bunker": 1.05,
+			"water": 0.75,
+			"fairway": 1.18,
+			"green_size_bias": -0.26,
+			"bend": 0.5,
+			"hazard_side": 0.55,
+			"prefer_layout": "approach",
+		},
+	],
+	5: [
+		{
+			"id": "reachable",
+			"label": "Reachable",
+			"yardage": [1.7, 0.55, 0.15],
+			"green": [0.25, 0.25, 0.15, 0.1, 0.12, 0.13],
+			"bunker": 1.3,
+			"water": 1.2,
+			"fairway": 0.95,
+			"green_size_bias": -0.1,
+			"bend": 0.9,
+			"hazard_side": 0.8,
+		},
+		{
+			"id": "three_shotter",
+			"label": "Three-Shotter",
+			"yardage": [0.15, 0.55, 1.7],
+			"green": [0.45, 0.3, 0.12, 0.08, 0.03, 0.02],
+			"bunker": 0.75,
+			"water": 0.5,
+			"fairway": 1.22,
+			"green_size_bias": 0.08,
+			"bend": 0.4,
+			"hazard_side": 0.4,
+			"prefer_layout": "standard",
+		},
+		{
+			"id": "hazard_gauntlet",
+			"label": "Hazard Gauntlet",
+			"yardage": [0.4, 1.1, 0.7],
+			"green": [0.18, 0.2, 0.15, 0.12, 0.2, 0.15],
+			"bunker": 1.4,
+			"water": 1.65,
+			"fairway": 0.85,
+			"green_size_bias": -0.06,
+			"bend": 1.15,
+			"hazard_side": 0.88,
+			"prefer_dogleg": true,
+		},
+	],
 }
 
 
@@ -100,14 +251,16 @@ static func generate_course(
 
 	var pars := _par_bag_for_course(hole_count, rng)
 	var holes: Array[HoleData] = []
+	var archetype_history: Array = []
 	var prev_complexity := -1.0
 	for i in hole_count:
 		var hole_num := i + 1
-		var hole := generate_hole(hole_num, rng, theme, hole_count, pars[i])
+		var hole := generate_hole(hole_num, rng, theme, hole_count, pars[i], archetype_history)
 		# Structural ramp: complexity never drops below the previous hole.
 		if prev_complexity >= 0.0:
 			hole.complexity = maxf(hole.complexity, prev_complexity)
 		prev_complexity = hole.complexity
+		archetype_history.append({"par": hole.par, "id": hole.archetype})
 		holes.append(hole)
 	return holes
 
@@ -117,7 +270,8 @@ static func generate_hole(
 	rng: RandomNumberGenerator,
 	theme: HoleData.CourseTheme = HoleData.CourseTheme.PARKLAND,
 	total_holes: int = DEFAULT_HOLE_COUNT,
-	par_override: int = 0
+	par_override: int = 0,
+	archetype_history: Array = []
 ) -> HoleData:
 	var t := difficulty_t(hole_number, total_holes)
 	var mods := theme_modifiers(theme)
@@ -128,11 +282,15 @@ static func generate_hole(
 	else:
 		par = int(pick_weighted(rng, [3, 4, 5], [0.22, 0.56, 0.22]))
 
-	var distance := _pick_yardage(rng, par, t)
-	var green_shape: HoleData.GreenShape = _pick_green_shape(rng, t)
-	var layout := _layout_for_shape(green_shape, t, rng)
-	var has_bunker := rng.randf() < _bunker_chance(t, mods)
-	var has_water := rng.randf() < _water_chance(t, mods)
+	var arch: Dictionary = _pick_archetype(rng, par, archetype_history)
+
+	var distance := _pick_yardage(rng, par, t, arch)
+	var green_shape: HoleData.GreenShape = _pick_green_shape(rng, t, arch)
+	var layout := _layout_for_archetype(arch, green_shape, t, rng)
+	var has_bunker := rng.randf() < _bunker_chance(t, mods, float(arch.get("bunker", 1.0)))
+	var has_water := rng.randf() < _water_chance(t, mods, float(arch.get("water", 1.0)))
+	if bool(arch.get("force_water", false)):
+		has_water = true
 	# Late holes almost always keep at least one hazard.
 	if t >= 0.55 and not has_bunker and not has_water:
 		has_bunker = true
@@ -143,11 +301,16 @@ static func generate_hole(
 	if t >= 0.75 and has_bunker and has_water and rng.randf() < 0.45:
 		hazard_count += 1  # extra bunker feel / complexity bump
 
-	var green_size := lerpf(0.92, 0.38, t) + rng.randf_range(-0.04, 0.04)
+	var size_bias := float(arch.get("green_size_bias", 0.0))
+	var green_size := lerpf(0.92, 0.38, t) + size_bias + rng.randf_range(-0.04, 0.04)
 	green_size = clampf(green_size, 0.28, 1.0)
 	var radii := _green_radii(green_shape, green_size, rng)
 
-	var fairway_width := lerpf(165.0, 68.0, t) * float(mods.get("fairway_mult", 1.0))
+	var fairway_width := (
+		lerpf(165.0, 68.0, t)
+		* float(mods.get("fairway_mult", 1.0))
+		* float(arch.get("fairway", 1.0))
+	)
 	fairway_width += rng.randf_range(-8.0, 8.0)
 	fairway_width = clampf(fairway_width, 60.0, 180.0)
 
@@ -173,14 +336,15 @@ static func generate_hole(
 	var complexity := clampf(t + rng.randf_range(-0.03, 0.03), 0.0, 1.0)
 
 	var hazard_bias := HoleData.HazardBias.NONE
+	var side_p := float(arch.get("hazard_side", 0.5))
 	if has_bunker or has_water:
-		if t < 0.2 and rng.randf() < 0.55:
+		if t < 0.2 and rng.randf() < lerpf(0.55, 0.25, side_p):
 			hazard_bias = HoleData.HazardBias.NONE
-		else:
+		elif rng.randf() < side_p:
 			hazard_bias = HoleData.HazardBias.LEFT if rng.randf() < 0.5 else HoleData.HazardBias.RIGHT
 
 	var suggested := _suggested_shape(layout, hazard_bias, rng)
-	var bend := _fairway_bend(layout, t, rng)
+	var bend := _fairway_bend(layout, t, rng) * float(arch.get("bend", 1.0))
 	var tee_x := rng.randf_range(-18.0, 18.0) * lerpf(0.3, 1.0, t)
 	var pin := _pin_offset(green_shape, radii, t, rng)
 
@@ -201,7 +365,9 @@ static func generate_hole(
 	d.timing_window_scale = timing
 	d.hazard_bias = hazard_bias
 	d.suggested_shape = suggested
-	d.name_label = _name_for_hole(hole_number, total_holes, layout, green_shape)
+	d.name_label = _name_for_hole(
+		hole_number, total_holes, layout, green_shape, str(arch.get("label", ""))
+	)
 	d.green_shape = green_shape
 	d.green_size = green_size
 	d.hazard_count = hazard_count
@@ -209,7 +375,40 @@ static func generate_hole(
 	d.has_water = has_water
 	d.complexity = complexity
 	d.theme = theme
+	d.archetype = str(arch.get("id", ""))
 	return d
+
+
+static func _archetypes_for_par(par: int) -> Array:
+	return ARCHETYPES.get(par, ARCHETYPES[4])
+
+
+## Anti-repeat: never back-to-back same id; heavily downweight within a 3-hole span.
+static func archetype_weight(id: String, par: int, history: Array) -> float:
+	var w := 1.0
+	var start := maxi(0, history.size() - 3)
+	for i in range(start, history.size()):
+		var h: Dictionary = history[i]
+		if int(h.get("par", 0)) != par or str(h.get("id", "")) != id:
+			continue
+		if i == history.size() - 1:
+			return 0.0
+		# Inside the prior 3-hole window (par-4s are densest → harshest).
+		w *= 0.08 if par == 4 else 0.18
+	# Soft round-level downweight if this id already appeared for this par.
+	for h2 in history:
+		if int(h2.get("par", 0)) == par and str(h2.get("id", "")) == id:
+			w *= 0.55
+			break
+	return w
+
+
+static func _pick_archetype(rng: RandomNumberGenerator, par: int, history: Array) -> Dictionary:
+	var list: Array = _archetypes_for_par(par)
+	var weights: Array[float] = []
+	for a in list:
+		weights.append(archetype_weight(str(a.get("id", "")), par, history))
+	return pick_weighted(rng, list, weights)
 
 
 static func _par_bag_for_course(hole_count: int, rng: RandomNumberGenerator) -> Array[int]:
@@ -290,46 +489,86 @@ static func _shuffle_range(arr: Array, from_idx: int, to_idx: int, rng: RandomNu
 		arr[j] = tmp
 
 
-static func _pick_yardage(rng: RandomNumberGenerator, par: int, t: float) -> float:
+static func _pick_yardage(
+	rng: RandomNumberGenerator, par: int, t: float, arch: Dictionary = {}
+) -> float:
 	var info: Dictionary = YARDAGE.get(par, YARDAGE[4])
 	var bands: Array = info["bands"]
 	var base_w: Array = info["weights"]
-	# Shift short→long as difficulty rises.
+	var arch_w: Array = arch.get("yardage", [1.0, 1.0, 1.0])
+	# Archetype owns the band; t only mildly shifts short→long within it.
 	var weights: Array[float] = [
-		float(base_w[0]) * lerpf(1.35, 0.45, t),
-		float(base_w[1]) * lerpf(1.05, 1.0, t),
-		float(base_w[2]) * lerpf(0.55, 1.55, t),
+		float(base_w[0]) * float(arch_w[0]) * lerpf(1.15, 0.85, t),
+		float(base_w[1]) * float(arch_w[1]) * 1.0,
+		float(base_w[2]) * float(arch_w[2]) * lerpf(0.85, 1.15, t),
 	]
 	var band: Array = pick_weighted(rng, bands, weights)
 	return rng.randf_range(float(band[0]), float(band[1]))
 
 
-static func _pick_green_shape(rng: RandomNumberGenerator, t: float) -> HoleData.GreenShape:
-	## Early: Oval/Kidney. Late: unlock Tiered / L / Peninsula / Complex.
-	var easy_boost := lerpf(1.6, 0.55, t)
-	var hard_boost := lerpf(0.35, 1.7, t)
+static func _pick_green_shape(
+	rng: RandomNumberGenerator, t: float, arch: Dictionary = {}
+) -> HoleData.GreenShape:
+	## Archetype shape table first; t softly unlocks harder shapes.
+	var arch_g: Array = arch.get("green", [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
+	var easy_boost := lerpf(1.25, 0.85, t)
+	var hard_boost := lerpf(0.75, 1.25, t)
 	var weights: Array[float] = [
-		GREEN_SHAPE_WEIGHTS_BASE[0] * easy_boost,  # OVAL
-		GREEN_SHAPE_WEIGHTS_BASE[1] * easy_boost,  # KIDNEY
-		GREEN_SHAPE_WEIGHTS_BASE[2] * lerpf(0.5, 1.3, t),  # TIERED
-		GREEN_SHAPE_WEIGHTS_BASE[3] * hard_boost,  # L_SHAPED
-		GREEN_SHAPE_WEIGHTS_BASE[4] * hard_boost,  # PENINSULA
-		GREEN_SHAPE_WEIGHTS_BASE[5] * hard_boost,  # COMPLEX
+		GREEN_SHAPE_WEIGHTS_BASE[0] * float(arch_g[0]) * easy_boost,
+		GREEN_SHAPE_WEIGHTS_BASE[1] * float(arch_g[1]) * easy_boost,
+		GREEN_SHAPE_WEIGHTS_BASE[2] * float(arch_g[2]) * lerpf(0.85, 1.15, t),
+		GREEN_SHAPE_WEIGHTS_BASE[3] * float(arch_g[3]) * hard_boost,
+		GREEN_SHAPE_WEIGHTS_BASE[4] * float(arch_g[4]) * hard_boost,
+		GREEN_SHAPE_WEIGHTS_BASE[5] * float(arch_g[5]) * hard_boost,
 	]
 	return pick_weighted(rng, GREEN_SHAPE_ITEMS, weights)
 
 
-static func _bunker_chance(t: float, mods: Dictionary) -> float:
-	var chance := BUNKER_BASE_CHANCE * float(mods.get("bunker_mult", 1.0))
-	# Early holes often skip bunkers; late rarely skip.
-	chance *= lerpf(0.45, 1.2, t)
+static func _bunker_chance(t: float, mods: Dictionary, arch_mult: float = 1.0) -> float:
+	var chance := BUNKER_BASE_CHANCE * float(mods.get("bunker_mult", 1.0)) * arch_mult
+	# t scales intensity inside the archetype (late risk-reward > early risk-reward).
+	chance *= lerpf(0.7, 1.15, t)
 	return clampf(chance, 0.05, 0.98)
 
 
-static func _water_chance(t: float, mods: Dictionary) -> float:
-	var chance := WATER_BASE_CHANCE * float(mods.get("water_mult", 1.0))
-	chance *= lerpf(0.25, 1.35, t)
-	return clampf(chance, 0.0, 0.85)
+static func _water_chance(t: float, mods: Dictionary, arch_mult: float = 1.0) -> float:
+	var chance := WATER_BASE_CHANCE * float(mods.get("water_mult", 1.0)) * arch_mult
+	chance *= lerpf(0.55, 1.25, t)
+	return clampf(chance, 0.0, 0.9)
+
+
+static func _layout_for_archetype(
+	arch: Dictionary,
+	shape: HoleData.GreenShape,
+	t: float,
+	rng: RandomNumberGenerator
+) -> HoleData.LayoutStyle:
+	if shape == HoleData.GreenShape.PENINSULA or bool(arch.get("force_water", false)):
+		if shape == HoleData.GreenShape.PENINSULA or rng.randf() < 0.65:
+			return HoleData.LayoutStyle.ISLAND
+	if bool(arch.get("prefer_dogleg", false)):
+		return (
+			HoleData.LayoutStyle.DOGLEG_LEFT
+			if rng.randf() < 0.5
+			else HoleData.LayoutStyle.DOGLEG_RIGHT
+		)
+	match str(arch.get("prefer_layout", "")):
+		"standard":
+			return HoleData.LayoutStyle.STANDARD
+		"chute_or_standard":
+			return (
+				HoleData.LayoutStyle.CHUTE
+				if rng.randf() < 0.55
+				else HoleData.LayoutStyle.STANDARD
+			)
+		"approach":
+			if shape == HoleData.GreenShape.TIERED or shape == HoleData.GreenShape.COMPLEX:
+				return HoleData.LayoutStyle.BI_TIER
+			if shape == HoleData.GreenShape.L_SHAPED:
+				return HoleData.LayoutStyle.CHUTE
+			return HoleData.LayoutStyle.STANDARD if rng.randf() < 0.6 else HoleData.LayoutStyle.BI_TIER
+		_:
+			return _layout_for_shape(shape, t, rng)
 
 
 static func _layout_for_shape(
@@ -453,7 +692,8 @@ static func _name_for_hole(
 	hole_number: int,
 	total_holes: int,
 	layout: HoleData.LayoutStyle,
-	shape: HoleData.GreenShape
+	shape: HoleData.GreenShape,
+	archetype_label: String = ""
 ) -> String:
 	if hole_number <= 3:
 		var warm := ["Warm-up", "Opening", "Easy Does It", "Get Settled"]
@@ -461,6 +701,8 @@ static func _name_for_hole(
 	if hole_number >= total_holes - 2:
 		var close := ["Closer", "Par or Better", "Final Stretch", "Last Call"]
 		return close[(total_holes - hole_number) % close.size()]
+	if archetype_label != "":
+		return archetype_label
 	match shape:
 		HoleData.GreenShape.PENINSULA:
 			return "Peninsula"
