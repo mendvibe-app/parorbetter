@@ -1,0 +1,101 @@
+[gd_scene load_steps=8 format=3 uid="uid://hole001"]
+
+[ext_resource type="Script" path="res://scripts/course/hole_controller.gd" id="1"]
+[ext_resource type="PackedScene" uid="uid://ball001" path="res://scenes/ball.tscn" id="2"]
+[ext_resource type="PackedScene" uid="uid://shotpanel001" path="res://scenes/ui/shot_panel.tscn" id="3"]
+[ext_resource type="PackedScene" uid="uid://hud001" path="res://scenes/ui/hud.tscn" id="4"]
+[ext_resource type="PackedScene" uid="uid://shotresult001" path="res://scenes/ui/shot_result_panel.tscn" id="5"]
+[ext_resource type="Texture2D" path="res://assets/ui/confirm_aim_button.png" id="6"]
+[ext_resource type="Texture2D" path="res://assets/ui/confirm_aim_button_pressed.png" id="7"]
+
+[node name="Hole" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Course" type="Node2D" parent="."]
+
+[node name="Ball" parent="." instance=ExtResource("2")]
+position = Vector2(540, 860)
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(540, 700)
+enabled = true
+zoom = Vector2(0.85, 0.85)
+position_smoothing_enabled = true
+position_smoothing_speed = 6.0
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+layer = 10
+
+[node name="Flash" type="ColorRect" parent="UILayer"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(1, 0.92, 0.4, 1)
+modulate = Color(1, 1, 1, 0)
+
+[node name="HUD" parent="UILayer" instance=ExtResource("4")]
+
+[node name="Feedback" type="Label" parent="UILayer"]
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -280.0
+offset_top = 170.0
+offset_right = 280.0
+offset_bottom = 230.0
+theme_override_font_sizes/font_size = 36
+text = ""
+horizontal_alignment = 1
+
+[node name="WindBanner" type="Label" parent="UILayer"]
+visible = false
+anchors_preset = 5
+anchor_left = 0.5
+anchor_right = 0.5
+offset_left = -420.0
+offset_top = 230.0
+offset_right = 420.0
+offset_bottom = 320.0
+theme_override_colors/font_color = Color(0.55, 0.85, 1, 1)
+theme_override_font_sizes/font_size = 28
+text = "Wind"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="ShotResultPanel" parent="UILayer" instance=ExtResource("5")]
+
+[node name="ConfirmAimButton" type="TextureButton" parent="UILayer"]
+visible = false
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -220.0
+offset_top = -296.0
+offset_right = 220.0
+offset_bottom = -160.0
+texture_normal = ExtResource("6")
+texture_pressed = ExtResource("7")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="BirdieBanner" type="Label" parent="UILayer"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -400.0
+offset_top = -80.0
+offset_right = 400.0
+offset_bottom = 80.0
+theme_override_colors/font_color = Color(1, 0.9, 0.35, 1)
+theme_override_font_sizes/font_size = 40
+text = "BIRDIE MOMENTUM"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ShotPanel" parent="UILayer" instance=ExtResource("3")]

@@ -1,0 +1,49 @@
+[gd_scene load_steps=8 format=3 uid="uid://ball001"]
+
+[ext_resource type="Script" path="res://scripts/ball/ball.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/ball/ball.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/ball/ball_shadow.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/ball/ball_perfect_glow.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ball/ball_spin.png" id="5"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_body"]
+radius = 8.0
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_area"]
+radius = 10.0
+
+[node name="Ball" type="CharacterBody2D"]
+collision_layer = 1
+collision_mask = 0
+motion_mode = 1
+script = ExtResource("1")
+
+[node name="Shadow" type="Sprite2D" parent="."]
+z_index = -1
+texture = ExtResource("3")
+
+[node name="Glow" type="Sprite2D" parent="."]
+visible = false
+z_index = 1
+texture = ExtResource("4")
+
+[node name="Visual" type="Sprite2D" parent="."]
+z_index = 2
+texture = ExtResource("2")
+
+[node name="SpinFX" type="Sprite2D" parent="."]
+visible = false
+z_index = 3
+texture = ExtResource("5")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="."]
+shape = SubResource("CircleShape2D_body")
+
+[node name="Area" type="Area2D" parent="."]
+collision_layer = 0
+collision_mask = 2
+monitoring = true
+monitorable = false
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Area"]
+shape = SubResource("CircleShape2D_area")
