@@ -56,6 +56,7 @@ func configure(
 	aim_radius_yd = p_aim_radius_yd
 	if GameState.debug_timing_scale != null:
 		timing_scale = float(GameState.debug_timing_scale)
+	timing_scale *= BallPhysics.lie_timing_scale(lie)
 
 	var club := BallPhysics.pick_club(pin_distance_yd, lie)
 	club_name = String(club["name"])

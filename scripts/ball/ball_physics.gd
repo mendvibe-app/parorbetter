@@ -50,6 +50,17 @@ static func lie_multiplier(lie: String) -> float:
 			return 1.0
 
 
+## Tightens power/swing timing windows off poor lies (1.0 = no change).
+static func lie_timing_scale(lie: String) -> float:
+	match lie:
+		"Rough":
+			return 0.82
+		"Sand":
+			return 0.66
+		_:
+			return 1.0
+
+
 static func yards_to_pixels(yards: float) -> float:
 	return yards * PX_PER_YARD
 
