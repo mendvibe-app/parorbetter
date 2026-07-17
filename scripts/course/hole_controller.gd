@@ -9,6 +9,8 @@ const COURSE_LENGTH := 980.0
 const TEE_Y := 860.0
 const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
+## Catch / draw radius. ~7px ≈ playable (not real 4.25"); was 14px + ball Area → magnetized.
+const CUP_RADIUS := 7.0
 
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
@@ -184,11 +186,11 @@ func _build_course() -> void:
 	# Green sprite (variant per layout) + detection area
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
 
-	_add_circle(course_root, _cup_pos, 14.0, Color(0, 0, 0, 0), "cup", true)
+	_add_circle(course_root, _cup_pos, CUP_RADIUS, Color(0, 0, 0, 0), "cup", true)
 	var cup_spr := Sprite2D.new()
 	cup_spr.texture = TEX_CUP
 	cup_spr.position = _cup_pos
-	cup_spr.scale = Vector2.ONE * (34.0 / float(TEX_CUP.get_width()))
+	cup_spr.scale = Vector2.ONE * ((CUP_RADIUS * 2.0) / float(TEX_CUP.get_width()))
 	cup_spr.z_index = 2
 	course_root.add_child(cup_spr)
 
@@ -939,7 +941,7 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		return
 	ball_in_flight = false
 	_set_green_book_visible(false)
-	if pos.distance_to(_cup_pos) < 18.0:
+	if pos.distance_to(_cup_pos) < CUP_RADIUS:
 		_on_holed_out()
 		return
 	ball.set_lie(_classify_lie(pos))
