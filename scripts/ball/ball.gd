@@ -279,6 +279,11 @@ func _begin_roll() -> void:
 	if speed <= 1.0:
 		speed = maxf(velocity.length() * 0.35, 20.0)
 	velocity = _launch_dir * speed
+	# Flight ignores water/OOB under the arc; re-check now that we've landed.
+	for other in area.get_overlapping_areas():
+		_on_area_entered(other)
+		if state != State.ROLL:
+			return
 
 
 func _slope_at_ball() -> Vector2:
@@ -372,19 +377,16 @@ func _on_area_entered(other: Area2D) -> void:
 		_clear_ghosts()
 		holed_out.emit()
 		return
-	if other.is_in_group("water"):
-		_lie = "Water"
+	if other.is_in_group("water") or other.is_in_group("oob"):
+		# Carry over water/OOB is legal; only wet/OB once the ball is on the ground.
+		if state == State.FLIGHT:
+			return
+		var kind := "water" if other.is_in_group("water") else "oob"
+		_lie = "Water" if kind == "water" else "OOB"
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
-		entered_hazard.emit("water")
-		return
-	if other.is_in_group("oob"):
-		_lie = "OOB"
-		velocity = Vector2.ZERO
-		state = State.SETTLED
-		set_physics_process(false)
-		entered_hazard.emit("oob")
+		entered_hazard.emit(kind)
 		return
 	if other.is_in_group("sand"):
 		_lie = "Sand"
