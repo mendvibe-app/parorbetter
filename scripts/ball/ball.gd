@@ -46,7 +46,6 @@ var ground_lie_at: Callable = Callable()
 
 
 const BALL_R := 9.0
-const BALL_R_GREEN := 15.0
 const TRAIL_TEX := preload("res://assets/ball/ball_trail.png")
 
 var _ball_scale: float = 1.0
@@ -196,22 +195,21 @@ func get_lie() -> String:
 
 
 func _apply_lie_visual() -> void:
-	## Larger ball on green so putt close-ups stay readable.
-	var r := BALL_R_GREEN if _lie == "Green" else BALL_R
+	## One world radius always — putt zoom already enlarges on screen.
 	var tex_w := float(visual.texture.get_width()) if visual.texture else 961.0
-	_ball_scale = (r * 2.0) / tex_w
+	_ball_scale = (BALL_R * 2.0) / tex_w
 	visual.scale = Vector2.ONE * _ball_scale
 	# Shadow texture holds a wide soft ellipse; size it to a bit over ball width.
 	var sh_w := float(shadow.texture.get_width()) if shadow.texture else 512.0
-	_shadow_scale = ((r + 2.0) * 2.6) / sh_w
+	_shadow_scale = ((BALL_R + 2.0) * 2.6) / sh_w
 	shadow.scale = Vector2(_shadow_scale, _shadow_scale)
 	shadow.modulate.a = 0.85
 	# Glow ring ~2.6x ball diameter, spin arcs hug the ball.
 	if glow.texture:
-		_glow_scale = (r * 5.2) / float(glow.texture.get_width())
+		_glow_scale = (BALL_R * 5.2) / float(glow.texture.get_width())
 		glow.scale = Vector2.ONE * _glow_scale
 	if spin_fx.texture:
-		spin_fx.scale = Vector2.ONE * (r * 3.4) / float(spin_fx.texture.get_width())
+		spin_fx.scale = Vector2.ONE * (BALL_R * 3.4) / float(spin_fx.texture.get_width())
 
 
 func distance_traveled_yards() -> float:
