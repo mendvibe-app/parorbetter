@@ -35,6 +35,8 @@ var _landing_speed: float = 0.0
 var _air_fraction: float = 0.78
 var _is_putt: bool = false
 var _spin_vis: float = 0.0
+## Sample surface under the ball while rolling (fairway/rough/sand/green).
+var ground_lie_at: Callable = Callable()
 
 @onready var visual: Sprite2D = $Visual
 @onready var shadow: Sprite2D = $Shadow
@@ -279,18 +281,21 @@ func _begin_roll() -> void:
 	if speed <= 1.0:
 		speed = maxf(velocity.length() * 0.35, 20.0)
 	velocity = _launch_dir * speed
-	# Flight ignores ground under the arc; re-check now that we've landed.
-	# Sand last so a bunker sitting on the fairway wins the lie.
-	var sand_area: Area2D = null
+	# Flight ignores ground under the arc; re-check hazards, then sample lie.
 	for other in area.get_overlapping_areas():
-		if other.is_in_group("sand"):
-			sand_area = other
-			continue
 		_on_area_entered(other)
 		if state != State.ROLL:
 			return
-	if sand_area:
-		_on_area_entered(sand_area)
+	_sync_ground_lie()
+
+
+func _sync_ground_lie() -> void:
+	## Real golf: friction follows the surface under the ball right now.
+	if state != State.ROLL or not ground_lie_at.is_valid():
+		return
+	var lie: String = ground_lie_at.call(global_position)
+	if lie != _lie:
+		set_lie(lie)
 
 
 func _slope_at_ball() -> Vector2:
@@ -300,6 +305,7 @@ func _slope_at_ball() -> Vector2:
 
 
 func _process_roll(delta: float) -> void:
+	_sync_ground_lie()
 	_height = move_toward(_height, 0.0, delta * 80.0)
 	var friction := 2.4
 	match _lie:

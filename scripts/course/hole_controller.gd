@@ -90,6 +90,7 @@ func _ready() -> void:
 	ball.entered_hazard.connect(_on_hazard)
 	ball.holed_out.connect(_on_holed_out)
 	ball.perfect_flash.connect(_on_perfect_flash)
+	ball.ground_lie_at = func(p: Vector2) -> String: return _classify_lie(p)
 	shot_routine.shot_ready.connect(_on_shot_ready)
 	if shot_routine.has_signal("pure_strike"):
 		shot_routine.pure_strike.connect(_on_pure_strike)
