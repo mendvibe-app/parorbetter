@@ -132,11 +132,14 @@ func launch(
 	_is_perfect_shot = result.is_perfect() and result.stance_stability >= 0.72
 	if _is_perfect_shot:
 		perfect_flash.emit()
-		visual.self_modulate = Color(1.0, 0.92, 0.45)
-		_trail.default_color = Color(1.0, 0.85, 0.25, 0.65)
+		visual.self_modulate = Color(1.0, 0.95, 0.55)
+		# Cleaner/brighter flight tell — denser gold trail, not a louder UI flourish
+		_trail.default_color = Color(1.0, 0.9, 0.35, 0.82)
+		_trail.width = 7.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
 		_trail.default_color = Color(0.85, 0.95, 1.0, 0.45)
+		_trail.width = 5.0
 
 	_ghost_arc.global_position = Vector2.ZERO
 	_spawn_ghost_arc(launch_data)
@@ -222,9 +225,12 @@ func _physics_process(delta: float) -> void:
 		_:
 			pass
 	_trail.add_point(global_position)
-	if _trail.get_point_count() > 48:
+	var trail_cap := 72 if _is_perfect_shot else 48
+	if _trail.get_point_count() > trail_cap:
 		_trail.remove_point(0)
-	_trail.width = clampf(3.0 + _height * 0.04 + velocity.length() * 0.004, 3.0, 10.0)
+	var base_w := 5.5 if _is_perfect_shot else 3.0
+	var max_w := 12.0 if _is_perfect_shot else 10.0
+	_trail.width = clampf(base_w + _height * 0.04 + velocity.length() * 0.004, base_w, max_w)
 	_spin_vis += spin * delta * 4.0 + velocity.length() * 0.002
 	visual.rotation = _spin_vis
 	var s := 1.0 + _height * 0.006

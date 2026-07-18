@@ -42,7 +42,7 @@ func play_noise(kind: String, duration: float = 0.02, volume_db: float = -10.0, 
 func play_contact(quality: String) -> void:
 	match quality:
 		"perfect":
-			# Short clean hit; full PURE chord comes from play_pure() on earned strikes
+			# Short clean hit; earned pure uses play_pure() compression transient
 			play_tone("contact", 480.0, 0.08, -8.0)
 			play_tone("perfect", 720.0, 0.1, -10.0)
 		"thin":
@@ -53,13 +53,17 @@ func play_contact(quality: String) -> void:
 			play_tone("contact", 320.0, 0.1, -10.0)
 
 
-## Big rewarding chord for earned pure strikes.
+## Flush pure contact: short low-mid compression → release. Not a chime.
 func play_pure() -> void:
-	play_tone("perfect", 523.25, 0.1, -3.0)
-	await get_tree().create_timer(0.04).timeout
-	play_tone("perfect", 783.99, 0.12, -2.0)
-	await get_tree().create_timer(0.05).timeout
-	play_tone("perfect", 1046.5, 0.18, -1.0)
+	var sample_rate := 22050.0
+	var playback := _begin_playback("perfect", -4.0, 0.22)
+	if playback == null:
+		return
+	# Compression: tight band-passed knock (solid, quiet, physical)
+	_push_filtered_noise(playback, sample_rate, 0.018, 0.62, 0.22)
+	# Release: low-mid pitch drops off — face leaving the ball
+	_push_pitch_sweep(playback, sample_rate, 240.0, 70.0, 0.07, 0.55)
+	_push_silence(playback, sample_rate, 0.02)
 
 
 ## Ball clips the cup liner, then bottoms out — one continuous clip on the putt bus.
