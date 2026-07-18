@@ -5,6 +5,7 @@ signal hole_changed(hole_index: int)
 signal run_ended(deepest_hole: int, reason: String)
 signal adaptation_changed(bias: float)
 signal form_changed(form: float)
+signal pure_strikes_changed(count: int)
 
 const MAX_LIVES := 5
 const START_LIVES := 3
@@ -24,6 +25,7 @@ var current_hole: int = 1  # 1-based
 var deepest_hole: int = 1
 var strokes_this_hole: int = 0
 var total_strokes: int = 0
+var pure_strikes: int = 0  ## Round-level flush-contact count
 var last_shot_metrics: Dictionary = {}
 var run_active: bool = true
 
@@ -57,6 +59,7 @@ func reset_run() -> void:
 	deepest_hole = 1
 	strokes_this_hole = 0
 	total_strokes = 0
+	pure_strikes = 0
 	path_miss_history.clear()
 	form_history.clear()
 	last_shot_metrics.clear()
@@ -72,6 +75,12 @@ func reset_run() -> void:
 	hole_changed.emit(current_hole)
 	adaptation_changed.emit(get_adaptation_bias())
 	form_changed.emit(get_form())
+	pure_strikes_changed.emit(pure_strikes)
+
+
+func record_pure_strike() -> void:
+	pure_strikes += 1
+	pure_strikes_changed.emit(pure_strikes)
 
 
 func _regenerate_course() -> void:
