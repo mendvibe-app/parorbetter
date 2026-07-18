@@ -139,6 +139,14 @@ func _on_swing_committed(path_error: float, contact: ShotResult.ContactQuality) 
 	_path = path_error
 	_contact = contact
 
+	# Forced swings (mash/baby) can't claim a pure strike — take the right club instead.
+	if current_lie != "Green":
+		var force := BallPhysics.force_factor(_power)
+		if force > 0.0:
+			_stability *= lerpf(1.0, 0.55, force)
+			_path += signf(_path if absf(_path) > 0.05 else 1.0) * force * 0.22
+			_path = clampf(_path, -1.0, 1.0)
+
 	# Stance aggressively gates "perfect" — rare and earned
 	if _contact == ShotResult.ContactQuality.PERFECT:
 		if _stability < 0.72:

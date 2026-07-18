@@ -43,13 +43,31 @@ static func make_circle_points(center: Vector2, radius_px: float, segments: int 
 	return pts
 
 
-## Directional aim wedge: wide near the ball, taper + fade outward. shape_bend: −draw / +fade.
+## Point at `yards` along bearing from ball (bearing is world direction).
+static func point_along_bearing(from: Vector2, bearing: Vector2, yards: float) -> Vector2:
+	var dir := bearing.normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2(0, -1)
+	return clamp_aim(from + dir * BallPhysics.yards_to_pixels(maxf(yards, 2.0)))
+
+
+## Keep distance, change only direction — aim is a corridor, not a yardage pick.
+static func retarget_bearing(from: Vector2, world: Vector2, lock_yards: float) -> Vector2:
+	var bearing := world - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	return point_along_bearing(from, bearing, lock_yards)
+
+
+## Directional aim wedge: wide near ball, tapers into the dispersion circle.
+## shape_bend −draw / +fade. power_preview sharpens (narrower, denser) once % is live.
 static func make_aim_cone(
 	from: Vector2,
 	to: Vector2,
 	shape_bend: float = 0.0,
-	near_half_w: float = 36.0,
-	far_half_w: float = 6.0
+	near_half_w: float = 42.0,
+	far_half_w: float = 14.0,
+	power_preview: bool = false
 ) -> Dictionary:
 	var along := to - from
 	var length := along.length()
@@ -58,24 +76,31 @@ static func make_aim_cone(
 		length = 8.0
 	var dir := along.normalized()
 	var right := Vector2(-dir.y, dir.x)
-	# Soft curve for draw/fade — corridor, not a laser to an XY.
-	var mid := from + dir * (length * 0.55) + right * (shape_bend * length * 0.12)
-	var tip := from + dir * length + right * (shape_bend * length * 0.22)
+	# Stop just short of the circle so cone + circle read as one composition.
+	var tip_len := length * (0.92 if power_preview else 0.88)
+	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.10)
+	var tip := from + dir * tip_len + right * (shape_bend * tip_len * 0.20)
+	var near_w := near_half_w * (0.55 if power_preview else 1.0)
+	var far_w := far_half_w * (0.7 if power_preview else 1.0)
 	var pts := PackedVector2Array([
-		from - right * near_half_w,
-		from + right * near_half_w,
-		mid + right * lerpf(near_half_w, far_half_w, 0.55),
-		tip + right * far_half_w,
-		tip - right * far_half_w,
-		mid - right * lerpf(near_half_w, far_half_w, 0.55),
+		from - right * near_w,
+		from + right * near_w,
+		mid + right * lerpf(near_w, far_w, 0.5),
+		tip + right * far_w,
+		tip - right * far_w,
+		mid - right * lerpf(near_w, far_w, 0.5),
 	])
+	# Warm near ball → gold into the circle (matches dispersion marker).
+	var a0 := 0.22 if power_preview else 0.30
+	var a1 := 0.38 if power_preview else 0.18
+	var a2 := 0.55 if power_preview else 0.04
 	var cols := PackedColorArray([
-		Color(1, 1, 1, 0.34),
-		Color(1, 1, 1, 0.34),
-		Color(1, 1, 1, 0.16),
-		Color(1, 1, 1, 0.02),
-		Color(1, 1, 1, 0.02),
-		Color(1, 1, 1, 0.16),
+		Color(0.95, 0.95, 0.9, a0),
+		Color(0.95, 0.95, 0.9, a0),
+		Color(1.0, 0.92, 0.45, a1),
+		Color(1.0, 0.9, 0.35, a2),
+		Color(1.0, 0.9, 0.35, a2),
+		Color(1.0, 0.92, 0.45, a1),
 	])
 	return {"points": pts, "colors": cols}
 

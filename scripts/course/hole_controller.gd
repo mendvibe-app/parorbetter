@@ -63,11 +63,15 @@ var _green_book: Node2D  ## aim-only yardage-book overlay (heat + topo)
 
 var _aiming: bool = false
 var _selecting_club: bool = false
+var _power_previewing: bool = false
 var _aim_dragging: bool = false
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
+var _aim_radius_base_yd: float = 22.0
+var _aim_lock_yards: float = 160.0
 var _chosen_club: Dictionary = {}
 var _aim_cone: Polygon2D
+var _aim_cone_edge: Line2D
 var _pin_ref_line: Line2D
 var _aim_circle: Line2D
 var _aim_arrow: Polygon2D
@@ -106,6 +110,7 @@ func _ready() -> void:
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
+	shot_routine.power_stance.updated.connect(_on_power_preview_updated)
 
 
 func _setup_club_select() -> void:
@@ -130,6 +135,13 @@ func _setup_aim_visuals() -> void:
 	_aim_cone.z_index = 5
 	_aim_cone.visible = false
 	add_child(_aim_cone)
+
+	_aim_cone_edge = Line2D.new()
+	_aim_cone_edge.width = 2.0
+	_aim_cone_edge.default_color = Color(1.0, 0.92, 0.4, 0.35)
+	_aim_cone_edge.z_index = 5
+	_aim_cone_edge.visible = false
+	add_child(_aim_cone_edge)
 
 	_aim_circle = Line2D.new()
 	_aim_circle.width = 3.0
@@ -704,9 +716,13 @@ func _begin_aim_phase() -> void:
 	if _chosen_club.is_empty():
 		_chosen_club = BallPhysics.pick_club(pin_yd, lie)
 	var club_max := float(_chosen_club["max_yards"])
-	_aim_radius_yd = GameState.get_aim_radius_yards(lie == "Green")
+	_power_previewing = false
+	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green")
+	_aim_radius_yd = _aim_radius_base_yd
 	_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
 	_aim_target = AimControl.clamp_aim(_aim_target)
+	# Lock radial distance during aim — player picks line/shape, not yardage yet.
+	_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
 	_refresh_aim_visuals()
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
@@ -750,6 +766,7 @@ func _end_aim_phase() -> void:
 	_aiming = false
 	_aim_dragging = false
 	_selecting_club = false
+	_power_previewing = false
 	if _club_select:
 		_club_select.dismiss()
 	_set_aim_visuals_visible(false)
@@ -798,15 +815,38 @@ func _start_power_swing() -> void:
 		lie, aim_yd, pin_yd, wind, shape_label, timing, shape_amt, _aim_radius_yd, club_name, club_max
 	)
 	shot_routine.begin_shot()
-	_refresh_aim_visuals()  # keep circle visible during power/swing
-	_set_aim_visuals_visible(true)
+	_power_previewing = true
+	_on_power_preview_updated(shot_routine.power_stance.power, shot_routine.power_stance.stability)
 	_set_green_book_visible(false)
-	feedback.text = "%s · aimed %s · circle %d yd" % [club_name, shape_label, int(_aim_radius_yd)]
+	feedback.text = "%s · hold the white tick · circle tightens with judgment" % club_name
+
+
+func _on_power_preview_updated(power: float, _stability: float) -> void:
+	if not _power_previewing or hole_complete or ball_in_flight:
+		return
+	var lie := ball.get_lie()
+	if lie == "Green":
+		return
+	var club_max := float(_chosen_club.get("max_yards", shot_routine.club_max_yards))
+	var est := BallPhysics.estimate_carry_yards(power, club_max, lie)
+	var from := ball.global_position
+	var bearing := _aim_target - from
+	if bearing.length_squared() < 1.0:
+		bearing = _cup_pos - from
+	_aim_target = AimControl.point_along_bearing(from, bearing, est)
+	# Precision sharpens as power approaches the recommend tick.
+	var recommend := shot_routine.power_stance.recommend_power
+	var err := absf(power - recommend)
+	var tight := clampf(1.0 - err / 0.18, 0.0, 1.0)
+	_aim_radius_yd = lerpf(_aim_radius_base_yd, _aim_radius_base_yd * 0.45, tight)
+	_refresh_aim_visuals()
 
 
 func _set_aim_visuals_visible(on: bool) -> void:
 	if _aim_cone:
 		_aim_cone.visible = on
+	if _aim_cone_edge:
+		_aim_cone_edge.visible = on
 	if _pin_ref_line:
 		_pin_ref_line.visible = on
 	if _aim_circle:
@@ -858,13 +898,27 @@ func _refresh_aim_visuals() -> void:
 	var to := _aim_target
 	var inv_z := 1.0 / maxf(camera.zoom.x, 0.35)
 	var cone: Dictionary = AimControl.make_aim_cone(
-		from, to, _aim_shape_bend(), 36.0 * inv_z, 6.0 * inv_z
+		from, to, _aim_shape_bend(), 42.0 * inv_z, 16.0 * inv_z, _power_previewing
 	)
 	_aim_cone.polygon = cone["points"]
 	_aim_cone.vertex_colors = cone["colors"]
+	# Soft edge stroke along the wedge flanks (skip the near-ball base).
+	var edge := PackedVector2Array()
+	var pts: PackedVector2Array = cone["points"]
+	if pts.size() >= 6:
+		edge.append(pts[0])
+		edge.append(pts[5])
+		edge.append(pts[4])
+		edge.append(pts[3])
+		edge.append(pts[2])
+		edge.append(pts[1])
+	_aim_cone_edge.points = edge
+	_aim_cone_edge.width = (2.4 if _power_previewing else 1.8) / maxf(camera.zoom.x, 0.35)
+	_aim_cone_edge.default_color = Color(1.0, 0.92, 0.4, 0.55 if _power_previewing else 0.28)
 	_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
 	var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
 	_aim_circle.points = AimControl.make_circle_points(to, radius_px)
+	_aim_circle.default_color = Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
 	_set_aim_visuals_visible(true)
 	if _aiming:
 		var is_putt := ball.get_lie() == "Green"
@@ -881,6 +935,20 @@ func _accept_mouse() -> bool:
 	return not DisplayServer.is_touchscreen_available()
 
 
+func _apply_aim_world(world: Vector2) -> void:
+	var from := ball.global_position
+	if ball.get_lie() == "Green":
+		# Putts still aim a real point on the green.
+		_aim_target = AimControl.clamp_aim(world)
+	else:
+		_aim_target = AimControl.retarget_bearing(from, world, _aim_lock_yards)
+	_refresh_aim_visuals()
+
+
+func _nudge_aim(delta: Vector2) -> void:
+	_apply_aim_world(_aim_target + delta)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _aiming:
 		return
@@ -890,8 +958,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		if touch.pressed:
 			_aim_dragging = true
 			var world := get_viewport().get_canvas_transform().affine_inverse() * touch.position
-			_aim_target = AimControl.clamp_aim(world)
-			_refresh_aim_visuals()
+			_apply_aim_world(world)
 		else:
 			_aim_dragging = false
 		get_viewport().set_input_as_handled()
@@ -900,24 +967,21 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventScreenDrag and _aim_dragging:
 		var drag := event as InputEventScreenDrag
 		var world := get_viewport().get_canvas_transform().affine_inverse() * drag.position
-		_aim_target = AimControl.clamp_aim(world)
-		_refresh_aim_visuals()
+		_apply_aim_world(world)
 		get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and _accept_mouse():
 		if event.pressed:
 			_aim_dragging = true
-			_aim_target = AimControl.clamp_aim(_world_mouse())
-			_refresh_aim_visuals()
+			_apply_aim_world(_world_mouse())
 		else:
 			_aim_dragging = false
 		get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventMouseMotion and _aim_dragging and _accept_mouse():
-		_aim_target = AimControl.clamp_aim(_world_mouse())
-		_refresh_aim_visuals()
+		_apply_aim_world(_world_mouse())
 		get_viewport().set_input_as_handled()
 		return
 
@@ -925,24 +989,22 @@ func _unhandled_input(event: InputEvent) -> void:
 		var moved := false
 		match event.physical_keycode:
 			KEY_LEFT, KEY_A:
-				_aim_target.x -= AIM_NUDGE_PX
+				_nudge_aim(Vector2(-AIM_NUDGE_PX, 0))
 				moved = true
 			KEY_RIGHT, KEY_D:
-				_aim_target.x += AIM_NUDGE_PX
+				_nudge_aim(Vector2(AIM_NUDGE_PX, 0))
 				moved = true
 			KEY_UP, KEY_W:
-				_aim_target.y -= AIM_NUDGE_PX
+				_nudge_aim(Vector2(0, -AIM_NUDGE_PX))
 				moved = true
 			KEY_DOWN, KEY_S:
-				_aim_target.y += AIM_NUDGE_PX
+				_nudge_aim(Vector2(0, AIM_NUDGE_PX))
 				moved = true
 			KEY_SPACE, KEY_ENTER, KEY_KP_ENTER:
 				_confirm_aim()
 				get_viewport().set_input_as_handled()
 				return
 		if moved:
-			_aim_target = AimControl.clamp_aim(_aim_target)
-			_refresh_aim_visuals()
 			get_viewport().set_input_as_handled()
 
 
@@ -951,6 +1013,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 	GameState.record_stroke()
 	_update_hud()
 	ball_in_flight = true
+	_power_previewing = false
 	_set_aim_visuals_visible(false)
 	_refresh_wind_indicator(false)
 	if wind_banner:

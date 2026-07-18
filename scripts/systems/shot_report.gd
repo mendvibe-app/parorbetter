@@ -65,7 +65,13 @@ func _build_reasons(result: ShotResult) -> void:
 		ShotResult.ContactQuality.MISS:
 			reasons.append("Contact MISS — only %d%% distance" % int(contact_mul * 100.0))
 
-	if power < 0.35:
+	var force := BallPhysics.force_factor(power)
+	if force > 0.35:
+		if power >= BallPhysics.POWER_POCKET_HI:
+			reasons.append("Forced mash (%d%%) — accuracy tax" % int(power * 100.0))
+		else:
+			reasons.append("Baby'd the club (%d%%) — accuracy tax" % int(power * 100.0))
+	elif power < 0.35:
 		reasons.append("Power low (%d%%) — big distance cut" % int(power * 100.0))
 	elif power < 0.55:
 		reasons.append("Power modest (%d%%)" % int(power * 100.0))

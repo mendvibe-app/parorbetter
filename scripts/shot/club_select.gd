@@ -1,12 +1,19 @@
 class_name ClubSelect
 extends Control
 
-## Pre-aim bag picker. Tap a club to proceed.
+## Pre-aim bag picker. Tap to highlight, Confirm to commit (small dither friction).
 
 signal club_chosen(club: Dictionary)
 
+const OPEN_LOCK_SEC := 0.45
+const SWITCH_LOCK_SEC := 0.28
+
 var _list: VBoxContainer
 var _title: Label
+var _hint: Label
+var _confirm: Button
+var _selected: Dictionary = {}
+var _confirm_ready_at_msec: int = 0
 
 
 func _ready() -> void:
@@ -22,10 +29,10 @@ func _ready() -> void:
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left = -280.0
-	panel.offset_top = -340.0
-	panel.offset_right = 280.0
-	panel.offset_bottom = 340.0
+	panel.offset_left = -300.0
+	panel.offset_top = -380.0
+	panel.offset_right = 300.0
+	panel.offset_bottom = 380.0
 	add_child(panel)
 
 	var margin := MarginContainer.new()
@@ -45,16 +52,16 @@ func _ready() -> void:
 	_title.text = "CHOOSE CLUB"
 	root.add_child(_title)
 
-	var hint := Label.new()
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 18)
-	hint.add_theme_color_override("font_color", Color(0.75, 0.85, 0.7, 1))
-	hint.text = "Suggested club is highlighted"
-	root.add_child(hint)
+	_hint = Label.new()
+	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hint.add_theme_font_size_override("font_size", 18)
+	_hint.add_theme_color_override("font_color", Color(0.75, 0.85, 0.7, 1))
+	_hint.text = "Tap a club, then Confirm"
+	root.add_child(_hint)
 
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	scroll.custom_minimum_size = Vector2(0, 520)
+	scroll.custom_minimum_size = Vector2(0, 480)
 	root.add_child(scroll)
 
 	_list = VBoxContainer.new()
@@ -62,14 +69,30 @@ func _ready() -> void:
 	_list.add_theme_constant_override("separation", 8)
 	scroll.add_child(_list)
 
+	_confirm = Button.new()
+	_confirm.text = "Confirm club"
+	_confirm.custom_minimum_size = Vector2(0, 64)
+	_confirm.disabled = true
+	_confirm.pressed.connect(_commit)
+	root.add_child(_confirm)
+
+
+func _process(_delta: float) -> void:
+	if not visible:
+		return
+	_refresh_confirm_enabled()
+
 
 func present(lie: String, pin_yd: float, wind: Vector2) -> void:
 	for child in _list.get_children():
 		child.queue_free()
 
+	_selected = {}
+	_confirm_ready_at_msec = Time.get_ticks_msec() + int(OPEN_LOCK_SEC * 1000.0)
 	var suggested := BallPhysics.pick_club(pin_yd, lie)
 	var suggested_name := String(suggested["name"])
 	_title.text = "CHOOSE CLUB  ·  %d yd" % int(pin_yd)
+	_hint.text = "Tap a club, then Confirm"
 
 	for club in BallPhysics.clubs_for_lie(lie):
 		var name := String(club["name"])
@@ -77,6 +100,7 @@ func present(lie: String, pin_yd: float, wind: Vector2) -> void:
 		var pct := BallPhysics.club_percent_today(pin_yd, max_yd, lie, wind)
 		var is_suggested := name == suggested_name
 		var btn := Button.new()
+		btn.toggle_mode = true
 		btn.text = "%s%s  —  %d max  —  %d%% today" % [
 			"★ " if is_suggested else "",
 			name,
@@ -88,16 +112,53 @@ func present(lie: String, pin_yd: float, wind: Vector2) -> void:
 		if is_suggested:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1))
 		var chosen: Dictionary = club
-		btn.pressed.connect(func() -> void: _pick(chosen))
+		btn.pressed.connect(func() -> void: _select(chosen, btn))
 		_list.add_child(btn)
+		if is_suggested:
+			btn.button_pressed = true
+			_selected = chosen
 
+	_confirm.text = "Confirm %s" % suggested_name if not _selected.is_empty() else "Confirm club"
 	visible = true
+	set_process(true)
+	_refresh_confirm_enabled()
 
 
 func dismiss() -> void:
 	visible = false
+	set_process(false)
+	_selected = {}
 
 
-func _pick(club: Dictionary) -> void:
+func _select(club: Dictionary, btn: Button) -> void:
+	_selected = club
+	for child in _list.get_children():
+		if child is Button and child != btn:
+			(child as Button).button_pressed = false
+	btn.button_pressed = true
+	_confirm.text = "Confirm %s" % String(club["name"])
+	# Switching clubs re-locks confirm briefly — no endless dither-commit.
+	_confirm_ready_at_msec = maxi(
+		_confirm_ready_at_msec,
+		Time.get_ticks_msec() + int(SWITCH_LOCK_SEC * 1000.0)
+	)
+	_refresh_confirm_enabled()
+
+
+func _refresh_confirm_enabled() -> void:
+	var ready := Time.get_ticks_msec() >= _confirm_ready_at_msec
+	_confirm.disabled = _selected.is_empty() or not ready
+	if _selected.is_empty():
+		_hint.text = "Tap a club, then Confirm"
+	elif not ready:
+		_hint.text = "Commit to it…"
+	else:
+		_hint.text = "Confirm to aim with %s" % String(_selected["name"])
+
+
+func _commit() -> void:
+	if _selected.is_empty() or _confirm.disabled:
+		return
+	var club := _selected
 	dismiss()
 	club_chosen.emit(club)

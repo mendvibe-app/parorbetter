@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
-"""Runnable check for bag overlap + shortest-cover suggestion. No Godot required."""
+"""Runnable check for bag overlap, suggestion, and force-factor. No Godot required."""
 
 BAG = [
     ("Driver", 260.0),
-    ("3-Wood", 230.0),
+    ("3-Wood", 235.0),
+    ("Hybrid", 210.0),
+    ("5-Iron", 190.0),
     ("6-Iron", 175.0),
     ("7-Iron", 160.0),
     ("8-Iron", 145.0),
@@ -11,6 +13,9 @@ BAG = [
     ("Pitching Wedge", 110.0),
     ("Gap/Sand Wedge", 85.0),
 ]
+
+POWER_POCKET_LO = 0.60
+POWER_POCKET_HI = 0.92
 
 
 def shot_need(remaining: float, lie: str) -> float:
@@ -34,26 +39,39 @@ def pick_club(remaining: float, lie: str):
     return available[0]
 
 
+def force_factor(power: float) -> float:
+    p = max(0.0, min(1.0, power))
+    if p > POWER_POCKET_HI:
+        return min(1.0, (p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI))
+    if p < POWER_POCKET_LO:
+        return min(1.0, (POWER_POCKET_LO - p) / POWER_POCKET_LO)
+    return 0.0
+
+
 def main() -> None:
-    # Neighbor overlap ~15–20 yd (max_i - max_{i+1})
     for (a, ma), (b, mb) in zip(BAG, BAG[1:]):
         gap = ma - mb
-        assert 15.0 <= gap <= 55.0, f"{a}/{b} gap {gap} out of playable overlap band"
+        assert 15.0 <= gap <= 30.0, f"{a}/{b} gap {gap} — want ~15–25 yd neighbor steps"
 
-    # Shorter club always has lower max
     assert all(BAG[i][1] > BAG[i + 1][1] for i in range(len(BAG) - 1))
 
     assert pick_club(10, "Green")[0] == "Putter"
     assert all("Wedge" in n for n, _ in clubs_for_lie("Sand"))
 
-    # 150 yd fairway → need 162 → 6-Iron covers, 7-Iron (160) does not
+    # 150 yd fairway → need 162 → 6-Iron (175)
     assert pick_club(150, "Fairway") == ("6-Iron", 175.0)
-
     # 140 yd → need 151.2 → 7-Iron
     assert pick_club(140, "Fairway") == ("7-Iron", 160.0)
-
-    # Sand always wedges; short bunker → gap/sand
+    # 190 yd → need 205.2 → Hybrid (210); 200 yd need 216 → 3-Wood
+    assert pick_club(190, "Fairway") == ("Hybrid", 210.0)
+    assert pick_club(200, "Fairway") == ("3-Wood", 235.0)
     assert pick_club(40, "Sand") == ("Gap/Sand Wedge", 85.0)
+
+    assert force_factor(0.75) == 0.0
+    assert force_factor(0.92) == 0.0
+    assert force_factor(1.0) == 1.0
+    assert force_factor(0.0) == 1.0
+    assert 0.4 < force_factor(0.3) < 0.6
 
     print("club_bag_check: ok")
 

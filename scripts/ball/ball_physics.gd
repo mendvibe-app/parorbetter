@@ -8,11 +8,12 @@ const PX_PER_YARD := 2.25
 ## Share of total shot distance spent in the air (rest is roll/bounce).
 const AIR_DISTANCE_FRACTION := 0.78
 
-## Full bag, longest → shortest. Adjacent maxes overlap ~15–20 yd on purpose.
-## ponytail: yardages are a first-pass table — retune after full-sequence playtest.
+## Full bag, longest → shortest. Neighbor max gaps ~15–25 yd so overlap is real.
 const BAG: Array[Dictionary] = [
 	{"name": "Driver", "max_yards": 260.0},
-	{"name": "3-Wood", "max_yards": 230.0},
+	{"name": "3-Wood", "max_yards": 235.0},
+	{"name": "Hybrid", "max_yards": 210.0},
+	{"name": "5-Iron", "max_yards": 190.0},
 	{"name": "6-Iron", "max_yards": 175.0},
 	{"name": "7-Iron", "max_yards": 160.0},
 	{"name": "8-Iron", "max_yards": 145.0},
@@ -20,6 +21,10 @@ const BAG: Array[Dictionary] = [
 	{"name": "Pitching Wedge", "max_yards": 110.0},
 	{"name": "Gap/Sand Wedge", "max_yards": 85.0},
 ]
+
+## Sensible swing pocket — outside this, force_factor > 0 (accuracy tax).
+const POWER_POCKET_LO := 0.60
+const POWER_POCKET_HI := 0.92
 
 
 static func is_wedge_family(club_name: String) -> bool:
@@ -126,6 +131,16 @@ static func recommended_power(remaining_yd: float, club_max_yards: float, lie: S
 	return clampf(need / effective_max, 0.05, 1.0)
 
 
+## 0 = in the pocket, 1 = fully forced (mash near 100% or baby a club).
+static func force_factor(power: float) -> float:
+	var p := clampf(power, 0.0, 1.0)
+	if p > POWER_POCKET_HI:
+		return clampf((p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI), 0.0, 1.0)
+	if p < POWER_POCKET_LO:
+		return clampf((POWER_POCKET_LO - p) / POWER_POCKET_LO, 0.0, 1.0)
+	return 0.0
+
+
 static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 	match quality:
 		ShotResult.ContactQuality.PERFECT:
@@ -153,7 +168,11 @@ static func launch_velocity(
 		dir = Vector2(0, -1)
 
 	var is_putt := lie == "Green"
+	var force := 0.0 if is_putt else force_factor(result.power)
 	var power_mul := result.power * lie_multiplier(lie) * contact_multiplier(result.contact_quality)
+	# Mash doesn't buy clean extra yards — contact gets jumpy instead.
+	if force > 0.0 and result.power > POWER_POCKET_HI:
+		power_mul *= lerpf(1.0, 0.94, force)
 	var total_yards := club_max_yards * power_mul
 	var total_px := yards_to_pixels(total_yards)
 
@@ -215,8 +234,13 @@ static func launch_velocity(
 	var air_px := total_px * air_frac
 	var base_speed := air_px / maxf(air_time, 0.05)
 
-	var lateral := (result.path_error * 0.55 + result.intended_shape * 0.25) * (1.35 - result.stance_stability * 0.5)
-	var spin := result.path_error * (1.2 - result.stance_stability * 0.5)
+	var stab_term := 1.35 - result.stance_stability * 0.5
+	# Forcing a club (wrong bag choice, then mash/baby) taxes line the way it does IRL.
+	var force_mul := 1.0 + force * 0.9
+	var lateral := (result.path_error * 0.55 + result.intended_shape * 0.25) * stab_term * force_mul
+	var spin := result.path_error * (1.2 - result.stance_stability * 0.5) * (1.0 + force * 0.7)
+	# Even a pure path leaks offline when the swing is forced.
+	lateral += force * 0.18 * (1.0 if result.path_error >= 0.0 else -1.0)
 	match result.contact_quality:
 		ShotResult.ContactQuality.THIN:
 			spin *= 1.35

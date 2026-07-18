@@ -14,18 +14,19 @@ Minimal Godot 4 mobile golf prototype — dual-finger shot loop, aim circles, li
 ## Controls (desktop → simulates dual touch)
 
 ### 0) Club (approaches)
-- Pick from the bag (suggested club highlighted). Sand → wedges only. Green skips this (putter).
+- Tap a club (suggested ★), then **Confirm** (short lock so you commit). Sand → wedges only. Green skips this (putter).
 
 ### 1) Aim / shape
-- Directional **wedge** shows start line + shape (not a laser to an exact yardage).
+- Directional **wedge** shows start line + shape; drag changes **bearing only** (yardage comes later).
 - Yellow **dispersion circle** size = recent form (~40 yd wild → ~10 yd sharp).
 - **Drag** / **arrows** to adjust for wind (see cyan wind banner).
 - **Space** or **Confirm Aim**.
 
 ### 2) Power + stance (Finger 1)
 - Meter starts neutral — drag to the **white tick** (recommended %).
+- Landing circle slides to your estimated carry and tightens as you near the tick.
+- Mash (over 92%) or baby (under 60%) a club → accuracy tax (take more/less club instead).
 - Vertical = power; horizontal **tracks the gold lean notch**.
-- Stability scores lean *and* holding power on the tick.
 - Release / Space when the lock meter fills.
 
 ### 3) Swing / putt timing (Finger 2)

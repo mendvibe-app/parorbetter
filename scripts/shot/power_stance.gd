@@ -281,7 +281,11 @@ func _refresh_visuals() -> void:
 		elif delta_yd < -8.0:
 			fit = "SHORT %d" % int(delta_yd)
 		var lock := "LOCK %.0f%%" % clampf(_dwell / DWELL_REQUIRED * 100.0, 0.0, 100.0)
-		label.text = "%s  (max %d yd)\nHold white tick → %d%% for %d yd\nNOW %d%% ≈ %d yd  %s\nLean + power  Stability %d%%\n%s" % [
+		var force := BallPhysics.force_factor(power)
+		var force_note := ""
+		if force > 0.35:
+			force_note = "\nFORCED SWING — line suffers"
+		label.text = "%s  (max %d yd)\nHold white tick → %d%% for %d yd\nNOW %d%% ≈ %d yd  %s\nLean + power  Stability %d%%\n%s%s" % [
 			club_name,
 			int(club_max_yards),
 			int(recommend_power * 100.0),
@@ -291,6 +295,7 @@ func _refresh_visuals() -> void:
 			fit,
 			int(stability * 100.0),
 			lock,
+			force_note,
 		]
 	queue_redraw()
 
