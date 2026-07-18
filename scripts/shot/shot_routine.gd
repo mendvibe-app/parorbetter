@@ -1,14 +1,15 @@
 class_name ShotRoutine
 extends Control
 
-## Orchestrates power/stance track → swing/putt timing (sequential touch).
-## Desktop: LMB drag + click; mobile: drag + tap (emulated mouse ignored on touchscreens).
+## Concurrent dual-touch shot: finger 1 (power/stance) + finger 2 (swing timing)
+## stay live together; impact tap resolves with live values.
+## Desktop: LMB drag power; RMB / Space for swing start+impact.
 
 signal shot_ready(result: ShotResult)
 signal phase_changed(phase: String)
 signal pure_strike(result: ShotResult)
 
-enum Phase { IDLE, POWER, SWING, DONE }
+enum Phase { IDLE, ACTIVE, DONE }
 
 var phase: Phase = Phase.IDLE
 var timing_scale: float = 1.0
@@ -32,7 +33,7 @@ var aim_radius_yd: float = 22.0
 
 
 func _ready() -> void:
-	power_stance.committed.connect(_on_power_committed)
+	# power_stance.committed is not a resolve event under concurrent input
 	power_stance.updated.connect(_on_power_updated)
 	swing_contact.committed.connect(_on_swing_committed)
 	set_active(false)
@@ -78,16 +79,20 @@ func configure(
 
 
 func begin_shot() -> void:
-	phase = Phase.POWER
+	phase = Phase.ACTIVE
 	_power = power_stance.power
 	_stability = 0.35
 	power_stance.reset()
 	power_stance.set_enabled(true)
-	swing_contact.set_enabled(false)
 	var is_putt := current_lie == "Green"
 	swing_contact.reset(timing_scale, is_putt)
-	hint_label.text = "1) Hold the white tick (distance). Track the GOLD lean. Lock, then release."
-	phase_changed.emit("power")
+	swing_contact.set_enabled(true)
+	# ponytail: arc starts on first finger-2 tap (not shot-begin); auto-sweep on begin if takeaway feel needs it
+	if is_putt:
+		hint_label.text = "Hold lean + power · PUTT — tap arc to start, tap yellow BOTTOM at impact."
+	else:
+		hint_label.text = "Hold lean + power · Swing — tap arc to start, tap yellow BOTTOM at impact."
+	phase_changed.emit("active")
 	set_active(true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if info_label:
@@ -120,22 +125,10 @@ func _on_power_updated(power: float, stability: float) -> void:
 	_stability = stability
 
 
-func _on_power_committed(power: float, stability: float) -> void:
-	_power = power
-	_stability = stability
-	phase = Phase.SWING
-	power_stance.set_enabled(false)
-	var is_putt := current_lie == "Green"
-	swing_contact.reset(timing_scale, is_putt)
-	swing_contact.set_enabled(true)
-	if is_putt:
-		hint_label.text = "2) PUTT — tap to start, tap again at the yellow BOTTOM (impact)."
-	else:
-		hint_label.text = "2) Swing — tap to start, tap again at the yellow BOTTOM of the arc."
-	phase_changed.emit("swing")
-
-
 func _on_swing_committed(path_error: float, contact: ShotResult.ContactQuality) -> void:
+	# Resolve from live finger-1 state at impact — not values frozen earlier.
+	_power = power_stance.power
+	_stability = power_stance.stability
 	_path = path_error
 	_contact = contact
 
@@ -177,6 +170,7 @@ func _on_swing_committed(path_error: float, contact: ShotResult.ContactQuality) 
 
 func _emit_result(result: ShotResult) -> void:
 	phase = Phase.DONE
+	power_stance.set_enabled(false)
 	swing_contact.set_enabled(false)
 	set_active(false)
 	GameState.record_path_miss(result.path_error)

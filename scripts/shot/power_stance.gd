@@ -155,9 +155,7 @@ func _input(event: InputEvent) -> void:
 				dragging = true
 				_force_sample_error()
 				get_viewport().set_input_as_handled()
-			KEY_ENTER, KEY_KP_ENTER, KEY_E, KEY_SPACE:
-				_try_commit()
-				get_viewport().set_input_as_handled()
+			# Space/Enter belong to swing impact under concurrent dual-input — don't steal them.
 		return
 
 	# Prefer real touch; skip emulated mouse on touchscreens.
@@ -259,6 +257,7 @@ func _recompute_stability() -> void:
 
 
 func _try_commit() -> void:
+	## End finger-1 drag only — does not resolve the shot (impact tap does).
 	if not active:
 		return
 	if _track_samples.size() < 3:
@@ -268,6 +267,7 @@ func _try_commit() -> void:
 	dragging = false
 	last_power = power
 	_refresh_visuals()
+	# Still emitted for listeners; ShotRoutine no longer treats this as phase resolve.
 	committed.emit(power, stability)
 
 
