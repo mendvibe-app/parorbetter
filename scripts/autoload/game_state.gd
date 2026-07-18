@@ -33,7 +33,7 @@ var course_seed: int = 0
 var course_theme: HoleData.CourseTheme = HoleData.CourseTheme.PARKLAND
 var course: Array[HoleData] = []
 
-## Signed path-error history (−1 hook/left … +1 slice/right). Used by Adaptation.
+## Signed path-error history (−1 hook/left … +1 slice/right). Drives hazard/wind bias.
 var path_miss_history: Array[float] = []
 
 ## Rolling shot form 0–1 from contact + stance (drives aim circle size).
@@ -97,6 +97,48 @@ func set_lives(value: int) -> void:
 
 func add_lives(delta: int) -> void:
 	set_lives(lives + delta)
+
+
+## Apply life change for a finished hole. Returns the delta applied.
+func apply_hole_result_lives(result: Scoring.Result) -> int:
+	var delta := 0
+	match result:
+		Scoring.Result.ALBATROSS, Scoring.Result.EAGLE, Scoring.Result.BIRDIE:
+			delta = 1
+		Scoring.Result.PAR:
+			delta = 0
+		Scoring.Result.BOGEY:
+			delta = -1
+		Scoring.Result.DOUBLE_PLUS:
+			delta = -2
+	add_lives(delta)
+	return delta
+
+
+## Map rolling miss bias to hazard side for a hole.
+func effective_hazard_bias(hole: HoleData) -> HoleData.HazardBias:
+	var bias := get_adaptation_bias()
+	if hole.hole_number >= 4:
+		if bias > 0.35:
+			return HoleData.HazardBias.RIGHT
+		if bias < -0.35:
+			return HoleData.HazardBias.LEFT
+	return hole.hazard_bias
+
+
+## Extra wind nudge opposing common miss (push ball toward danger they create).
+func wind_adaptation_nudge() -> Vector2:
+	var bias := get_adaptation_bias()
+	return Vector2(bias * 12.0, 0.0)
+
+
+func bias_label() -> String:
+	var b := get_adaptation_bias()
+	if b > 0.25:
+		return "Slice bias (R)"
+	if b < -0.25:
+		return "Hook bias (L)"
+	return "Neutral"
 
 
 func begin_hole(hole_index: int) -> void:

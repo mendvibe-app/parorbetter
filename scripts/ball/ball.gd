@@ -22,7 +22,6 @@ var _air_duration: float = 1.0
 var _height: float = 0.0
 var _last_safe_pos: Vector2 = Vector2.ZERO
 var _lie: String = "Tee"
-var _on_green: bool = false
 var _trail: Line2D
 var _ghost_arc: Node2D
 var _is_perfect_shot: bool = false
@@ -80,7 +79,6 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	velocity = Vector2.ZERO
 	spin = 0.0
 	_height = 0.0
-	_on_green = lie == "Green"
 	_is_putt = false
 	_is_perfect_shot = false
 	state = State.IDLE
@@ -186,7 +184,6 @@ func get_last_safe() -> Vector2:
 
 func set_lie(lie: String) -> void:
 	_lie = lie
-	_on_green = lie == "Green"
 	_apply_lie_visual()
 
 
@@ -401,7 +398,6 @@ func _on_area_entered(other: Area2D) -> void:
 		_lie = "Sand"
 	elif other.is_in_group("green"):
 		_lie = "Green"
-		_on_green = true
 	elif other.is_in_group("fairway"):
 		_lie = "Fairway"
 	elif other.is_in_group("rough"):

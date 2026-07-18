@@ -11,9 +11,7 @@ enum CourseTheme { PARKLAND, LINKS, DESERT }
 
 @export var hole_number: int = 1
 @export var par: int = 4
-@export var distance_yards: float = 380.0
 @export var fairway_width: float = 140.0
-@export var green_radius: float = 48.0  ## legacy / average
 @export var green_radius_x: float = 48.0
 @export var green_radius_y: float = 48.0
 @export var pin_offset: Vector2 = Vector2.ZERO  ## from green center
@@ -30,51 +28,13 @@ enum CourseTheme { PARKLAND, LINKS, DESERT }
 ## Generator / course-design fields
 @export var green_shape: GreenShape = GreenShape.OVAL
 @export var green_size: float = 0.7  ## 0 = tiny target, 1 = generous
-@export var hazard_count: int = 0
 @export var has_bunker: bool = false
 @export var has_water: bool = false
 @export var complexity: float = 0.0  ## 0–1 difficulty composite
-@export var theme: CourseTheme = CourseTheme.PARKLAND
 @export var archetype: String = ""  ## generator identity (e.g. short_sharp)
 
 
-func shape_label() -> String:
-	match suggested_shape:
-		SuggestedShape.DRAW:
-			return "Draw"
-		SuggestedShape.FADE:
-			return "Fade"
-		_:
-			return "Straight"
-
-
-func bias_label() -> String:
-	match hazard_bias:
-		HazardBias.LEFT:
-			return "Left"
-		HazardBias.RIGHT:
-			return "Right"
-		_:
-			return "None"
-
-
-func green_shape_label() -> String:
-	match green_shape:
-		GreenShape.KIDNEY:
-			return "Kidney"
-		GreenShape.TIERED:
-			return "Tiered"
-		GreenShape.L_SHAPED:
-			return "L-shaped"
-		GreenShape.PENINSULA:
-			return "Peninsula"
-		GreenShape.COMPLEX:
-			return "Complex"
-		_:
-			return "Oval"
-
-
-## Elevation at local pos (world − green_center). Book contours = isolines of this.
+## Elevation at local pos (world − green_center). Book heat samples this.
 func green_height_at(local: Vector2) -> float:
 	var h := -green_slope.dot(local)
 	for inf in _green_slope_influences():

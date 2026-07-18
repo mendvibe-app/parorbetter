@@ -97,5 +97,4 @@ func lean_polyline(rect: Rect2, segments: int = 20) -> PackedVector2Array:
 func draw_thick_polyline(canvas: CanvasItem, pts: PackedVector2Array, color: Color, width: float) -> void:
 	if pts.size() < 2:
 		return
-	for i in pts.size() - 1:
-		canvas.draw_line(pts[i], pts[i + 1], color, width, true)
+	canvas.draw_polyline(pts, color, width, true)

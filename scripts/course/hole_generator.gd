@@ -284,7 +284,8 @@ static func generate_hole(
 
 	var arch: Dictionary = _pick_archetype(rng, par, archetype_history)
 
-	var distance := _pick_yardage(rng, par, t, arch)
+	# Advances course RNG; visual length is fixed COURSE_LENGTH in the controller.
+	_pick_yardage(rng, par, t, arch)
 	var green_shape: HoleData.GreenShape = _pick_green_shape(rng, t, arch)
 	var layout := _layout_for_archetype(arch, green_shape, t, rng)
 	var has_bunker := rng.randf() < _bunker_chance(t, mods, float(arch.get("bunker", 1.0)))
@@ -297,9 +298,9 @@ static func generate_hole(
 	# Island / peninsula layouts need water for identity.
 	if layout == HoleData.LayoutStyle.ISLAND or green_shape == HoleData.GreenShape.PENINSULA:
 		has_water = true
-	var hazard_count := (1 if has_bunker else 0) + (1 if has_water else 0)
-	if t >= 0.75 and has_bunker and has_water and rng.randf() < 0.45:
-		hazard_count += 1  # extra bunker feel / complexity bump
+	# Was unused hazard_count bump; keep the roll so course seeds stay stable.
+	if t >= 0.75 and has_bunker and has_water:
+		rng.randf()
 
 	var size_bias := float(arch.get("green_size_bias", 0.0))
 	var green_size := lerpf(0.92, 0.38, t) + size_bias + rng.randf_range(-0.04, 0.04)
@@ -351,9 +352,7 @@ static func generate_hole(
 	var d := HoleData.new()
 	d.hole_number = hole_number
 	d.par = par
-	d.distance_yards = distance
 	d.fairway_width = fairway_width
-	d.green_radius = (radii.x + radii.y) * 0.5
 	d.green_radius_x = radii.x
 	d.green_radius_y = radii.y
 	d.pin_offset = pin
@@ -370,11 +369,9 @@ static func generate_hole(
 	)
 	d.green_shape = green_shape
 	d.green_size = green_size
-	d.hazard_count = hazard_count
 	d.has_bunker = has_bunker
 	d.has_water = has_water
 	d.complexity = complexity
-	d.theme = theme
 	d.archetype = str(arch.get("id", ""))
 	return d
 

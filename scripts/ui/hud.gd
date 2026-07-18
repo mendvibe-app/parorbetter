@@ -51,7 +51,7 @@ func _on_form(_form: float) -> void:
 
 func _refresh_adapt_form() -> void:
 	adapt_label.text = "%s · ○%dyd %s" % [
-		Adaptation.bias_label(),
+		GameState.bias_label(),
 		int(GameState.get_aim_radius_yards(false)),
 		GameState.form_label(),
 	]

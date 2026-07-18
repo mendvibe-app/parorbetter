@@ -62,7 +62,7 @@ func _process(_delta: float) -> void:
 	var m: Dictionary = GameState.last_shot_metrics
 	if m.is_empty():
 		metrics.text = "Adapt: %s (%.2f)\nForm: %s (%.2f) circle %d yd\nLast shot: —" % [
-			Adaptation.bias_label(),
+			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
 			GameState.get_form(),
@@ -70,7 +70,7 @@ func _process(_delta: float) -> void:
 		]
 	else:
 		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\nPwr %d%%  Stance %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s" % [
-			Adaptation.bias_label(),
+			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
 			int(float(m.get("aim_radius_yd", GameState.get_aim_radius_yards(false)))),

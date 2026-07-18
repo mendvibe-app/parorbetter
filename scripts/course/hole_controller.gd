@@ -1,7 +1,6 @@
 class_name HoleController
 extends Node2D
 
-signal hole_finished(strokes: int, par: int, result: Scoring.Result)
 signal request_game_over
 signal request_next_hole
 
@@ -19,12 +18,6 @@ const TEX_WATER := preload("res://assets/terrain/water_tile.png")
 const TEX_CUP := preload("res://assets/greens/cup.png")
 const TEX_PIN_FLAG := preload("res://assets/greens/pin_flag.png")
 const TEX_FOG := preload("res://assets/background/fog_overlay.png")
-const GREEN_TEXTURES := {
-	HoleData.LayoutStyle.ISLAND: preload("res://assets/greens/green_island.png"),
-	HoleData.LayoutStyle.BI_TIER: preload("res://assets/greens/green_tiered.png"),
-	HoleData.LayoutStyle.DOGLEG_LEFT: preload("res://assets/greens/green_kidney.png"),
-	HoleData.LayoutStyle.DOGLEG_RIGHT: preload("res://assets/greens/green_kidney.png"),
-}
 const GREEN_SHAPE_TEXTURES := {
 	HoleData.GreenShape.OVAL: preload("res://assets/greens/green_oval.png"),
 	HoleData.GreenShape.KIDNEY: preload("res://assets/greens/green_kidney.png"),
@@ -59,7 +52,7 @@ var _green_center: Vector2 = Vector2.ZERO
 var _tee_pos: Vector2 = Vector2(540, TEE_Y)
 var _fairway_half: float = 70.0
 var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
-var _green_book: Node2D  ## aim-only yardage-book overlay (heat + topo)
+var _green_book: Node2D  ## aim-only yardage-book overlay (heat + slope arrow)
 
 var _aiming: bool = false
 var _selecting_club: bool = false
@@ -74,7 +67,6 @@ var _aim_cone: Polygon2D
 var _aim_cone_edge: Line2D
 var _pin_ref_line: Line2D
 var _aim_circle: Line2D
-var _aim_arrow: Polygon2D
 var _wind_sprite: Sprite2D
 var _last_report: ShotReport
 var _club_select: ClubSelect
@@ -150,12 +142,6 @@ func _setup_aim_visuals() -> void:
 	_aim_circle.visible = false
 	add_child(_aim_circle)
 
-	_aim_arrow = Polygon2D.new()
-	_aim_arrow.color = Color(1.0, 0.95, 0.4, 0.95)
-	_aim_arrow.z_index = 6
-	_aim_arrow.visible = false
-	add_child(_aim_arrow)
-
 	_wind_sprite = Sprite2D.new()
 	_wind_sprite.z_index = 7
 	_wind_sprite.visible = false
@@ -192,11 +178,11 @@ func _build_course() -> void:
 		fairway_w *= float(GameState.debug_fairway_scale)
 	_fairway_half = fairway_w * 0.5
 
-	var adapt_bias := Adaptation.effective_hazard_bias(hole)
+	var adapt_bias := GameState.effective_hazard_bias(hole)
 	var wind := hole.wind_vector
 	if GameState.debug_wind_scale != null:
 		wind *= float(GameState.debug_wind_scale)
-	wind += Adaptation.wind_adaptation_nudge()
+	wind += GameState.wind_adaptation_nudge()
 
 	course_root.set_meta("wind", wind)
 	course_root.set_meta("slope", hole.green_slope)
@@ -206,7 +192,7 @@ func _build_course() -> void:
 	_cup_pos = _green_center + hole.pin_offset
 
 	# Rough apron
-	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, COURSE_LENGTH + 220), Color(0.92, 0.98, 0.92), "", false, TEX_ROUGH, 340.0)
+	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, COURSE_LENGTH + 220), Color(0.92, 0.98, 0.92), "", TEX_ROUGH, 340.0)
 
 	# Bent / shaped fairway
 	_add_bent_fairway(fairway_w, hole.fairway_bend)
@@ -214,7 +200,7 @@ func _build_course() -> void:
 	# Green sprite (variant per layout) + detection area
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
 
-	_add_circle(course_root, _cup_pos, CUP_RADIUS, Color(0, 0, 0, 0), "cup", true)
+	_add_circle(course_root, _cup_pos, CUP_RADIUS, Color(0, 0, 0, 0), "cup")
 	var cup_spr := Sprite2D.new()
 	cup_spr.texture = TEX_CUP
 	cup_spr.position = _cup_pos
@@ -234,11 +220,11 @@ func _build_course() -> void:
 
 	_place_layout_hazards(adapt_bias)
 
-	_add_rect(course_root, Rect2(-80, GREEN_Y - 140, 70, COURSE_LENGTH + 240), Color(0.62, 0.5, 0.42), "oob", true, TEX_ROUGH_DARK, 220.0)
-	_add_rect(course_root, Rect2(1090, GREEN_Y - 140, 70, COURSE_LENGTH + 240), Color(0.62, 0.5, 0.42), "oob", true, TEX_ROUGH_DARK, 220.0)
+	_add_rect(course_root, Rect2(-80, GREEN_Y - 140, 70, COURSE_LENGTH + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
+	_add_rect(course_root, Rect2(1090, GREEN_Y - 140, 70, COURSE_LENGTH + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
 	_scatter_trees()
 	_add_fog_band()
-	_add_circle(course_root, _tee_pos, 8.0, Color(0.95, 0.95, 0.2), "", false)
+	_add_circle(course_root, _tee_pos, 8.0, Color(0.95, 0.95, 0.2), "")
 
 	_build_green_book()
 
@@ -308,9 +294,7 @@ func _add_green(rx: float, ry: float) -> void:
 
 
 func _green_texture_for_hole() -> Texture2D:
-	if GREEN_SHAPE_TEXTURES.has(hole.green_shape):
-		return GREEN_SHAPE_TEXTURES[hole.green_shape]
-	return GREEN_TEXTURES.get(hole.layout, GREEN_DEFAULT)
+	return GREEN_SHAPE_TEXTURES.get(hole.green_shape, GREEN_DEFAULT)
 
 
 func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
@@ -320,7 +304,6 @@ func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
 	elif adapt_bias == HoleData.HazardBias.RIGHT:
 		side = 1.0
 
-	# Trust generator hazard flags (HoleDefs leaves both false if used as fallback).
 	var place_bunker := hole.has_bunker
 	var place_water := hole.has_water
 
@@ -330,30 +313,30 @@ func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
 			if place_bunker:
 				_add_bunker(Vector2(540 + 110, 380), 50.0, 0)
 			if place_water:
-				_add_rect(course_root, Rect2(700, 200, 90, 180), water_tint, "water", true, TEX_WATER, 260.0)
+				_add_rect(course_root, Rect2(700, 200, 90, 180), water_tint, "water", TEX_WATER, 260.0)
 		HoleData.LayoutStyle.DOGLEG_LEFT:
 			if place_bunker:
 				_add_bunker(Vector2(540 - 120, 360), 55.0, 1)
 			if place_water:
-				_add_rect(course_root, Rect2(200, 160, 100, 220), water_tint, "water", true, TEX_WATER, 260.0)
+				_add_rect(course_root, Rect2(200, 160, 100, 220), water_tint, "water", TEX_WATER, 260.0)
 		HoleData.LayoutStyle.CHUTE:
 			if place_water:
-				_add_rect(course_root, Rect2(540 - _fairway_half - 70, 250, 55, 280), water_tint, "water", true, TEX_WATER, 260.0)
-				_add_rect(course_root, Rect2(540 + _fairway_half + 15, 250, 55, 280), water_tint, "water", true, TEX_WATER, 260.0)
+				_add_rect(course_root, Rect2(540 - _fairway_half - 70, 250, 55, 280), water_tint, "water", TEX_WATER, 260.0)
+				_add_rect(course_root, Rect2(540 + _fairway_half + 15, 250, 55, 280), water_tint, "water", TEX_WATER, 260.0)
 			if place_bunker:
 				_add_bunker(Vector2(540 + 40, 120), 36.0, 2)
 		HoleData.LayoutStyle.ISLAND:
 			# Water ring is the island identity.
-			_add_rect(course_root, Rect2(540 - 160, GREEN_Y - 30, 90, 160), water_tint, "water", true, TEX_WATER, 260.0)
-			_add_rect(course_root, Rect2(540 + 70, GREEN_Y - 30, 90, 160), water_tint, "water", true, TEX_WATER, 260.0)
-			_add_rect(course_root, Rect2(540 - 100, GREEN_Y + 90, 200, 70), water_tint, "water", true, TEX_WATER, 260.0)
+			_add_rect(course_root, Rect2(540 - 160, GREEN_Y - 30, 90, 160), water_tint, "water", TEX_WATER, 260.0)
+			_add_rect(course_root, Rect2(540 + 70, GREEN_Y - 30, 90, 160), water_tint, "water", TEX_WATER, 260.0)
+			_add_rect(course_root, Rect2(540 - 100, GREEN_Y + 90, 200, 70), water_tint, "water", TEX_WATER, 260.0)
 			if place_bunker:
 				_add_bunker(Vector2(540 + side * 90, 300), 40.0, 0)
 		HoleData.LayoutStyle.BI_TIER:
 			if place_bunker:
 				_add_bunker(Vector2(540 + 80, 200), 48.0, 1)
 			if place_water:
-				_add_rect(course_root, Rect2(300, 140, 80, 200), water_tint, "water", true, TEX_WATER, 260.0)
+				_add_rect(course_root, Rect2(300, 140, 80, 200), water_tint, "water", TEX_WATER, 260.0)
 		_:
 			if place_bunker and hole.hole_number >= 2:
 				_add_bunker(Vector2(540 + side * (_fairway_half + 36), 320), 42.0, 2)
@@ -368,7 +351,7 @@ func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
 	spr.scale = Vector2.ONE * (radius * 2.3 / max_dim)
 	course_root.add_child(spr)
 	_bunkers.append({"c": center, "r": radius})
-	_add_circle(course_root, center, radius, Color(0, 0, 0, 0), "sand", true)
+	_add_circle(course_root, center, radius, Color(0, 0, 0, 0), "sand")
 
 
 func _scatter_trees() -> void:
@@ -469,96 +452,32 @@ func _build_green_book() -> void:
 				"color": heat_lut[ci],
 			})
 
-	# Isolines of green_height_at — same field physics uses
-	for li in 5:
-		var level := lerpf(h_min, h_max, (float(li) + 0.5) / 5.0)
-		_append_height_contour(drawer, grid, n, rx, ry, level)
+	# Downhill arrow from the shared slope field (replaces marching-squares contours).
+	var slope := hole.green_slope_at(Vector2.ZERO)
+	if slope.length() > 0.02:
+		drawer.arrow_dir = slope.normalized()
+		drawer.arrow_len = minf(rx, ry) * 0.38
 	drawer.queue_redraw()
-
-
-func _append_height_contour(
-	drawer: _GreenBookDraw, grid: PackedFloat32Array, n: int, rx: float, ry: float, level: float
-) -> void:
-	for iy in n - 1:
-		for ix in n - 1:
-			var c00 := Vector2(
-				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
-				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
-			)
-			var c10 := Vector2(
-				(float(ix + 1) / float(n - 1) - 0.5) * 2.0 * rx,
-				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
-			)
-			var c11 := Vector2(
-				(float(ix + 1) / float(n - 1) - 0.5) * 2.0 * rx,
-				(float(iy + 1) / float(n - 1) - 0.5) * 2.0 * ry
-			)
-			var c01 := Vector2(
-				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
-				(float(iy + 1) / float(n - 1) - 0.5) * 2.0 * ry
-			)
-			var mid := (c00 + c11) * 0.5
-			if (mid.x * mid.x) / (rx * rx) + (mid.y * mid.y) / (ry * ry) > 1.02:
-				continue
-			var v00 := grid[iy * n + ix]
-			var v10 := grid[iy * n + ix + 1]
-			var v11 := grid[(iy + 1) * n + ix + 1]
-			var v01 := grid[(iy + 1) * n + ix]
-			var mask := (1 if v00 >= level else 0) | (2 if v10 >= level else 0) \
-				| (4 if v11 >= level else 0) | (8 if v01 >= level else 0)
-			if mask == 0 or mask == 15:
-				continue
-			for e in _ms_edges(mask, c00, c10, c11, c01, v00, v10, v11, v01, level):
-				drawer.segs.append(e[0])
-				drawer.segs.append(e[1])
-
-
-func _ms_lerp(a: Vector2, b: Vector2, va: float, vb: float, level: float) -> Vector2:
-	var t := 0.5 if absf(vb - va) < 0.0001 else (level - va) / (vb - va)
-	return a.lerp(b, clampf(t, 0.0, 1.0))
-
-
-func _ms_edges(
-	mask: int,
-	c00: Vector2, c10: Vector2, c11: Vector2, c01: Vector2,
-	v00: float, v10: float, v11: float, v01: float,
-	level: float
-) -> Array:
-	var top := _ms_lerp(c00, c10, v00, v10, level)
-	var right := _ms_lerp(c10, c11, v10, v11, level)
-	var bottom := _ms_lerp(c01, c11, v01, v11, level)
-	var left := _ms_lerp(c00, c01, v00, v01, level)
-	match mask:
-		1, 14:
-			return [[left, top]]
-		2, 13:
-			return [[top, right]]
-		3, 12:
-			return [[left, right]]
-		4, 11:
-			return [[right, bottom]]
-		6, 9:
-			return [[top, bottom]]
-		7, 8:
-			return [[left, bottom]]
-		5:
-			return [[left, top], [right, bottom]]
-		10:
-			return [[top, right], [left, bottom]]
-		_:
-			return []
 
 
 class _GreenBookDraw extends Node2D:
 	var heat: Array = []
-	var segs: PackedVector2Array = PackedVector2Array()
-	var contour_width: float = 1.1
+	var arrow_dir: Vector2 = Vector2.ZERO
+	var arrow_len: float = 0.0
+	var arrow_width: float = 2.4
 
 	func _draw() -> void:
 		for h in heat:
 			draw_colored_polygon(h["pts"], h["color"])
-		if segs.size() >= 2:
-			draw_multiline(segs, Color(0.08, 0.12, 0.1, 0.7), contour_width)
+		if arrow_dir == Vector2.ZERO or arrow_len <= 0.0:
+			return
+		var tip := arrow_dir * arrow_len
+		var base := -arrow_dir * arrow_len * 0.15
+		var c := Color(0.08, 0.12, 0.1, 0.78)
+		draw_line(base, tip, c, arrow_width, true)
+		var across := Vector2(-arrow_dir.y, arrow_dir.x) * arrow_len * 0.18
+		draw_line(tip, tip - arrow_dir * arrow_len * 0.22 + across, c, arrow_width, true)
+		draw_line(tip, tip - arrow_dir * arrow_len * 0.22 - across, c, arrow_width, true)
 
 
 func _should_show_green_book() -> bool:
@@ -599,11 +518,11 @@ func _sync_screen_line_widths() -> void:
 				var target_px := float(c.get_meta("screen_px", 2.2))
 				(c as Line2D).width = target_px / z
 			elif c is _GreenBookDraw:
-				(c as _GreenBookDraw).contour_width = 2.2 / z
+				(c as _GreenBookDraw).arrow_width = 2.4 / z
 				(c as _GreenBookDraw).queue_redraw()
 
 
-func _add_rect(parent: Node2D, rect: Rect2, color: Color, group: String, _monitor: bool, texture: Texture2D = null, tile_px: float = 300.0) -> Area2D:
+func _add_rect(parent: Node2D, rect: Rect2, color: Color, group: String, texture: Texture2D = null, tile_px: float = 300.0) -> Area2D:
 	if color.a > 0.0:
 		var poly := Polygon2D.new()
 		poly.color = color
@@ -635,7 +554,7 @@ func _add_rect(parent: Node2D, rect: Rect2, color: Color, group: String, _monito
 	return area
 
 
-func _add_circle(parent: Node2D, center: Vector2, radius: float, color: Color, group: String, _monitor: bool) -> Area2D:
+func _add_circle(parent: Node2D, center: Vector2, radius: float, color: Color, group: String) -> Area2D:
 	if color.a > 0.0:
 		var poly := Polygon2D.new()
 		poly.color = color
@@ -851,9 +770,6 @@ func _set_aim_visuals_visible(on: bool) -> void:
 		_pin_ref_line.visible = on
 	if _aim_circle:
 		_aim_circle.visible = on
-	# Arrow implied a precise tip — keep it off; cone + circle carry aim.
-	if _aim_arrow:
-		_aim_arrow.visible = false
 
 
 func _refresh_wind_indicator(on: bool) -> void:
@@ -1249,7 +1165,7 @@ func _on_holed_out() -> void:
 	cam_tw.tween_property(camera, "zoom", Vector2(4.5, 4.5), 0.35)
 	var diff := strokes - hole.par
 	var result := Scoring.result_from_diff(diff)
-	var life_delta := LivesSystem.apply_hole_result(result)
+	var life_delta := GameState.apply_hole_result_lives(result)
 	_update_hud()
 	var life_txt := ""
 	if life_delta > 0:
@@ -1263,7 +1179,6 @@ func _on_holed_out() -> void:
 		AudioBus.play_birdie()
 	elif result == Scoring.Result.PAR:
 		AudioBus.play_ui()
-	hole_finished.emit(strokes, hole.par, result)
 	await get_tree().create_timer(1.1).timeout
 	if not GameState.run_active or GameState.lives <= 0:
 		request_game_over.emit()
