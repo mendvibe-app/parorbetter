@@ -8,30 +8,71 @@ const PX_PER_YARD := 2.25
 ## Share of total shot distance spent in the air (rest is roll/bounce).
 const AIR_DISTANCE_FRACTION := 0.78
 
+## Full bag, longest → shortest. Adjacent maxes overlap ~15–20 yd on purpose.
+## ponytail: yardages are a first-pass table — retune after full-sequence playtest.
+const BAG: Array[Dictionary] = [
+	{"name": "Driver", "max_yards": 260.0},
+	{"name": "3-Wood", "max_yards": 230.0},
+	{"name": "6-Iron", "max_yards": 175.0},
+	{"name": "7-Iron", "max_yards": 160.0},
+	{"name": "8-Iron", "max_yards": 145.0},
+	{"name": "9-Iron", "max_yards": 130.0},
+	{"name": "Pitching Wedge", "max_yards": 110.0},
+	{"name": "Gap/Sand Wedge", "max_yards": 85.0},
+]
 
-## Simple four-club bag: Driver, Iron, Wedge, Putter.
+
+static func is_wedge_family(club_name: String) -> bool:
+	return club_name.contains("Wedge")
+
+
+static func putter_for(remaining_yd: float) -> Dictionary:
+	# Scale putter to this putt — avoid a huge 12–50 yd club on tap-ins
+	return {"name": "Putter", "max_yards": clampf(remaining_yd * 1.6, 4.0, 35.0)}
+
+
+## Clubs the player may choose for this lie (excludes putter — green skips select).
+static func clubs_for_lie(lie: String) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if lie == "Green":
+		return out
+	for club in BAG:
+		if lie == "Sand" and not is_wedge_family(String(club["name"])):
+			continue
+		out.append(club)
+	return out
+
+
+static func shot_need_yards(remaining_yd: float, lie: String) -> float:
+	if lie == "Rough":
+		return remaining_yd * 1.2
+	return remaining_yd * 1.08
+
+
+## Suggested club: shortest in the available bag that covers need (overlap = real choice).
 static func pick_club(remaining_yd: float, lie: String) -> Dictionary:
 	if lie == "Green":
-		# Scale putter to this putt — avoid a huge 12–50 yd club on tap-ins
-		var putt_max := clampf(remaining_yd * 1.6, 4.0, 35.0)
-		return {"name": "Putter", "max_yards": putt_max}
+		return putter_for(remaining_yd)
 
-	var wedge := {"name": "Wedge", "max_yards": 100.0}
-	var iron := {"name": "Iron", "max_yards": 180.0}
-	var driver := {"name": "Driver", "max_yards": 260.0}
+	var need := shot_need_yards(remaining_yd, lie)
+	var available := clubs_for_lie(lie)
+	if available.is_empty():
+		return BAG[0]
 
-	if lie == "Sand":
-		return wedge
+	# BAG is longest→shortest; walk short→long for first cover.
+	var i := available.size() - 1
+	while i >= 0:
+		if need <= float(available[i]["max_yards"]):
+			return available[i]
+		i -= 1
+	return available[0]
 
-	var need := remaining_yd * 1.08
-	if lie == "Rough":
-		need = remaining_yd * 1.2
 
-	if need <= float(wedge["max_yards"]):
-		return wedge
-	if need <= float(iron["max_yards"]):
-		return iron
-	return driver
+## Percent of club for this distance (same math as recommended_power).
+static func club_percent_today(
+	remaining_yd: float, club_max_yards: float, lie: String, wind: Vector2 = Vector2.ZERO
+) -> float:
+	return recommended_power(remaining_yd, club_max_yards, lie, wind)
 
 
 static func lie_multiplier(lie: String) -> float:

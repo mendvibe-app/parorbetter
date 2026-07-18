@@ -10,21 +10,27 @@ signal updated(power: float, stability: float)
 const TRACK_HISTORY := 0.4
 const DWELL_REQUIRED := 0.28
 const IN_ZONE_THRESH := 0.22
+const POWER_IN_ZONE := 0.07
+const DEFAULT_START_POWER := 0.75
 
 var active: bool = false
 var dragging: bool = false
-var power: float = 0.45
+var power: float = DEFAULT_START_POWER
 var stability: float = 0.5
 var timing_scale: float = 1.0
 
 var _start_pos: Vector2 = Vector2.ZERO
+var _drag_origin_power: float = DEFAULT_START_POWER
 var _player_x: float = 0.5
 var _target_x: float = 0.5
 var _dwell: float = 0.0
 var _track_samples: Array[float] = []
+var _power_samples: Array[float] = []
 var _sample_timer: float = 0.0
 var _sway_phase: float = 0.0
 var _noise_phase: float = 0.0
+## Remember last committed power so the next shot doesn't start on the answer.
+static var last_power: float = DEFAULT_START_POWER
 
 var club_name: String = "Iron"
 var club_max_yards: float = 180.0
@@ -49,7 +55,8 @@ func setup_yardage(p_club_name: String, p_club_max: float, p_remaining: float, p
 	remaining_yards = p_remaining
 	lie = p_lie
 	recommend_power = clampf(p_recommend, 0.05, 1.0)
-	power = recommend_power
+	# Neutral start — player must work toward the white tick, not inherit the answer.
+	power = clampf(last_power, 0.05, 1.0)
 	_refresh_visuals()
 
 
@@ -60,15 +67,14 @@ func set_timing_scale(p_scale: float) -> void:
 func reset() -> void:
 	active = true
 	dragging = false
-	if recommend_power > 0.0:
-		power = recommend_power
-	else:
-		power = 0.45
+	power = clampf(last_power, 0.05, 1.0)
+	_drag_origin_power = power
 	stability = 0.35
 	_player_x = 0.5
 	_target_x = 0.5
 	_dwell = 0.0
 	_track_samples.clear()
+	_power_samples.clear()
 	_sample_timer = 0.0
 	_sway_phase = randf() * TAU
 	_noise_phase = randf() * TAU
@@ -100,11 +106,16 @@ func _process(delta: float) -> void:
 		if _sample_timer >= 0.05:
 			_sample_timer = 0.0
 			_track_samples.append(absf(_player_x - _target_x))
-			while _track_samples.size() > int(TRACK_HISTORY / 0.05):
+			_power_samples.append(absf(power - recommend_power))
+			var cap := int(TRACK_HISTORY / 0.05)
+			while _track_samples.size() > cap:
 				_track_samples.pop_front()
+			while _power_samples.size() > cap:
+				_power_samples.pop_front()
 		_recompute_stability()
-		var err := absf(_player_x - _target_x)
-		if err <= IN_ZONE_THRESH:
+		var lean_ok := absf(_player_x - _target_x) <= IN_ZONE_THRESH
+		var power_ok := absf(power - recommend_power) <= POWER_IN_ZONE
+		if lean_ok and power_ok:
 			_dwell += delta
 		else:
 			_dwell = maxf(_dwell - delta * 1.5, 0.0)
@@ -187,8 +198,12 @@ func _input(event: InputEvent) -> void:
 
 func _force_sample_error() -> void:
 	_track_samples.append(absf(_player_x - _target_x))
-	while _track_samples.size() > int(TRACK_HISTORY / 0.05):
+	_power_samples.append(absf(power - recommend_power))
+	var cap := int(TRACK_HISTORY / 0.05)
+	while _track_samples.size() > cap:
 		_track_samples.pop_front()
+	while _power_samples.size() > cap:
+		_power_samples.pop_front()
 	_recompute_stability()
 	updated.emit(power, stability)
 	queue_redraw()
@@ -209,13 +224,14 @@ func _to_local(screen_pos: Vector2) -> Vector2:
 func _begin(pos: Vector2) -> void:
 	dragging = true
 	_start_pos = pos
+	_drag_origin_power = power
 	_dwell = 0.0
 	_update(pos)
 
 
 func _update(pos: Vector2) -> void:
 	var delta := pos - _start_pos
-	power = clampf((-delta.y) / 220.0 + recommend_power, 0.05, 1.0)
+	power = clampf((-delta.y) / 220.0 + _drag_origin_power, 0.05, 1.0)
 	_player_x = clampf(pos.x / maxf(size.x, 1.0), 0.0, 1.0)
 	_recompute_stability()
 	updated.emit(power, stability)
@@ -223,13 +239,23 @@ func _update(pos: Vector2) -> void:
 
 
 func _recompute_stability() -> void:
-	var avg_err := absf(_player_x - _target_x)
+	var lean_err := absf(_player_x - _target_x)
 	if not _track_samples.is_empty():
 		var sum := 0.0
 		for e in _track_samples:
 			sum += e
-		avg_err = sum / float(_track_samples.size())
-	stability = clampf(1.0 - avg_err / 0.42, 0.0, 1.0)
+		lean_err = sum / float(_track_samples.size())
+	var lean_stab := clampf(1.0 - lean_err / 0.42, 0.0, 1.0)
+
+	var power_err := absf(power - recommend_power)
+	if not _power_samples.is_empty():
+		var psum := 0.0
+		for e in _power_samples:
+			psum += e
+		power_err = psum / float(_power_samples.size())
+	var power_stab := clampf(1.0 - power_err / 0.28, 0.0, 1.0)
+
+	stability = clampf(lean_stab * 0.55 + power_stab * 0.45, 0.0, 1.0)
 
 
 func _try_commit() -> void:
@@ -240,6 +266,7 @@ func _try_commit() -> void:
 	elif _dwell < DWELL_REQUIRED and stability > 0.55:
 		stability *= 0.75
 	dragging = false
+	last_power = power
 	_refresh_visuals()
 	committed.emit(power, stability)
 
@@ -254,11 +281,11 @@ func _refresh_visuals() -> void:
 		elif delta_yd < -8.0:
 			fit = "SHORT %d" % int(delta_yd)
 		var lock := "LOCK %.0f%%" % clampf(_dwell / DWELL_REQUIRED * 100.0, 0.0, 100.0)
-		label.text = "%s  (max %d yd)\nTarget %d yd → %d%%\nNOW %d%% ≈ %d yd  %s\nTrack gold lean  Stance %d%%\n%s" % [
+		label.text = "%s  (max %d yd)\nHold white tick → %d%% for %d yd\nNOW %d%% ≈ %d yd  %s\nLean + power  Stability %d%%\n%s" % [
 			club_name,
 			int(club_max_yards),
-			int(remaining_yards),
 			int(recommend_power * 100.0),
+			int(remaining_yards),
 			int(power * 100.0),
 			int(est),
 			fit,

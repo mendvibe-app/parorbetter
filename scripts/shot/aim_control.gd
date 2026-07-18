@@ -43,6 +43,43 @@ static func make_circle_points(center: Vector2, radius_px: float, segments: int 
 	return pts
 
 
+## Directional aim wedge: wide near the ball, taper + fade outward. shape_bend: −draw / +fade.
+static func make_aim_cone(
+	from: Vector2,
+	to: Vector2,
+	shape_bend: float = 0.0,
+	near_half_w: float = 36.0,
+	far_half_w: float = 6.0
+) -> Dictionary:
+	var along := to - from
+	var length := along.length()
+	if length < 8.0:
+		along = Vector2(0, -1)
+		length = 8.0
+	var dir := along.normalized()
+	var right := Vector2(-dir.y, dir.x)
+	# Soft curve for draw/fade — corridor, not a laser to an XY.
+	var mid := from + dir * (length * 0.55) + right * (shape_bend * length * 0.12)
+	var tip := from + dir * length + right * (shape_bend * length * 0.22)
+	var pts := PackedVector2Array([
+		from - right * near_half_w,
+		from + right * near_half_w,
+		mid + right * lerpf(near_half_w, far_half_w, 0.55),
+		tip + right * far_half_w,
+		tip - right * far_half_w,
+		mid - right * lerpf(near_half_w, far_half_w, 0.55),
+	])
+	var cols := PackedColorArray([
+		Color(1, 1, 1, 0.34),
+		Color(1, 1, 1, 0.34),
+		Color(1, 1, 1, 0.16),
+		Color(1, 1, 1, 0.02),
+		Color(1, 1, 1, 0.02),
+		Color(1, 1, 1, 0.16),
+	])
+	return {"points": pts, "colors": cols}
+
+
 static func wind_label(wind: Vector2) -> String:
 	if wind.length() < 4.0:
 		return "Wind calm"

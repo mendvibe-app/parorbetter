@@ -62,15 +62,18 @@ var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (heat + topo)
 
 var _aiming: bool = false
+var _selecting_club: bool = false
 var _aim_dragging: bool = false
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
-var _aim_line: Line2D
+var _chosen_club: Dictionary = {}
+var _aim_cone: Polygon2D
 var _pin_ref_line: Line2D
 var _aim_circle: Line2D
 var _aim_arrow: Polygon2D
 var _wind_sprite: Sprite2D
 var _last_report: ShotReport
+var _club_select: ClubSelect
 
 @onready var course_root: Node2D = $Course
 @onready var ball: GolfBall = $Ball
@@ -83,6 +86,7 @@ var _last_report: ShotReport
 @onready var shot_result_panel: Control = $UILayer/ShotResultPanel
 @onready var confirm_aim_btn: BaseButton = $UILayer/ConfirmAimButton
 @onready var wind_banner: Label = $UILayer/WindBanner
+@onready var ui_layer: CanvasLayer = $UILayer
 
 
 func _ready() -> void:
@@ -98,9 +102,19 @@ func _ready() -> void:
 	flash_rect.modulate.a = 0.0
 	GameState.run_ended.connect(_on_run_ended)
 	_setup_aim_visuals()
+	_setup_club_select()
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
+
+
+func _setup_club_select() -> void:
+	_club_select = ClubSelect.new()
+	_club_select.name = "ClubSelect"
+	ui_layer.add_child(_club_select)
+	# Below shot panel / result, above feedback
+	ui_layer.move_child(_club_select, confirm_aim_btn.get_index())
+	_club_select.club_chosen.connect(_on_club_chosen)
 
 
 func _setup_aim_visuals() -> void:
@@ -111,12 +125,11 @@ func _setup_aim_visuals() -> void:
 	_pin_ref_line.visible = false
 	add_child(_pin_ref_line)
 
-	_aim_line = Line2D.new()
-	_aim_line.width = 3.0
-	_aim_line.default_color = Color(1.0, 1.0, 1.0, 0.7)
-	_aim_line.z_index = 5
-	_aim_line.visible = false
-	add_child(_aim_line)
+	# Directional wedge (not a laser to an exact landing XY).
+	_aim_cone = Polygon2D.new()
+	_aim_cone.z_index = 5
+	_aim_cone.visible = false
+	add_child(_aim_cone)
 
 	_aim_circle = Line2D.new()
 	_aim_circle.width = 3.0
@@ -561,10 +574,7 @@ func _set_green_book_visible(on: bool) -> void:
 func _sync_screen_line_widths() -> void:
 	## Keep Line2D stroke thickness roughly constant on screen as camera zooms.
 	var z := maxf(camera.zoom.x, 0.35)
-	var aim_w := 3.0 / z
 	var pin_w := 2.0 / z
-	if _aim_line:
-		_aim_line.width = aim_w
 	if _pin_ref_line:
 		_pin_ref_line.width = pin_w
 	if _aim_circle:
@@ -647,16 +657,53 @@ func _start_shot_ui() -> void:
 	shot_routine.set_active(false)
 	if shot_result_panel and shot_result_panel.has_method("hide_now"):
 		shot_result_panel.hide_now()
+	var lie := ball.get_lie()
+	if lie == "Green":
+		var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
+		_chosen_club = BallPhysics.putter_for(pin_yd)
+		_begin_aim_phase()
+	else:
+		_begin_club_select()
+
+
+func _begin_club_select() -> void:
+	_aiming = false
+	_aim_dragging = false
+	_selecting_club = true
+	_set_aim_visuals_visible(false)
+	_refresh_wind_indicator(false)
+	_set_green_book_visible(false)
+	if confirm_aim_btn:
+		confirm_aim_btn.visible = false
+	var lie := ball.get_lie()
+	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
+	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
+	feedback.text = "CLUB  ·  %d yd to pin  ·  pick from the bag" % int(pin_yd)
+	feedback.modulate = Color(0.95, 0.92, 0.7)
+	if wind_banner:
+		wind_banner.visible = true
+		wind_banner.text = "%s\n%s" % [AimControl.wind_label(wind), AimControl.wind_aim_hint(wind)]
+	_club_select.present(lie, pin_yd, wind)
+
+
+func _on_club_chosen(club: Dictionary) -> void:
+	_selecting_club = false
+	_chosen_club = club
+	AudioBus.play_ui()
 	_begin_aim_phase()
 
 
 func _begin_aim_phase() -> void:
 	_aiming = true
 	_aim_dragging = false
+	_selecting_club = false
+	if _club_select:
+		_club_select.dismiss()
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
-	var club := BallPhysics.pick_club(pin_yd, lie)
-	var club_max := float(club["max_yards"])
+	if _chosen_club.is_empty():
+		_chosen_club = BallPhysics.pick_club(pin_yd, lie)
+	var club_max := float(_chosen_club["max_yards"])
 	_aim_radius_yd = GameState.get_aim_radius_yards(lie == "Green")
 	_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
 	_aim_target = AimControl.clamp_aim(_aim_target)
@@ -680,15 +727,16 @@ func _begin_aim_phase() -> void:
 				wind_banner.text = "%s\n%s\nGreen book open — read the break" % [wind_txt, wind_advice]
 			else:
 				wind_banner.text = "%s\n%s" % [wind_txt, wind_advice]
+	var club_bit := String(_chosen_club.get("name", ""))
 	if is_putt:
 		feedback.text = "READ THE GREEN  ○%d yd — drag aim, then Confirm" % int(_aim_radius_yd)
 	elif show_book:
-		feedback.text = "AIM + GREEN READ  ○%d yd (%s) — drag, then Confirm" % [
-			int(_aim_radius_yd), GameState.form_label()
+		feedback.text = "%s  ·  AIM + GREEN READ  ○%d yd — drag line/shape, Confirm" % [
+			club_bit, int(_aim_radius_yd)
 		]
 	else:
-		feedback.text = "AIM  ○%d yd (%s) — drag, then Confirm" % [
-			int(_aim_radius_yd), GameState.form_label()
+		feedback.text = "%s  ·  AIM line/shape  ○%d yd (%s) — drag, then Confirm" % [
+			club_bit, int(_aim_radius_yd), GameState.form_label()
 		]
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 	# Snap camera so putt/approach book is immediately readable (no smoothing lag)
@@ -701,6 +749,9 @@ func _begin_aim_phase() -> void:
 func _end_aim_phase() -> void:
 	_aiming = false
 	_aim_dragging = false
+	_selecting_club = false
+	if _club_select:
+		_club_select.dismiss()
 	_set_aim_visuals_visible(false)
 	_refresh_wind_indicator(false)
 	_set_green_book_visible(false)
@@ -741,23 +792,28 @@ func _start_power_swing() -> void:
 			_:
 				shape_amt = 0.0
 	var shape_label := AimControl.aim_offset_label(ball.global_position, _aim_target, _cup_pos)
-	shot_routine.configure(lie, aim_yd, pin_yd, wind, shape_label, timing, shape_amt, _aim_radius_yd)
+	var club_name := String(_chosen_club.get("name", ""))
+	var club_max := float(_chosen_club.get("max_yards", -1.0))
+	shot_routine.configure(
+		lie, aim_yd, pin_yd, wind, shape_label, timing, shape_amt, _aim_radius_yd, club_name, club_max
+	)
 	shot_routine.begin_shot()
 	_refresh_aim_visuals()  # keep circle visible during power/swing
 	_set_aim_visuals_visible(true)
 	_set_green_book_visible(false)
-	feedback.text = "Aimed %s · circle %d yd" % [shape_label, int(_aim_radius_yd)]
+	feedback.text = "%s · aimed %s · circle %d yd" % [club_name, shape_label, int(_aim_radius_yd)]
 
 
 func _set_aim_visuals_visible(on: bool) -> void:
-	if _aim_line:
-		_aim_line.visible = on
+	if _aim_cone:
+		_aim_cone.visible = on
 	if _pin_ref_line:
 		_pin_ref_line.visible = on
 	if _aim_circle:
 		_aim_circle.visible = on
+	# Arrow implied a precise tip — keep it off; cone + circle carry aim.
 	if _aim_arrow:
-		_aim_arrow.visible = on
+		_aim_arrow.visible = false
 
 
 func _refresh_wind_indicator(on: bool) -> void:
@@ -785,25 +841,30 @@ func _refresh_wind_indicator(on: bool) -> void:
 	_wind_sprite.visible = true
 
 
+func _aim_shape_bend() -> float:
+	if ball.get_lie() == "Green" or hole == null:
+		return 0.0
+	match hole.suggested_shape:
+		HoleData.SuggestedShape.DRAW:
+			return -0.35
+		HoleData.SuggestedShape.FADE:
+			return 0.35
+		_:
+			return 0.0
+
+
 func _refresh_aim_visuals() -> void:
 	var from := ball.global_position
 	var to := _aim_target
-	_aim_line.points = PackedVector2Array([from, to])
+	var inv_z := 1.0 / maxf(camera.zoom.x, 0.35)
+	var cone: Dictionary = AimControl.make_aim_cone(
+		from, to, _aim_shape_bend(), 36.0 * inv_z, 6.0 * inv_z
+	)
+	_aim_cone.polygon = cone["points"]
+	_aim_cone.vertex_colors = cone["colors"]
 	_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
 	var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
 	_aim_circle.points = AimControl.make_circle_points(to, radius_px)
-	var dir := (to - from).normalized()
-	if dir == Vector2.ZERO:
-		dir = Vector2(0, -1)
-	# Keep aim arrow roughly constant screen size under putt zoom
-	var inv_z := 1.0 / maxf(camera.zoom.x, 0.35)
-	var tip := to - dir * (6.0 * inv_z)
-	var perp := Vector2(-dir.y, dir.x)
-	_aim_arrow.polygon = PackedVector2Array([
-		to,
-		tip + perp * (10.0 * inv_z) - dir * (14.0 * inv_z),
-		tip - perp * (10.0 * inv_z) - dir * (14.0 * inv_z),
-	])
 	_set_aim_visuals_visible(true)
 	if _aiming:
 		var is_putt := ball.get_lie() == "Green"
