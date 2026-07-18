@@ -43,6 +43,68 @@ static func make_circle_points(center: Vector2, radius_px: float, segments: int 
 	return pts
 
 
+## Point at `yards` along bearing from ball (bearing is world direction).
+static func point_along_bearing(from: Vector2, bearing: Vector2, yards: float) -> Vector2:
+	var dir := bearing.normalized()
+	if dir == Vector2.ZERO:
+		dir = Vector2(0, -1)
+	return clamp_aim(from + dir * BallPhysics.yards_to_pixels(maxf(yards, 2.0)))
+
+
+## Keep distance, change only direction — aim is a corridor, not a yardage pick.
+static func retarget_bearing(from: Vector2, world: Vector2, lock_yards: float) -> Vector2:
+	var bearing := world - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	return point_along_bearing(from, bearing, lock_yards)
+
+
+## Directional aim wedge: wide near ball, tapers into the dispersion circle.
+## shape_bend −draw / +fade. power_preview sharpens (narrower, denser) once % is live.
+static func make_aim_cone(
+	from: Vector2,
+	to: Vector2,
+	shape_bend: float = 0.0,
+	near_half_w: float = 42.0,
+	far_half_w: float = 14.0,
+	power_preview: bool = false
+) -> Dictionary:
+	var along := to - from
+	var length := along.length()
+	if length < 8.0:
+		along = Vector2(0, -1)
+		length = 8.0
+	var dir := along.normalized()
+	var right := Vector2(-dir.y, dir.x)
+	# Stop just short of the circle so cone + circle read as one composition.
+	var tip_len := length * (0.92 if power_preview else 0.88)
+	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.10)
+	var tip := from + dir * tip_len + right * (shape_bend * tip_len * 0.20)
+	var near_w := near_half_w * (0.55 if power_preview else 1.0)
+	var far_w := far_half_w * (0.7 if power_preview else 1.0)
+	var pts := PackedVector2Array([
+		from - right * near_w,
+		from + right * near_w,
+		mid + right * lerpf(near_w, far_w, 0.5),
+		tip + right * far_w,
+		tip - right * far_w,
+		mid - right * lerpf(near_w, far_w, 0.5),
+	])
+	# Warm near ball → gold into the circle (matches dispersion marker).
+	var a0 := 0.22 if power_preview else 0.30
+	var a1 := 0.38 if power_preview else 0.18
+	var a2 := 0.55 if power_preview else 0.04
+	var cols := PackedColorArray([
+		Color(0.95, 0.95, 0.9, a0),
+		Color(0.95, 0.95, 0.9, a0),
+		Color(1.0, 0.92, 0.45, a1),
+		Color(1.0, 0.9, 0.35, a2),
+		Color(1.0, 0.9, 0.35, a2),
+		Color(1.0, 0.92, 0.45, a1),
+	])
+	return {"points": pts, "colors": cols}
+
+
 static func wind_label(wind: Vector2) -> String:
 	if wind.length() < 4.0:
 		return "Wind calm"

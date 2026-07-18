@@ -46,7 +46,9 @@ func configure(
 	_shape_label: String,
 	p_timing: float,
 	p_shape: float = 0.0,
-	p_aim_radius_yd: float = 22.0
+	p_aim_radius_yd: float = 22.0,
+	p_club_name: String = "",
+	p_club_max_yards: float = -1.0
 ) -> void:
 	timing_scale = p_timing
 	suggested_shape = p_shape
@@ -58,9 +60,13 @@ func configure(
 		timing_scale = float(GameState.debug_timing_scale)
 	timing_scale *= BallPhysics.lie_timing_scale(lie)
 
-	var club := BallPhysics.pick_club(pin_distance_yd, lie)
-	club_name = String(club["name"])
-	club_max_yards = float(club["max_yards"])
+	if p_club_max_yards > 0.0 and not p_club_name.is_empty():
+		club_name = p_club_name
+		club_max_yards = p_club_max_yards
+	else:
+		var club := BallPhysics.pick_club(pin_distance_yd, lie)
+		club_name = String(club["name"])
+		club_max_yards = float(club["max_yards"])
 	var recommend := BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	power_stance.setup_yardage(club_name, club_max_yards, aim_distance_yd, lie, recommend)
 	power_stance.set_timing_scale(timing_scale)
@@ -73,14 +79,14 @@ func configure(
 
 func begin_shot() -> void:
 	phase = Phase.POWER
-	_power = power_stance.recommend_power
+	_power = power_stance.power
 	_stability = 0.35
 	power_stance.reset()
 	power_stance.set_enabled(true)
 	swing_contact.set_enabled(false)
 	var is_putt := current_lie == "Green"
 	swing_contact.reset(timing_scale, is_putt)
-	hint_label.text = "1) Drag the TEMPO ARC for power. Track the GOLD lean. Lock, then release."
+	hint_label.text = "1) Hold the white tick (distance). Track the GOLD lean. Lock, then release."
 	phase_changed.emit("power")
 	set_active(true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -132,6 +138,14 @@ func _on_power_committed(power: float, stability: float) -> void:
 func _on_swing_committed(path_error: float, contact: ShotResult.ContactQuality) -> void:
 	_path = path_error
 	_contact = contact
+
+	# Forced swings (mash/baby) can't claim a pure strike — take the right club instead.
+	if current_lie != "Green":
+		var force := BallPhysics.force_factor(_power)
+		if force > 0.0:
+			_stability *= lerpf(1.0, 0.55, force)
+			_path += signf(_path if absf(_path) > 0.05 else 1.0) * force * 0.22
+			_path = clampf(_path, -1.0, 1.0)
 
 	# Stance aggressively gates "perfect" — rare and earned
 	if _contact == ShotResult.ContactQuality.PERFECT:
