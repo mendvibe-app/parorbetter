@@ -279,11 +279,18 @@ func _begin_roll() -> void:
 	if speed <= 1.0:
 		speed = maxf(velocity.length() * 0.35, 20.0)
 	velocity = _launch_dir * speed
-	# Flight ignores water/OOB under the arc; re-check now that we've landed.
+	# Flight ignores ground under the arc; re-check now that we've landed.
+	# Sand last so a bunker sitting on the fairway wins the lie.
+	var sand_area: Area2D = null
 	for other in area.get_overlapping_areas():
+		if other.is_in_group("sand"):
+			sand_area = other
+			continue
 		_on_area_entered(other)
 		if state != State.ROLL:
 			return
+	if sand_area:
+		_on_area_entered(sand_area)
 
 
 func _slope_at_ball() -> Vector2:
@@ -363,7 +370,8 @@ func _finish_settle() -> void:
 
 
 func _on_area_entered(other: Area2D) -> void:
-	if state == State.SETTLED or state == State.IDLE:
+	# Loft is visual-only — ground groups (water/sand/fairway/…) only count on ROLL.
+	if state != State.ROLL:
 		return
 	if other.is_in_group("cup"):
 		# Area overlap includes this ball's ~10px sensor; require center inside the cup.
@@ -378,9 +386,6 @@ func _on_area_entered(other: Area2D) -> void:
 		holed_out.emit()
 		return
 	if other.is_in_group("water") or other.is_in_group("oob"):
-		# Carry over water/OOB is legal; only wet/OB once the ball is on the ground.
-		if state == State.FLIGHT:
-			return
 		var kind := "water" if other.is_in_group("water") else "oob"
 		_lie = "Water" if kind == "water" else "OOB"
 		velocity = Vector2.ZERO
