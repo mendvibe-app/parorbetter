@@ -33,7 +33,8 @@ var aim_radius_yd: float = 22.0
 
 
 func _ready() -> void:
-	# power_stance.committed is not a resolve event under concurrent input
+	# committed = finger-1 released (early-release feedback only; impact still resolves)
+	power_stance.committed.connect(_on_power_released)
 	power_stance.updated.connect(_on_power_updated)
 	swing_contact.committed.connect(_on_swing_committed)
 	set_active(false)
@@ -123,6 +124,15 @@ func force_result(perfect: bool) -> void:
 func _on_power_updated(power: float, stability: float) -> void:
 	_power = power
 	_stability = stability
+
+
+func _on_power_released(_power_amt: float, _stability_amt: float) -> void:
+	## Soft early-release: stability already crushed in PowerStance; swing stays live.
+	if phase != Phase.ACTIVE:
+		return
+	if power_stance.balance_broken:
+		_stability = power_stance.stability
+		hint_label.text = "Balance broken — finish the swing (stability crushed)."
 
 
 func _on_swing_committed(path_error: float, contact: ShotResult.ContactQuality) -> void:

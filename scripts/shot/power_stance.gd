@@ -12,12 +12,18 @@ const DWELL_REQUIRED := 0.28
 const IN_ZONE_THRESH := 0.22
 const POWER_IN_ZONE := 0.07
 const DEFAULT_START_POWER := 0.75
+## Soft early-release: crush + sticky cap so re-grab can't fully recover before impact.
+## ponytail: playtest tunables — hard mishit on release if ceil still feels too soft
+const EARLY_RELEASE_STAB_MUL := 0.45
+const EARLY_RELEASE_STAB_CEIL := 0.32
 
 var active: bool = false
 var dragging: bool = false
 var power: float = DEFAULT_START_POWER
 var stability: float = 0.5
 var timing_scale: float = 1.0
+## True after finger-1 lifts before impact; sticky until reset().
+var balance_broken: bool = false
 
 var _start_pos: Vector2 = Vector2.ZERO
 var _drag_origin_power: float = DEFAULT_START_POWER
@@ -67,6 +73,7 @@ func set_timing_scale(p_scale: float) -> void:
 func reset() -> void:
 	active = true
 	dragging = false
+	balance_broken = false
 	power = clampf(last_power, 0.05, 1.0)
 	_drag_origin_power = power
 	stability = 0.35
@@ -254,6 +261,8 @@ func _recompute_stability() -> void:
 	var power_stab := clampf(1.0 - power_err / 0.28, 0.0, 1.0)
 
 	stability = clampf(lean_stab * 0.55 + power_stab * 0.45, 0.0, 1.0)
+	if balance_broken:
+		stability = minf(stability, EARLY_RELEASE_STAB_CEIL)
 
 
 func _try_commit() -> void:
@@ -265,9 +274,15 @@ func _try_commit() -> void:
 	elif _dwell < DWELL_REQUIRED and stability > 0.55:
 		stability *= 0.75
 	dragging = false
+	# Soft early-release: significant stability damage, swing can still finish.
+	if not balance_broken:
+		balance_broken = true
+		stability = minf(stability * EARLY_RELEASE_STAB_MUL, EARLY_RELEASE_STAB_CEIL)
+	else:
+		stability = minf(stability, EARLY_RELEASE_STAB_CEIL)
 	last_power = power
 	_refresh_visuals()
-	# Still emitted for listeners; ShotRoutine no longer treats this as phase resolve.
+	# Emitted for UI/listeners; ShotRoutine does not resolve the shot here.
 	committed.emit(power, stability)
 
 
