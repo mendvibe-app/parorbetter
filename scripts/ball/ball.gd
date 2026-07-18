@@ -35,6 +35,8 @@ var _landing_speed: float = 0.0
 var _air_fraction: float = 0.78
 var _is_putt: bool = false
 var _spin_vis: float = 0.0
+## Sample surface under the ball while rolling (fairway/rough/sand/green).
+var ground_lie_at: Callable = Callable()
 
 @onready var visual: Sprite2D = $Visual
 @onready var shadow: Sprite2D = $Shadow
@@ -279,6 +281,21 @@ func _begin_roll() -> void:
 	if speed <= 1.0:
 		speed = maxf(velocity.length() * 0.35, 20.0)
 	velocity = _launch_dir * speed
+	# Flight ignores ground under the arc; re-check hazards, then sample lie.
+	for other in area.get_overlapping_areas():
+		_on_area_entered(other)
+		if state != State.ROLL:
+			return
+	_sync_ground_lie()
+
+
+func _sync_ground_lie() -> void:
+	## Real golf: friction follows the surface under the ball right now.
+	if state != State.ROLL or not ground_lie_at.is_valid():
+		return
+	var lie: String = ground_lie_at.call(global_position)
+	if lie != _lie:
+		set_lie(lie)
 
 
 func _slope_at_ball() -> Vector2:
@@ -288,6 +305,7 @@ func _slope_at_ball() -> Vector2:
 
 
 func _process_roll(delta: float) -> void:
+	_sync_ground_lie()
 	_height = move_toward(_height, 0.0, delta * 80.0)
 	var friction := 2.4
 	match _lie:
@@ -358,7 +376,8 @@ func _finish_settle() -> void:
 
 
 func _on_area_entered(other: Area2D) -> void:
-	if state == State.SETTLED or state == State.IDLE:
+	# Loft is visual-only — ground groups (water/sand/fairway/…) only count on ROLL.
+	if state != State.ROLL:
 		return
 	if other.is_in_group("cup"):
 		# Area overlap includes this ball's ~10px sensor; require center inside the cup.
@@ -372,19 +391,13 @@ func _on_area_entered(other: Area2D) -> void:
 		_clear_ghosts()
 		holed_out.emit()
 		return
-	if other.is_in_group("water"):
-		_lie = "Water"
+	if other.is_in_group("water") or other.is_in_group("oob"):
+		var kind := "water" if other.is_in_group("water") else "oob"
+		_lie = "Water" if kind == "water" else "OOB"
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
-		entered_hazard.emit("water")
-		return
-	if other.is_in_group("oob"):
-		_lie = "OOB"
-		velocity = Vector2.ZERO
-		state = State.SETTLED
-		set_physics_process(false)
-		entered_hazard.emit("oob")
+		entered_hazard.emit(kind)
 		return
 	if other.is_in_group("sand"):
 		_lie = "Sand"

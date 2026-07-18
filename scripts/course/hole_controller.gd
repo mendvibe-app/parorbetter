@@ -58,6 +58,7 @@ var _cup_pos: Vector2 = Vector2.ZERO
 var _green_center: Vector2 = Vector2.ZERO
 var _tee_pos: Vector2 = Vector2(540, TEE_Y)
 var _fairway_half: float = 70.0
+var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (heat + topo)
 
 var _aiming: bool = false
@@ -89,6 +90,7 @@ func _ready() -> void:
 	ball.entered_hazard.connect(_on_hazard)
 	ball.holed_out.connect(_on_holed_out)
 	ball.perfect_flash.connect(_on_perfect_flash)
+	ball.ground_lie_at = func(p: Vector2) -> String: return _classify_lie(p)
 	shot_routine.shot_ready.connect(_on_shot_ready)
 	if shot_routine.has_signal("pure_strike"):
 		shot_routine.pure_strike.connect(_on_pure_strike)
@@ -158,6 +160,7 @@ func _build_course() -> void:
 	if _green_book:
 		_green_book.queue_free()
 		_green_book = null
+	_bunkers.clear()
 
 	var fairway_w: float = hole.fairway_width
 	if GameState.debug_fairway_scale != null:
@@ -339,6 +342,7 @@ func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
 	var max_dim := maxf(float(tex.get_width()), float(tex.get_height()))
 	spr.scale = Vector2.ONE * (radius * 2.3 / max_dim)
 	course_root.add_child(spr)
+	_bunkers.append({"c": center, "r": radius})
 	_add_circle(course_root, center, radius, Color(0, 0, 0, 0), "sand", true)
 
 
@@ -1073,6 +1077,9 @@ func _on_shot_report_dismissed() -> void:
 
 
 func _classify_lie(pos: Vector2) -> String:
+	for b in _bunkers:
+		if pos.distance_to(b["c"]) <= float(b["r"]):
+			return "Sand"
 	var dx := (pos.x - _green_center.x) / maxf(hole.green_radius_x + 14.0, 1.0)
 	var dy := (pos.y - _green_center.y) / maxf(hole.green_radius_y + 14.0, 1.0)
 	if dx * dx + dy * dy <= 1.0:
