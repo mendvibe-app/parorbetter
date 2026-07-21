@@ -103,6 +103,14 @@ func _ready() -> void:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
 	shot_routine.power_stance.updated.connect(_on_power_preview_updated)
+	_apply_safe_area()
+	get_viewport().size_changed.connect(_apply_safe_area)
+
+
+func _apply_safe_area() -> void:
+	UiScale.apply_hole_safe_area(
+		hud, feedback, wind_banner, shot_routine, confirm_aim_btn, shot_result_panel
+	)
 
 
 func _setup_club_select() -> void:

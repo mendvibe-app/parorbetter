@@ -29,10 +29,10 @@ func _ready() -> void:
 
 	var panel := PanelContainer.new()
 	panel.set_anchors_preset(Control.PRESET_CENTER)
-	panel.offset_left = -300.0
-	panel.offset_top = -380.0
-	panel.offset_right = 300.0
-	panel.offset_bottom = 380.0
+	panel.offset_left = -320.0
+	panel.offset_top = -420.0
+	panel.offset_right = 320.0
+	panel.offset_bottom = 420.0
 	add_child(panel)
 
 	var margin := MarginContainer.new()
@@ -48,14 +48,14 @@ func _ready() -> void:
 
 	_title = Label.new()
 	_title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_title.add_theme_font_size_override("font_size", 30)
+	_title.add_theme_font_size_override("font_size", UiScale.TITLE)
 	_title.text = "CHOOSE CLUB"
 	root.add_child(_title)
 
 	_hint = Label.new()
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hint.add_theme_font_size_override("font_size", 18)
-	_hint.add_theme_color_override("font_color", Color(0.75, 0.85, 0.7, 1))
+	_hint.add_theme_font_size_override("font_size", UiScale.CAPTION)
+	_hint.add_theme_color_override("font_color", UiScale.TEXT_SECONDARY)
 	_hint.text = "Tap a club, then Confirm"
 	root.add_child(_hint)
 
@@ -66,12 +66,13 @@ func _ready() -> void:
 
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	_list.add_theme_constant_override("separation", 8)
+	_list.add_theme_constant_override("separation", 12)
 	scroll.add_child(_list)
 
 	_confirm = Button.new()
 	_confirm.text = "Confirm club"
-	_confirm.custom_minimum_size = Vector2(0, 64)
+	_confirm.custom_minimum_size = Vector2(0, UiScale.TOUCH_MIN)
+	_confirm.add_theme_font_size_override("font_size", UiScale.BODY)
 	_confirm.disabled = true
 	_confirm.pressed.connect(_commit)
 	root.add_child(_confirm)
@@ -107,8 +108,9 @@ func present(lie: String, pin_yd: float, wind: Vector2) -> void:
 			int(max_yd),
 			int(pct * 100.0),
 		]
-		btn.custom_minimum_size = Vector2(0, 56)
+		btn.custom_minimum_size = Vector2(0, UiScale.TOUCH_MIN)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.add_theme_font_size_override("font_size", UiScale.BODY)
 		if is_suggested:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1))
 		var chosen: Dictionary = club

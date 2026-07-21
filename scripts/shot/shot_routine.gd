@@ -27,6 +27,7 @@ var current_lie: String = "Tee"
 var aim_radius_yd: float = 22.0
 
 @onready var info_label: Label = $InfoLabel
+@onready var meter_display: MeterDisplay = $MeterDisplay
 @onready var power_stance: PowerStance = $Controls/PowerStance
 @onready var swing_contact: SwingContact = $Controls/SwingContact
 @onready var hint_label: Label = $HintLabel
@@ -37,6 +38,8 @@ func _ready() -> void:
 	power_stance.committed.connect(_on_power_released)
 	power_stance.updated.connect(_on_power_updated)
 	swing_contact.committed.connect(_on_swing_committed)
+	if meter_display:
+		meter_display.bind(power_stance, swing_contact)
 	set_active(false)
 
 
@@ -83,10 +86,12 @@ func begin_shot() -> void:
 	phase = Phase.ACTIVE
 	_power = power_stance.power
 	_stability = 0.35
-	power_stance.reset()
-	power_stance.set_enabled(true)
 	var is_putt := current_lie == "Green"
 	swing_contact.reset(timing_scale, is_putt)
+	# Rhythm sync: lean cycle locks to swing half-sweep rate.
+	power_stance.set_sway_from_arc_speed(swing_contact.arc_speed())
+	power_stance.reset()
+	power_stance.set_enabled(true)
 	swing_contact.set_enabled(true)
 	# ponytail: arc starts on first finger-2 tap (not shot-begin); auto-sweep on begin if takeaway feel needs it
 	if is_putt:
@@ -100,6 +105,9 @@ func begin_shot() -> void:
 		info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if hint_label:
 		hint_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if meter_display:
+		meter_display.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		meter_display.queue_redraw()
 	var bg := get_node_or_null("PanelBG") as Control
 	if bg:
 		bg.mouse_filter = Control.MOUSE_FILTER_IGNORE

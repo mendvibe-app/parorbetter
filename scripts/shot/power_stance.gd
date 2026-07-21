@@ -2,7 +2,7 @@ class_name PowerStance
 extends Control
 
 ## Finger 1 (power + stance) — mobile: hold/drag; desktop: LMB drag.
-## Drawn as a tempo arc (power) + lean rail (track gold). Mechanics unchanged.
+## Touch pad only; meter arcs render on MeterDisplay.
 
 signal committed(power: float, stability: float)
 signal updated(power: float, stability: float)
@@ -13,7 +13,8 @@ const IN_ZONE_THRESH := 0.22
 const POWER_IN_ZONE := 0.07
 const DEFAULT_START_POWER := 0.75
 ## Soft early-release: crush + sticky cap so re-grab can't fully recover before impact.
-## ponytail: playtest tunables — hard mishit on release if ceil still feels too soft
+## ponytail: playtest tunables (leave until device feel says otherwise) —
+## hard mishit on release if CEIL still feels too soft; raise MUL if crush is too gentle
 const EARLY_RELEASE_STAB_MUL := 0.45
 const EARLY_RELEASE_STAB_CEIL := 0.32
 
@@ -34,7 +35,10 @@ var _track_samples: Array[float] = []
 var _power_samples: Array[float] = []
 var _sample_timer: float = 0.0
 var _sway_phase: float = 0.0
-var _noise_phase: float = 0.0
+## Radians/sec — locked to swing arc; one lean cycle per HALF_SWEEPS_PER_LEAN half-sweeps.
+## ponytail: was TAU (1:1 half-sweep) — too fast to track; 4 ≈ old learnable pace. Try 2 if too slow.
+const HALF_SWEEPS_PER_LEAN := 4.0
+var _sway_speed: float = TAU * 1.25 / HALF_SWEEPS_PER_LEAN
 ## Remember last committed power so the next shot doesn't start on the answer.
 static var last_power: float = DEFAULT_START_POWER
 
@@ -70,6 +74,11 @@ func set_timing_scale(p_scale: float) -> void:
 	timing_scale = maxf(0.4, p_scale)
 
 
+func set_sway_from_arc_speed(arc_speed: float) -> void:
+	## Lean period = HALF_SWEEPS_PER_LEAN / arc_speed (still integer-ratio locked to the arc).
+	_sway_speed = TAU * maxf(arc_speed, 0.35) / HALF_SWEEPS_PER_LEAN
+
+
 func reset() -> void:
 	active = true
 	dragging = false
@@ -84,7 +93,6 @@ func reset() -> void:
 	_power_samples.clear()
 	_sample_timer = 0.0
 	_sway_phase = randf() * TAU
-	_noise_phase = randf() * TAU
 	set_process(true)
 	_refresh_visuals()
 
@@ -102,10 +110,9 @@ func set_enabled(on: bool) -> void:
 func _process(delta: float) -> void:
 	if not active:
 		return
-	var speed := lerpf(2.2, 1.1, clampf(timing_scale, 0.4, 1.2))
-	_sway_phase += delta * speed
-	_noise_phase += delta * (0.7 + speed * 0.3)
-	var drift := sin(_sway_phase) * 0.38 + sin(_noise_phase * 1.7) * 0.18
+	# Clean learnable sine — speed set from swing arc in ShotRoutine (rhythm sync).
+	_sway_phase += delta * _sway_speed
+	var drift := sin(_sway_phase) * 0.38
 	_target_x = clampf(0.5 + drift, 0.08, 0.92)
 
 	if dragging:
@@ -126,8 +133,9 @@ func _process(delta: float) -> void:
 			_dwell += delta
 		else:
 			_dwell = maxf(_dwell - delta * 1.5, 0.0)
-		updated.emit(power, stability)
 
+	# Always emit so MeterDisplay tracks live lean target even before finger-1 down.
+	updated.emit(power, stability)
 	_refresh_visuals()
 
 
@@ -236,7 +244,7 @@ func _begin(pos: Vector2) -> void:
 
 func _update(pos: Vector2) -> void:
 	var delta := pos - _start_pos
-	power = clampf((-delta.y) / 220.0 + _drag_origin_power, 0.05, 1.0)
+	power = clampf((-delta.y) / maxf(size.y * 0.85, 80.0) + _drag_origin_power, 0.05, 1.0)
 	_player_x = clampf(pos.x / maxf(size.x, 1.0), 0.0, 1.0)
 	_recompute_stability()
 	updated.emit(power, stability)
@@ -288,79 +296,15 @@ func _try_commit() -> void:
 
 func _refresh_visuals() -> void:
 	if label:
-		var est := BallPhysics.estimate_carry_yards(power, club_max_yards, lie)
-		var delta_yd := est - remaining_yards
-		var fit := "ON TARGET"
-		if delta_yd > 8.0:
-			fit = "LONG %+d" % int(delta_yd)
-		elif delta_yd < -8.0:
-			fit = "SHORT %d" % int(delta_yd)
-		var lock := "LOCK %.0f%%" % clampf(_dwell / DWELL_REQUIRED * 100.0, 0.0, 100.0)
 		var force := BallPhysics.force_factor(power)
-		var force_note := ""
-		if force > 0.35:
-			force_note = "\nFORCED SWING — line suffers"
-		label.text = "%s  (max %d yd)\nHold white tick → %d%% for %d yd\nNOW %d%% ≈ %d yd  %s\nLean + power  Stability %d%%\n%s%s" % [
-			club_name,
-			int(club_max_yards),
-			int(recommend_power * 100.0),
-			int(remaining_yards),
-			int(power * 100.0),
-			int(est),
-			fit,
-			int(stability * 100.0),
-			lock,
-			force_note,
-		]
+		var force_note := "  FORCED" if force > 0.35 else ""
+		label.text = "POWER  %d%%\nStab %d%%%s" % [int(power * 100.0), int(stability * 100.0), force_note]
 	queue_redraw()
 
 
 func _draw() -> void:
-	var t_rect: Rect2 = ArcMeters.tempo_rect(size)
-	var l_rect: Rect2 = ArcMeters.lean_rect(size)
-
-	# Tempo track
-	var track: PackedVector2Array = ArcMeters.tempo_polyline(t_rect, 0.0, 1.0, 36)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.12, 0.18, 0.14, 0.95), 16.0)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.22, 0.32, 0.24, 0.9), 10.0)
-
-	# Power fill along arc
-	var fill_c: Color = Color(0.35, 0.85, 0.45).lerp(Color(0.95, 0.85, 0.2), power)
-	if power > 0.92:
-		fill_c = Color(0.95, 0.4, 0.25)
-	var fill: PackedVector2Array = ArcMeters.tempo_polyline(t_rect, 0.0, power, 28)
-	ArcMeters.draw_thick_polyline(self, fill, fill_c, 12.0)
-
-	# Recommend tick
-	var rec_p: Vector2 = ArcMeters.tempo_point(t_rect, recommend_power)
-	var rec_a: float = ArcMeters.tempo_angle(recommend_power)
-	var radial: Vector2 = Vector2(cos(rec_a), -sin(rec_a))
-	draw_line(rec_p - radial * 10.0, rec_p + radial * 14.0, Color(1, 1, 1, 0.95), 3.0, true)
-
-	# Lock arc near tip of power
-	var lock_t: float = clampf(_dwell / DWELL_REQUIRED, 0.0, 1.0)
-	if lock_t > 0.02:
-		var lock_pts: PackedVector2Array = ArcMeters.tempo_polyline(t_rect, maxf(power - 0.08, 0.0), power, 10)
-		ArcMeters.draw_thick_polyline(self, lock_pts, Color(0.95, 0.9, 0.4, 0.35 + 0.55 * lock_t), 6.0)
-
-	# Power tip ball
-	var tip: Vector2 = ArcMeters.tempo_point(t_rect, power)
-	draw_circle(tip, 8.0, fill_c)
-	draw_arc(tip, 8.0, 0.0, TAU, 20, Color(0.05, 0.08, 0.05, 0.8), 2.0, true)
-
-	# Lean rail
-	var lean: PackedVector2Array = ArcMeters.lean_polyline(l_rect, 24)
-	ArcMeters.draw_thick_polyline(self, lean, Color(0.14, 0.2, 0.16, 0.95), 14.0)
-	ArcMeters.draw_thick_polyline(self, lean, Color(0.25, 0.35, 0.28, 0.85), 8.0)
-
-	# Gold target notch
-	var tgt: Vector2 = ArcMeters.lean_point(l_rect, _target_x)
-	var gold_a: float = 0.45 + 0.45 * clampf(_dwell / DWELL_REQUIRED, 0.0, 1.0)
-	draw_circle(tgt, 11.0, Color(1.0, 0.85, 0.2, gold_a))
-	draw_arc(tgt, 14.0, 0.0, TAU, 24, Color(1.0, 0.9, 0.35, gold_a), 2.5, true)
-
-	# Player lean needle
-	var ply: Vector2 = ArcMeters.lean_point(l_rect, _player_x)
-	var needle_c: Color = Color(0.3, 0.9, 0.5).lerp(Color(0.95, 0.3, 0.25), 1.0 - stability)
-	draw_circle(ply, 7.0, needle_c)
-	draw_line(ply + Vector2(0, -16), ply + Vector2(0, 16), needle_c, 3.0, true)
+	# Touch pad only — arcs live on MeterDisplay above thumbs.
+	var r := Rect2(Vector2.ZERO, size).grow(-6.0)
+	draw_rect(r, Color(0.1, 0.16, 0.12, 0.55), false, 2.0)
+	if dragging:
+		draw_circle(Vector2(size.x * _player_x, size.y * (1.0 - power)), 10.0, Color(0.4, 0.9, 0.5, 0.7))

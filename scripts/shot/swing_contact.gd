@@ -2,12 +2,10 @@ class_name SwingContact
 extends Control
 
 ## Finger 2: timing along a golf swing arc (backswing -> impact -> follow-through).
-## Impact / sweet spot at the bottom of the arc. Mechanics unchanged.
+## Touch pad only; arc renders on MeterDisplay. Impact at bottom of the arc.
 
 signal committed(path_error: float, contact: ShotResult.ContactQuality)
 signal updated(path_error: float, marker_pos: float)
-
-const MARKER_TEX := preload("res://assets/ui/swing_marker.png")
 
 var active: bool = false
 var swinging: bool = false
@@ -19,6 +17,25 @@ var _direction: float = 1.0
 var _speed: float = 1.15
 
 @onready var label: Label = $Label
+
+
+static func arc_speed_for(p_timing_scale: float, p_putt: bool) -> float:
+	var ts := clampf(p_timing_scale, 0.35, 1.2)
+	if p_putt:
+		return lerpf(1.35, 0.75, ts)
+	return lerpf(2.7, 1.25, ts)
+
+
+func arc_speed() -> float:
+	return _speed
+
+
+func sweet_half() -> float:
+	return _sweet_half()
+
+
+func good_half() -> float:
+	return _good_half()
 
 
 func _ready() -> void:
@@ -38,12 +55,10 @@ func reset(p_timing_scale: float = 1.0, p_putt: bool = false) -> void:
 	path_error = 0.0
 	marker_pos = 0.05
 	_direction = 1.0
-	if putt_mode:
-		_speed = lerpf(1.35, 0.75, clampf(timing_scale, 0.35, 1.2))
-	else:
-		_speed = lerpf(2.7, 1.25, clampf(timing_scale, 0.35, 1.2))
+	_speed = arc_speed_for(timing_scale, putt_mode)
 	_refresh_visuals()
 	set_process(false)
+	updated.emit(path_error, marker_pos)
 
 
 func set_enabled(on: bool) -> void:
@@ -157,48 +172,15 @@ func _refresh_visuals() -> void:
 	if label:
 		var kind := "PUTT" if putt_mode else "SWING"
 		if swinging:
-			label.text = "%s  path %+0.2f\nTap yellow at the BOTTOM" % [kind, path_error]
+			label.text = "%s\nTap yellow BOTTOM" % kind
 		else:
-			label.text = "%s  path %+0.2f\nTap to start the arc" % [kind, path_error]
+			label.text = "%s\nTap to start" % kind
 	queue_redraw()
 
 
 func _draw() -> void:
-	var rect: Rect2 = ArcMeters.swing_rect(size)
-	var sweet_h: float = _sweet_half()
-	var good_h: float = _good_half()
-
-	# Full swing track
-	var track: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.0, 1.0, 40)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.12, 0.18, 0.16, 0.95), 18.0)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.2, 0.28, 0.24, 0.9), 12.0)
-
-	# Good zone around impact
-	var good: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.5 - good_h, 0.5 + good_h, 18)
-	ArcMeters.draw_thick_polyline(self, good, Color(0.35, 0.55, 0.3, 0.85), 14.0)
-
-	# Sweet / impact at bottom
-	var sweet: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.5 - sweet_h, 0.5 + sweet_h, 12)
-	ArcMeters.draw_thick_polyline(self, sweet, Color(0.95, 0.85, 0.25, 0.95), 16.0)
-
-	# Impact tick at exact bottom
-	var impact: Vector2 = ArcMeters.swing_point(rect, 0.5)
-	draw_line(impact + Vector2(0, -10), impact + Vector2(0, 14), Color(1.0, 0.95, 0.4, 0.9), 3.0, true)
-
-	# Ends of the arc
-	var back: Vector2 = ArcMeters.swing_point(rect, 0.02)
-	var follow: Vector2 = ArcMeters.swing_point(rect, 0.98)
-	draw_circle(back, 4.0, Color(0.7, 0.75, 0.7, 0.7))
-	draw_circle(follow, 4.0, Color(0.7, 0.75, 0.7, 0.7))
-
-	# Clubhead marker — needle sprite aligned with the arc's radial direction
-	var m: Vector2 = ArcMeters.swing_point(rect, marker_pos)
-	var a: float = ArcMeters.swing_angle(marker_pos)
-	var mh := 72.0
-	var mw := mh * float(MARKER_TEX.get_width()) / float(MARKER_TEX.get_height())
-	draw_set_transform(m, a + PI / 2.0, Vector2.ONE)
-	draw_texture_rect(MARKER_TEX, Rect2(Vector2(-mw / 2.0, -mh / 2.0), Vector2(mw, mh)), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-
+	# Touch pad only — swing arc lives on MeterDisplay above thumbs.
+	var r := Rect2(Vector2.ZERO, size).grow(-6.0)
+	draw_rect(r, Color(0.1, 0.16, 0.12, 0.55), false, 2.0)
 	if swinging:
-		draw_circle(impact, 5.0 + sin(Time.get_ticks_msec() * 0.02) * 2.0, Color(1.0, 0.9, 0.3, 0.35))
+		draw_circle(size * 0.5, 8.0 + sin(Time.get_ticks_msec() * 0.02) * 2.0, Color(1.0, 0.9, 0.3, 0.45))

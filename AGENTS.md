@@ -29,6 +29,9 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Lie timing tighten | `BallPhysics.lie_timing_scale` |
 | Lives | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |
 | Pure strikes (round) | `GameState.pure_strikes` / `record_pure_strike()` |
+| UI type scale | `UiScale.CAPTION/BODY/TITLE` (32 / 40 / 48); celebration 56–64 in scenes |
+| Touch target min | `UiScale.TOUCH_MIN` (120 px on 1080-wide canvas ≈ 44–48pt) |
+| Safe-area insets | `UiScale.viewport_safe_margins` / `apply_hole_safe_area` |
 
 ## Folder map (`scripts/`)
 
@@ -38,7 +41,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | `ball/` | Ball node + launch/lie/physics helpers |
 | `course/` | Hole data/resource, generator, hole controller (build + shot UI glue) |
 | `systems/` | Scoring, shot report formatting |
-| `ui/` | HUD, shot result panel, game over |
+| `ui/` | HUD, shot result panel, game over, `UiScale` (type/touch/safe-area) |
 | `autoload/` | `GameState`, `AudioBus` (ArcMeters lives under `shot/` but is autoloaded) |
 | `debug/` | F1 debug panel — prototype tooling |
 

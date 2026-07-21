@@ -32,6 +32,12 @@ def main() -> int:
     assert "_on_power_released" in SRC
     assert "Phase.ACTIVE" in SRC
 
+    # Lean: clean sine (no dual-noise), rhythm-locked to swing arc
+    assert "_noise_phase" not in PS, "lean must be a single learnable sine"
+    assert "set_sway_from_arc_speed" in PS
+    assert "set_sway_from_arc_speed" in SRC
+    assert "arc_speed_for" in SW
+
     # Space/Enter: power key-match must not commit; swing must still own them
     key_block = PS.split("match event.physical_keycode:")[1].split("return")[0]
     assert "KEY_SPACE" not in key_block, "Space must not commit power"

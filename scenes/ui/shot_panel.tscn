@@ -1,8 +1,9 @@
-[gd_scene load_steps=4 format=3 uid="uid://shotpanel001"]
+[gd_scene load_steps=5 format=3 uid="uid://shotpanel001"]
 
 [ext_resource type="Script" path="res://scripts/shot/shot_routine.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/shot/power_stance.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/shot/swing_contact.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/shot/meter_display.gd" id="4"]
 
 [node name="ShotPanel" type="Control"]
 layout_mode = 3
@@ -10,7 +11,7 @@ anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -620.0
+offset_top = -680.0
 grow_horizontal = 2
 grow_vertical = 0
 script = ExtResource("1")
@@ -30,71 +31,93 @@ layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 24.0
-offset_top = 16.0
+offset_top = 10.0
 offset_right = -24.0
-offset_bottom = 72.0
-theme_override_font_sizes/font_size = 28
+offset_bottom = 70.0
+theme_override_font_sizes/font_size = 40
 text = "Tee  ·  380 yd  ·  Wind  —  ·  Shape: Straight"
 horizontal_alignment = 1
 autowrap_mode = 2
+
+[node name="MeterDisplay" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 12.0
+offset_top = 78.0
+offset_right = -12.0
+offset_bottom = 360.0
+mouse_filter = 2
+script = ExtResource("4")
 
 [node name="HintLabel" type="Label" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
 offset_left = 24.0
-offset_top = 76.0
+offset_top = 368.0
 offset_right = -24.0
-offset_bottom = 120.0
-theme_override_colors/font_color = Color(0.75, 0.85, 0.7, 1)
-theme_override_font_sizes/font_size = 22
-text = "Power first, then swing"
+offset_bottom = 448.0
+theme_override_colors/font_color = Color(0.92, 0.95, 0.88, 1)
+theme_override_font_sizes/font_size = 32
+text = "Hold lean + power · tap arc to start, tap yellow BOTTOM at impact"
 horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="Controls" type="HBoxContainer" parent="."]
 layout_mode = 1
-anchors_preset = 15
+anchors_preset = 12
+anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 16.0
-offset_top = 124.0
+offset_top = -210.0
 offset_right = -16.0
-offset_bottom = -20.0
+offset_bottom = -16.0
 grow_horizontal = 2
-grow_vertical = 2
+grow_vertical = 0
 theme_override_constants/separation = 20
 
 [node name="PowerStance" type="Control" parent="Controls"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(220, 400)
+custom_minimum_size = Vector2(220, 160)
 script = ExtResource("2")
 
 [node name="Label" type="Label" parent="Controls/PowerStance"]
 layout_mode = 1
-anchors_preset = 10
+anchors_preset = 15
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = 8.0
+offset_top = 8.0
 offset_right = -8.0
-offset_bottom = 108.0
-theme_override_font_sizes/font_size = 18
+offset_bottom = -8.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 32
 text = "POWER"
 horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="SwingContact" type="Control" parent="Controls"]
 layout_mode = 2
 size_flags_horizontal = 3
-custom_minimum_size = Vector2(280, 400)
+custom_minimum_size = Vector2(280, 160)
 script = ExtResource("3")
 
 [node name="Label" type="Label" parent="Controls/SwingContact"]
 layout_mode = 1
-anchors_preset = 10
+anchors_preset = 15
 anchor_right = 1.0
+anchor_bottom = 1.0
 offset_left = 8.0
+offset_top = 8.0
 offset_right = -8.0
-offset_bottom = 64.0
-theme_override_font_sizes/font_size = 22
+offset_bottom = -8.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 32
 text = "SWING"
 horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
