@@ -1,0 +1,157 @@
+#!/usr/bin/env python3
+"""Contract check for tempo-ratio swing — fails if the anti-arcade rules drift."""
+from __future__ import annotations
+
+import math
+import sys
+from pathlib import Path
+
+DIR = Path(__file__).parent
+GRADE = DIR.joinpath("tempo_grade.gd").read_text(encoding="utf-8")
+GESTURE = DIR.joinpath("tempo_gesture.gd").read_text(encoding="utf-8")
+ROUTINE = DIR.joinpath("shot_routine.gd").read_text(encoding="utf-8")
+
+TARGET_FULL = 3.0
+TARGET_SHORT = 2.0
+TOL_FULL = 0.5
+TOL_SHORT = 0.4
+BAND_PERFECT = 0.35
+BAND_GOOD = 0.75
+BAND_THIN_FAT = 1.25
+PURE_BALANCE = 0.72
+
+
+def ratio(t_takeaway: float, t_top: float, t_impact: float) -> float:
+    bs = t_top - t_takeaway
+    ds = t_impact - t_top
+    if ds <= 0.001:
+        return 99.0
+    if bs <= 0.0:
+        return 0.0
+    return bs / ds
+
+
+def balance(sample: dict, tighten: float = 1.0) -> float:
+    t = max(tighten, 0.0)
+    accel = float(sample.get("max_accel", 0.0))
+    jerk = float(sample.get("max_jerk", 0.0))
+    bs_len = float(sample.get("backswing_len", 0.0))
+    ft_len = float(sample.get("follow_through_len", 0.0))
+    incomplete = bool(sample.get("incomplete", False))
+    accel_pen = min(max((accel - 8.0) / 24.0, 0.0), 1.0) * t
+    jerk_pen = min(max((jerk - 0.6) / 1.4, 0.0), 1.0) * t
+    short_bs = min(max((0.18 - bs_len) / 0.18, 0.0), 1.0)
+    short_ft = 0.0 if incomplete else min(max((0.08 - ft_len) / 0.08, 0.0), 1.0)
+    incomplete_pen = 0.55 if incomplete else 0.0
+    pen = accel_pen * 0.35 + jerk_pen * 0.30 + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
+    return min(max(1.0 - pen, 0.0), 1.0)
+
+
+def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_scale: float = 1.0) -> float:
+    base_tol = TOL_SHORT if shot_type in ("putt", "chip") else TOL_FULL
+    base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
+    shrink = 0.35 + (1.0 - 0.35) * min(max(bal, 0.0), 1.0)
+    return base * shrink
+
+
+def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: float = 1.0, bal_tighten: float = 1.0) -> dict:
+    target = TARGET_SHORT if shot_type in ("putt", "chip") else TARGET_FULL
+    bal = balance(sample, bal_tighten)
+    tol = tolerance_width(shot_type, bal, timing_scale, tol_scale)
+    r = ratio(sample["t_takeaway"], sample["t_top"], sample["t_impact"])
+    err = r - target
+    abs_n = abs(err) / max(tol, 0.01)
+    if abs_n <= BAND_PERFECT:
+        contact = "PERFECT"
+    elif abs_n <= BAND_GOOD:
+        contact = "GOOD"
+    elif abs_n <= BAND_THIN_FAT:
+        contact = "FAT" if err < 0.0 else "THIN"
+    else:
+        contact = "MISS"
+    power_mul = min(max(1.0 - abs_n * 0.55, 0.35), 1.0)
+    if contact == "MISS":
+        power_mul = min(power_mul, 0.45)
+    path = max(min((1.0 if err > 0.01 else (-1.0 if err < -0.01 else 0.0)) * abs_n * 0.55, 1.0), -1.0)
+    return {"ratio": r, "balance": bal, "tolerance": tol, "contact": contact, "power_mul": power_mul, "path_error": path, "target": target}
+
+
+def main() -> int:
+    # Source contracts
+    assert "TARGET_FULL := 3.0" in GRADE
+    assert "TARGET_SHORT := 2.0" in GRADE
+    assert "power_mul" in GRADE and "path_error" in GRADE
+    assert "RELEASE_IS_IMPACT" in GESTURE
+    assert "TempoGesture" in ROUTINE
+    assert "PowerStance" not in ROUTINE
+    assert "SwingContact" not in ROUTINE
+    assert "committed_power" in ROUTINE
+    assert "practice_mode" in ROUTINE
+    assert "PURE_BALANCE" in ROUTINE
+
+    # Speed invariance: same ratio at 2× overall speed grades identically
+    slow = {"t_takeaway": 0.0, "t_top": 0.75, "t_impact": 1.0, "max_accel": 2.0, "max_jerk": 0.2, "backswing_len": 0.35, "follow_through_len": 0.15, "incomplete": False}
+    fast = {"t_takeaway": 0.0, "t_top": 0.375, "t_impact": 0.5, "max_accel": 2.0, "max_jerk": 0.2, "backswing_len": 0.35, "follow_through_len": 0.15, "incomplete": False}
+    assert abs(ratio(0.0, 0.75, 1.0) - 3.0) < 1e-6
+    assert abs(ratio(0.0, 0.375, 0.5) - 3.0) < 1e-6
+    gs = grade(slow, "full")
+    gf = grade(fast, "full")
+    assert gs["contact"] == gf["contact"] == "PERFECT", (gs, gf)
+    assert abs(gs["power_mul"] - gf["power_mul"]) < 1e-6
+    assert abs(gs["path_error"] - gf["path_error"]) < 1e-6
+
+    # Power multiplier never exceeds 1.0
+    assert gs["power_mul"] <= 1.0 + 1e-9
+
+    # Rushed costs BOTH distance and accuracy
+    rushed = dict(slow)
+    rushed["t_top"] = 0.4
+    rushed["t_impact"] = 0.55  # ratio ~0.4/0.15 ≈ 2.67 — mild; make worse
+    rushed["t_top"] = 0.3
+    rushed["t_impact"] = 0.55  # 0.3/0.25 = 1.2
+    gr = grade(rushed, "full")
+    assert gr["power_mul"] < 1.0, gr
+    assert gr["path_error"] < 0.0, "rushed must pull left (negative path)"
+    assert abs(gr["path_error"]) > 0.05
+
+    # Dragged → positive path, also distance leak
+    dragged = dict(slow)
+    dragged["t_top"] = 0.85
+    dragged["t_impact"] = 1.0  # 0.85/0.15 ≈ 5.67
+    gd = grade(dragged, "full")
+    assert gd["power_mul"] < 1.0
+    assert gd["path_error"] > 0.0, "dragged must push right"
+
+    # Balance loss tightens, never widens
+    calm = balance({"max_accel": 1.0, "max_jerk": 0.1, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False})
+    lurch = balance({"max_accel": 40.0, "max_jerk": 2.5, "backswing_len": 0.05, "follow_through_len": 0.0, "incomplete": True})
+    assert calm > lurch
+    tw_calm = tolerance_width("full", calm)
+    tw_lurch = tolerance_width("full", lurch)
+    assert tw_lurch < tw_calm, (tw_lurch, tw_calm)
+    assert tw_calm <= TOL_FULL * 1.0 + 1e-6
+
+    # Putt graded against 2:1 not 3:1
+    putt_ok = {"t_takeaway": 0.0, "t_top": 0.4, "t_impact": 0.6, "max_accel": 2.0, "max_jerk": 0.2, "backswing_len": 0.3, "follow_through_len": 0.12, "incomplete": False}
+    assert abs(ratio(0.0, 0.4, 0.6) - 2.0) < 1e-6
+    gp = grade(putt_ok, "putt")
+    assert gp["target"] == TARGET_SHORT
+    assert gp["contact"] == "PERFECT", gp
+    # Same sample vs full target would be off
+    gf_wrong = grade(putt_ok, "full")
+    assert gf_wrong["contact"] != "PERFECT" or abs(gf_wrong["ratio"] - TARGET_FULL) < 0.2
+    # 2:1 on full is rushed
+    assert gf_wrong["ratio"] < TARGET_FULL
+    assert gf_wrong["path_error"] <= 0.0 or gf_wrong["contact"] != "PERFECT"
+
+    # Gesture reads continuous path, not three taps
+    assert "InputEventScreenDrag" in GESTURE
+    assert "moment.emit" in GESTURE
+    assert "DEADZONE" in GESTURE
+
+    print("tempo_check: ok")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

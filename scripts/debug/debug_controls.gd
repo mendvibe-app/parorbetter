@@ -13,6 +13,10 @@ signal reload_hole
 @onready var timing_slider: HSlider = $Panel/VBox/TimingRow/TimingSlider
 @onready var wind_slider: HSlider = $Panel/VBox/WindRow/WindSlider
 @onready var fairway_slider: HSlider = $Panel/VBox/FairwayRow/FairwaySlider
+@onready var tol_slider: HSlider = $Panel/VBox/TolRow/TolSlider
+@onready var bal_slider: HSlider = $Panel/VBox/BalRow/BalSlider
+@onready var release_check: CheckButton = $Panel/VBox/ReleaseRow/ReleaseCheck
+@onready var guide_check: CheckButton = $Panel/VBox/GuideRow/GuideCheck
 
 
 func _ready() -> void:
@@ -27,6 +31,10 @@ func _ready() -> void:
 	timing_slider.value = 1.0
 	wind_slider.value = 1.0
 	fairway_slider.value = 1.0
+	tol_slider.value = 1.0
+	bal_slider.value = 1.0
+	release_check.button_pressed = TempoGesture.RELEASE_IS_IMPACT
+	guide_check.button_pressed = GameState.tempo_guide_enabled
 	$Panel/VBox/ToggleHint.text = "F1 / Debug — toggle"
 	$Panel/VBox/Buttons/SkipBtn.pressed.connect(func(): skip_hole.emit())
 	$Panel/VBox/Buttons/JumpBtn.pressed.connect(func(): jump_hole.emit(int(hole_spin.value)))
@@ -44,6 +52,10 @@ func _ready() -> void:
 	$Panel/VBox/LivesRow/SetLivesBtn.pressed.connect(func():
 		GameState.set_lives(int(lives_spin.value))
 	)
+	release_check.toggled.connect(func(on: bool): TempoGesture.RELEASE_IS_IMPACT = on)
+	guide_check.toggled.connect(func(on: bool):
+		GameState.tempo_guide_enabled = on
+	)
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
@@ -60,21 +72,34 @@ func _process(_delta: float) -> void:
 	if not panel.visible:
 		return
 	var m: Dictionary = GameState.last_shot_metrics
+	var t: Dictionary = GameState.last_tempo_metrics
+	var tempo_line := "Tempo: —"
+	if not t.is_empty():
+		tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms\n%s" % [
+			float(t.get("ratio", 0.0)),
+			float(t.get("target", 3.0)),
+			int(float(t.get("balance", 0.0)) * 100.0),
+			int(t.get("backswing_ms", 0)),
+			int(t.get("downswing_ms", 0)),
+			str(t.get("note", "")),
+		]
 	if m.is_empty():
-		metrics.text = "Adapt: %s (%.2f)\nForm: %s (%.2f) circle %d yd\nLast shot: —" % [
+		metrics.text = "Adapt: %s (%.2f)\nForm: %s (%.2f) circle %d yd\n%s\nLast shot: —" % [
 			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
 			GameState.get_form(),
 			int(GameState.get_aim_radius_yards(false)),
+			tempo_line,
 		]
 	else:
-		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\nPwr %d%%  Stance %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s" % [
+		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\n%s\nPwr %d%%  Bal %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s" % [
 			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
 			int(float(m.get("aim_radius_yd", GameState.get_aim_radius_yards(false)))),
 			str(m.get("aim_offset", "")),
+			tempo_line,
 			str(m.get("summary", "")),
 			int(float(m.get("power", 0.0)) * 100.0),
 			int(float(m.get("stability", 0.0)) * 100.0),
@@ -90,6 +115,10 @@ func _apply_tweaks() -> void:
 	GameState.debug_timing_scale = timing_slider.value
 	GameState.debug_wind_scale = wind_slider.value
 	GameState.debug_fairway_scale = fairway_slider.value
+	GameState.debug_tempo_tol = tol_slider.value
+	GameState.debug_balance_tighten = bal_slider.value
+	TempoGesture.RELEASE_IS_IMPACT = release_check.button_pressed
+	GameState.tempo_guide_enabled = guide_check.button_pressed
 	reload_hole.emit()
 	AudioBus.play_ui()
 

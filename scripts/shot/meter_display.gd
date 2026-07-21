@@ -1,30 +1,74 @@
 class_name MeterDisplay
 extends Control
 
-## Display-only strip: power/lean + swing arcs above the thumb touch pads.
-## Reads live state from PowerStance / SwingContact; no input handling.
+## Tempo display: ghost trail + moment pulses colored by spacing so far.
 
-const MARKER_TEX := preload("res://assets/ui/swing_marker.png")
+var tempo_gesture: TempoGesture
+var shot_type: String = "full"
+var timing_scale: float = 1.0
+var practice_mode: bool = false
+var _pulse_name: String = ""
+var _pulse_until_ms: int = 0
+var _pulse_color: Color = Color(0.4, 0.9, 0.5)
+var _verdict: Dictionary = {}
+var _guide_alpha: float = 0.0
+var _guide_phase: float = 0.0
+var _next_tick_at: float = 0.0
 
-var power_stance: PowerStance
-var swing_contact: SwingContact
 
-
-func bind(ps: PowerStance, sc: SwingContact) -> void:
-	if power_stance and power_stance.updated.is_connected(_on_updated):
-		power_stance.updated.disconnect(_on_updated)
-	if swing_contact and swing_contact.updated.is_connected(_on_updated):
-		swing_contact.updated.disconnect(_on_updated)
-	power_stance = ps
-	swing_contact = sc
-	if power_stance:
-		power_stance.updated.connect(_on_updated)
-	if swing_contact:
-		swing_contact.updated.connect(_on_updated)
+func bind(tg: TempoGesture) -> void:
+	if tempo_gesture:
+		if tempo_gesture.trail_updated.is_connected(_on_trail):
+			tempo_gesture.trail_updated.disconnect(_on_trail)
+	tempo_gesture = tg
+	if tempo_gesture:
+		tempo_gesture.trail_updated.connect(_on_trail)
 	queue_redraw()
 
 
-func _on_updated(_a = null, _b = null) -> void:
+func set_shot_context(p_type: String, p_timing: float, p_practice: bool = false) -> void:
+	shot_type = p_type
+	timing_scale = p_timing
+	practice_mode = p_practice
+	_verdict.clear()
+	_guide_phase = 0.0
+	_next_tick_at = 0.15
+	_refresh_guide_alpha()
+	queue_redraw()
+
+
+func show_verdict(v: Dictionary) -> void:
+	_verdict = v
+	queue_redraw()
+
+
+func on_moment(name: String) -> void:
+	_pulse_name = name
+	_pulse_until_ms = Time.get_ticks_msec() + 280
+	# Color by spacing so far when we have enough times on the gesture.
+	_pulse_color = _moment_color(name)
+	queue_redraw()
+
+
+func _refresh_guide_alpha() -> void:
+	if GameState.tempo_guide_forced:
+		_guide_alpha = 1.0
+		return
+	if not GameState.tempo_guide_enabled:
+		_guide_alpha = 0.0
+		return
+	# Fade as form improves — never widens windows, only shows rhythm.
+	_guide_alpha = clampf(1.0 - GameState.get_form() * 1.35, 0.0, 0.85)
+
+
+func _moment_color(name: String) -> Color:
+	if tempo_gesture == null:
+		return Color(0.5, 0.85, 0.5)
+	# Rough live estimate from partial timestamps via last sample fields if available.
+	return Color(0.45, 0.9, 0.5) if name != "impact" else Color(0.95, 0.9, 0.35)
+
+
+func _on_trail(_pts: PackedVector2Array) -> void:
 	queue_redraw()
 
 
@@ -33,111 +77,90 @@ func _ready() -> void:
 	set_process(true)
 
 
-func _process(_delta: float) -> void:
-	# Keep sweet-spot pulse alive while swinging even if no new signal this frame.
-	if swing_contact and swing_contact.swinging:
+func _process(delta: float) -> void:
+	if tempo_gesture and (tempo_gesture.dragging or tempo_gesture.swinging):
 		queue_redraw()
+	if _guide_alpha > 0.02 and tempo_gesture and tempo_gesture.active and tempo_gesture.dragging:
+		_guide_phase += delta
+		queue_redraw()
+		if not tempo_gesture.had_top and _guide_phase >= _next_tick_at:
+			AudioBus.play_tick(0.45 * _guide_alpha)
+			var target := TempoGrade.target_ratio(shot_type)
+			_next_tick_at = _guide_phase + (0.75 / maxf(target / 3.0, 0.5))
 
 
 func _draw() -> void:
-	if power_stance == null or swing_contact == null:
-		return
-	var half_w := size.x * 0.5
-	_draw_power(Rect2(0.0, 0.0, half_w - 8.0, size.y))
-	_draw_swing(Rect2(half_w + 8.0, 0.0, half_w - 8.0, size.y))
+	var area := Rect2(Vector2.ZERO, size)
+	var rect: Rect2 = ArcMeters.swing_rect(area.size, 36.0, 28.0)
+	rect.position += area.position
 
+	var track: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.0, 1.0, 40)
+	ArcMeters.draw_thick_polyline(self, track, Color(0.12, 0.18, 0.16, 0.95), 18.0)
+	ArcMeters.draw_thick_polyline(self, track, Color(0.2, 0.28, 0.24, 0.9), 12.0)
 
-func _draw_power(area: Rect2) -> void:
-	var local_size := area.size
-	var t_rect: Rect2 = ArcMeters.tempo_rect(local_size, 28.0, 52.0)
-	t_rect.position += area.position
-	var l_rect: Rect2 = ArcMeters.lean_rect(local_size)
-	l_rect.position += area.position
-
-	var track: PackedVector2Array = ArcMeters.tempo_polyline(t_rect, 0.0, 1.0, 36)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.12, 0.18, 0.14, 0.95), 16.0)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.22, 0.32, 0.24, 0.9), 10.0)
-
-	var power := power_stance.power
-	var fill_c: Color = Color(0.35, 0.85, 0.45).lerp(Color(0.95, 0.85, 0.2), power)
-	if power > 0.92:
-		fill_c = Color(0.95, 0.4, 0.25)
-	var fill: PackedVector2Array = ArcMeters.tempo_polyline(t_rect, 0.0, power, 28)
-	ArcMeters.draw_thick_polyline(self, fill, fill_c, 12.0)
-
-	var rec := power_stance.recommend_power
-	var rec_p: Vector2 = ArcMeters.tempo_point(t_rect, rec)
-	var rec_a: float = ArcMeters.tempo_angle(rec)
-	var radial: Vector2 = Vector2(cos(rec_a), -sin(rec_a))
-	draw_line(rec_p - radial * 10.0, rec_p + radial * 14.0, Color(1, 1, 1, 0.95), 3.0, true)
-
-	var dwell: float = power_stance._dwell
-	var lock_t: float = clampf(dwell / PowerStance.DWELL_REQUIRED, 0.0, 1.0)
-	if lock_t > 0.02:
-		var lock_pts: PackedVector2Array = ArcMeters.tempo_polyline(t_rect, maxf(power - 0.08, 0.0), power, 10)
-		ArcMeters.draw_thick_polyline(self, lock_pts, Color(0.95, 0.9, 0.4, 0.35 + 0.55 * lock_t), 6.0)
-
-	var tip: Vector2 = ArcMeters.tempo_point(t_rect, power)
-	draw_circle(tip, 8.0, fill_c)
-	draw_arc(tip, 8.0, 0.0, TAU, 20, Color(0.05, 0.08, 0.05, 0.8), 2.0, true)
-
-	var lean: PackedVector2Array = ArcMeters.lean_polyline(l_rect, 24)
-	ArcMeters.draw_thick_polyline(self, lean, Color(0.14, 0.2, 0.16, 0.95), 14.0)
-	ArcMeters.draw_thick_polyline(self, lean, Color(0.25, 0.35, 0.28, 0.85), 8.0)
-
-	var tgt: Vector2 = ArcMeters.lean_point(l_rect, power_stance._target_x)
-	var gold_a: float = 0.45 + 0.45 * lock_t
-	draw_circle(tgt, 11.0, Color(1.0, 0.85, 0.2, gold_a))
-	draw_arc(tgt, 14.0, 0.0, TAU, 24, Color(1.0, 0.9, 0.35, gold_a), 2.5, true)
-
-	var ply: Vector2 = ArcMeters.lean_point(l_rect, power_stance._player_x)
-	var needle_c: Color = Color(0.3, 0.9, 0.5).lerp(Color(0.95, 0.3, 0.25), 1.0 - power_stance.stability)
-	draw_circle(ply, 7.0, needle_c)
-	draw_line(ply + Vector2(0, -16), ply + Vector2(0, 16), needle_c, 3.0, true)
-
-	# Yardage bit above the pad labels
-	var est := BallPhysics.estimate_carry_yards(power, power_stance.club_max_yards, power_stance.lie)
+	# Ideal ratio zones as faint arcs: backswing bulk left, downswing right-bottom.
+	var target := TempoGrade.target_ratio(shot_type)
 	draw_string(
 		ThemeDB.fallback_font,
 		area.position + Vector2(12.0, 28.0),
-		"%s  %d%% → %d yd" % [power_stance.club_name, int(power * 100.0), int(est)],
+		"Tempo ~%.0f:1%s" % [target, "  PRACTICE" if practice_mode else ""],
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
 		UiScale.BODY,
 		Color(0.85, 0.92, 0.8, 0.95),
 	)
 
+	# Guide pulse on impact point
+	if _guide_alpha > 0.02:
+		var impact := ArcMeters.swing_point(rect, 0.5)
+		var pulse := 0.5 + 0.5 * sin(_guide_phase * TAU * 1.2)
+		draw_circle(impact, 10.0 + pulse * 6.0, Color(0.95, 0.9, 0.4, _guide_alpha * 0.35 * pulse))
 
-func _draw_swing(area: Rect2) -> void:
-	var local_size := area.size
-	var rect: Rect2 = ArcMeters.swing_rect(local_size, 28.0, 20.0)
-	rect.position += area.position
-	var sweet_h: float = swing_contact.sweet_half()
-	var good_h: float = swing_contact.good_half()
+	# Ghost trail mapped into meter space from gesture local trail
+	if tempo_gesture and tempo_gesture.trail.size() >= 2:
+		var pts := tempo_gesture.trail
+		var gsize := tempo_gesture.size
+		if gsize.x > 1.0 and gsize.y > 1.0:
+			for i in range(1, pts.size()):
+				var a := _map_trail(pts[i - 1], gsize, rect)
+				var b := _map_trail(pts[i], gsize, rect)
+				var t := float(i) / float(pts.size())
+				draw_line(a, b, Color(0.35, 0.85, 0.55, 0.2 + 0.55 * t), 4.0, true)
 
-	var track: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.0, 1.0, 40)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.12, 0.18, 0.16, 0.95), 18.0)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.2, 0.28, 0.24, 0.9), 12.0)
-
-	var good: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.5 - good_h, 0.5 + good_h, 18)
-	ArcMeters.draw_thick_polyline(self, good, Color(0.35, 0.55, 0.3, 0.85), 14.0)
-
-	var sweet: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.5 - sweet_h, 0.5 + sweet_h, 12)
-	ArcMeters.draw_thick_polyline(self, sweet, Color(0.95, 0.85, 0.25, 0.95), 16.0)
-
-	var impact: Vector2 = ArcMeters.swing_point(rect, 0.5)
-	draw_line(impact + Vector2(0, -10), impact + Vector2(0, 14), Color(1.0, 0.95, 0.4, 0.9), 3.0, true)
+	# Moment pulses at arc landmarks
+	var now := Time.get_ticks_msec()
+	if now < _pulse_until_ms:
+		var t_pos := 0.05
+		match _pulse_name:
+			"takeaway":
+				t_pos = 0.05
+			"top":
+				t_pos = 0.28
+			"impact":
+				t_pos = 0.5
+		var p := ArcMeters.swing_point(rect, t_pos)
+		var age := 1.0 - float(_pulse_until_ms - now) / 280.0
+		draw_circle(p, 14.0 + age * 10.0, Color(_pulse_color.r, _pulse_color.g, _pulse_color.b, 0.55 * (1.0 - age)))
 
 	draw_circle(ArcMeters.swing_point(rect, 0.02), 4.0, Color(0.7, 0.75, 0.7, 0.7))
+	draw_circle(ArcMeters.swing_point(rect, 0.5), 6.0, Color(0.95, 0.85, 0.3, 0.85))
 	draw_circle(ArcMeters.swing_point(rect, 0.98), 4.0, Color(0.7, 0.75, 0.7, 0.7))
 
-	var m: Vector2 = ArcMeters.swing_point(rect, swing_contact.marker_pos)
-	var a: float = ArcMeters.swing_angle(swing_contact.marker_pos)
-	var mh := 56.0
-	var mw := mh * float(MARKER_TEX.get_width()) / float(MARKER_TEX.get_height())
-	draw_set_transform(m, a + PI / 2.0, Vector2.ONE)
-	draw_texture_rect(MARKER_TEX, Rect2(Vector2(-mw / 2.0, -mh / 2.0), Vector2(mw, mh)), false)
-	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+	if not _verdict.is_empty():
+		draw_string(
+			ThemeDB.fallback_font,
+			area.position + Vector2(12.0, area.size.y - 16.0),
+			str(_verdict.get("note", "")),
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			UiScale.CAPTION,
+			Color(0.95, 0.92, 0.7, 0.95),
+		)
 
-	if swing_contact.swinging:
-		draw_circle(impact, 5.0 + sin(Time.get_ticks_msec() * 0.02) * 2.0, Color(1.0, 0.9, 0.3, 0.35))
+
+func _map_trail(local: Vector2, gsize: Vector2, rect: Rect2) -> Vector2:
+	# Map gesture pad coords onto swing arc t by vertical progress (back = up).
+	var ny := clampf(1.0 - local.y / maxf(gsize.y, 1.0), 0.0, 1.0)
+	var nx := clampf(local.x / maxf(gsize.x, 1.0), 0.0, 1.0)
+	var t := clampf(ny * 0.55 + nx * 0.2, 0.0, 1.0)
+	return ArcMeters.swing_point(rect, t)

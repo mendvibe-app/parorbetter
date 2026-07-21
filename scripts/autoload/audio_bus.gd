@@ -162,3 +162,8 @@ func play_splash() -> void:
 
 func play_ui() -> void:
 	play_tone("ui", 660.0, 0.06, -12.0)
+
+
+## Soft metronome tick for fadeable tempo guide — golf-leaning, not arcade beep.
+func play_tick(volume_scale: float = 1.0) -> void:
+	play_tone("ui", 520.0, 0.035, lerpf(-22.0, -14.0, clampf(volume_scale, 0.0, 1.0)))

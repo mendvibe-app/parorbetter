@@ -17,6 +17,7 @@ var actual_yards: float = -1.0
 var aim_radius_yd: float = 0.0
 var aim_offset: String = ""
 var wind_note: String = ""
+var tempo_note: String = ""
 var reasons: PackedStringArray = PackedStringArray()
 
 
@@ -44,6 +45,11 @@ static func from_shot(
 	r.aim_offset = p_aim_offset
 	r.wind_note = p_wind_note
 	r._build_reasons(result)
+	if not GameState.last_tempo_metrics.is_empty():
+		var note := str(GameState.last_tempo_metrics.get("note", ""))
+		if note != "":
+			r.tempo_note = note
+			r.reasons.insert(0, note)
 	return r
 
 
@@ -79,9 +85,11 @@ func _build_reasons(result: ShotResult) -> void:
 		reasons.append("Power near max (%d%%)" % int(power * 100.0))
 
 	if stance < 0.35:
-		reasons.append("Stance unstable (%d%%) — line/contact suffer" % int(stance * 100.0))
+		reasons.append("Balance lost (%d%%) — tempo window crushed" % int(stance * 100.0))
 	elif stance < 0.6:
-		reasons.append("Stance shaky (%d%%)" % int(stance * 100.0))
+		reasons.append("Balance shaky (%d%%)" % int(stance * 100.0))
+	elif stance >= TempoGrade.PURE_BALANCE:
+		reasons.append("Balance held (%d%%)" % int(stance * 100.0))
 
 	if absf(path_error) > 0.55:
 		var side := "SLICE/right" if path_error > 0.0 else "HOOK/left"
@@ -136,9 +144,11 @@ func full_text() -> String:
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("SHOT RESULT")
 	lines.append("%s  (max %d yd)  from %s" % [club_name, int(club_max_yards), lie])
-	lines.append("Power %d%%   Stance %d%%   Path %+.2f" % [
+	lines.append("Power %d%%   Balance %d%%   Path %+.2f" % [
 		int(power * 100.0), int(stance * 100.0), path_error
 	])
+	if tempo_note != "":
+		lines.append(tempo_note)
 	lines.append("Contact %s  (×%.2f)   Lie ×%.2f" % [
 		contact.to_upper(), contact_mul, lie_mul
 	])

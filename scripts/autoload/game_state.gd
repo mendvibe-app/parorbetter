@@ -45,8 +45,16 @@ var form_history: Array[float] = []
 var debug_timing_scale: Variant = null
 var debug_wind_scale: Variant = null
 var debug_fairway_scale: Variant = null
+## Tempo playtest knobs (null = 1.0 defaults)
+var debug_tempo_tol: Variant = null
+var debug_balance_tighten: Variant = null
 var force_perfect: bool = false
 var force_mishit: bool = false
+## Last tempo verdict (ratio, balance, ms…) for F1 readout
+var last_tempo_metrics: Dictionary = {}
+## Fadeable tempo guide — shows rhythm only, never widens windows.
+var tempo_guide_enabled: bool = true
+var tempo_guide_forced: bool = false
 
 
 func _ready() -> void:
@@ -63,12 +71,16 @@ func reset_run() -> void:
 	path_miss_history.clear()
 	form_history.clear()
 	last_shot_metrics.clear()
+	last_tempo_metrics.clear()
 	run_active = true
 	debug_timing_scale = null
 	debug_wind_scale = null
 	debug_fairway_scale = null
+	debug_tempo_tol = null
+	debug_balance_tighten = null
 	force_perfect = false
 	force_mishit = false
+	tempo_guide_forced = false
 	course_seed = randi()
 	_regenerate_course()
 	lives_changed.emit(lives)

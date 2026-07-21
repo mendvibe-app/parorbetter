@@ -33,7 +33,7 @@ anchor_right = 1.0
 offset_left = -520.0
 offset_top = 240.0
 offset_right = -16.0
-offset_bottom = 820.0
+offset_bottom = 980.0
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -120,6 +120,54 @@ min_value = 0.5
 max_value = 1.8
 step = 0.05
 value = 1.0
+
+[node name="TolRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="TolLabel" type="Label" parent="Panel/VBox/TolRow"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Tempo tol"
+
+[node name="TolSlider" type="HSlider" parent="Panel/VBox/TolRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.4
+max_value = 1.8
+step = 0.05
+value = 1.0
+
+[node name="BalRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="BalLabel" type="Label" parent="Panel/VBox/BalRow"]
+custom_minimum_size = Vector2(100, 0)
+layout_mode = 2
+text = "Bal tight"
+
+[node name="BalSlider" type="HSlider" parent="Panel/VBox/BalRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+min_value = 0.2
+max_value = 2.0
+step = 0.1
+value = 1.0
+
+[node name="ReleaseRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="ReleaseCheck" type="CheckButton" parent="Panel/VBox/ReleaseRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Release = impact"
+
+[node name="GuideRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="GuideCheck" type="CheckButton" parent="Panel/VBox/GuideRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Tempo guide"
 
 [node name="Buttons" type="GridContainer" parent="Panel/VBox"]
 layout_mode = 2

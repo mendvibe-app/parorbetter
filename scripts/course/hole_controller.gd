@@ -58,6 +58,7 @@ var _aiming: bool = false
 var _selecting_club: bool = false
 var _power_previewing: bool = false
 var _aim_dragging: bool = false
+var _practice_btn: Button
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
 var _aim_radius_base_yd: float = 22.0
@@ -102,7 +103,7 @@ func _ready() -> void:
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
-	shot_routine.power_stance.updated.connect(_on_power_preview_updated)
+	_setup_practice_btn()
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -614,6 +615,8 @@ func _begin_club_select() -> void:
 	_set_green_book_visible(false)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
+	if _practice_btn:
+		_practice_btn.visible = false
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
@@ -658,6 +661,8 @@ func _begin_aim_phase() -> void:
 	_refresh_wind_indicator(not is_putt)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = true
+	if _practice_btn:
+		_practice_btn.visible = true
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	if wind_banner:
 		if is_putt:
@@ -701,8 +706,42 @@ func _end_aim_phase() -> void:
 	_set_green_book_visible(false)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
+	if _practice_btn:
+		_practice_btn.visible = false
 	if wind_banner:
 		wind_banner.visible = false
+
+
+func _setup_practice_btn() -> void:
+	_practice_btn = Button.new()
+	_practice_btn.name = "PracticeSwingButton"
+	_practice_btn.text = "Practice Swing"
+	_practice_btn.visible = false
+	_practice_btn.custom_minimum_size = Vector2(UiScale.TOUCH_MIN * 2.2, UiScale.TOUCH_MIN)
+	if confirm_aim_btn:
+		_practice_btn.add_theme_font_size_override("font_size", confirm_aim_btn.get_theme_font_size("font_size"))
+		# Sit just above Confirm Aim
+		_practice_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_practice_btn.offset_left = confirm_aim_btn.offset_left
+		_practice_btn.offset_right = confirm_aim_btn.offset_right
+		_practice_btn.offset_top = confirm_aim_btn.offset_top - 140.0
+		_practice_btn.offset_bottom = confirm_aim_btn.offset_bottom - 140.0
+	ui_layer.add_child(_practice_btn)
+	_practice_btn.pressed.connect(_start_practice_swing)
+
+
+func _start_practice_swing() -> void:
+	if not _aiming or hole_complete:
+		return
+	_aiming = false
+	_aim_dragging = false
+	if confirm_aim_btn:
+		confirm_aim_btn.visible = false
+	if _practice_btn:
+		_practice_btn.visible = false
+	_set_green_book_visible(false)
+	AudioBus.play_ui()
+	_start_power_swing(true)
 
 
 func _confirm_aim() -> void:
@@ -712,15 +751,17 @@ func _confirm_aim() -> void:
 	_aim_dragging = false
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
+	if _practice_btn:
+		_practice_btn.visible = false
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
 	if wind_banner:
 		wind_banner.visible = false
 	AudioBus.play_ui()
-	_start_power_swing()
+	_start_power_swing(false)
 
 
-func _start_power_swing() -> void:
+func _start_power_swing(p_practice: bool = false) -> void:
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
@@ -741,32 +782,51 @@ func _start_power_swing() -> void:
 	shot_routine.configure(
 		lie, aim_yd, pin_yd, wind, shape_label, timing, shape_amt, _aim_radius_yd, club_name, club_max
 	)
-	shot_routine.begin_shot()
-	_power_previewing = true
-	_on_power_preview_updated(shot_routine.power_stance.power, shot_routine.power_stance.stability)
+	# Landing preview locked to committed carry (gesture can only subtract).
+	_power_previewing = not p_practice
+	_apply_committed_preview()
+	shot_routine.begin_shot(p_practice)
+	if not shot_routine.practice_result.is_connected(_on_practice_result):
+		shot_routine.practice_result.connect(_on_practice_result)
 	_set_green_book_visible(false)
-	feedback.text = "%s · hold the white tick · circle tightens with judgment" % club_name
+	if p_practice:
+		feedback.text = "Practice — find your tempo. Confirm Aim when ready."
+	else:
+		feedback.text = "%s · committed %d%% · nail the tempo" % [
+			club_name, int(shot_routine.committed_power * 100.0)
+		]
 
 
-func _on_power_preview_updated(power: float, _stability: float) -> void:
-	if not _power_previewing or hole_complete or ball_in_flight:
-		return
+func _apply_committed_preview() -> void:
 	var lie := ball.get_lie()
 	if lie == "Green":
 		return
 	var club_max := float(_chosen_club.get("max_yards", shot_routine.club_max_yards))
+	var power := shot_routine.committed_power
 	var est := BallPhysics.estimate_carry_yards(power, club_max, lie)
 	var from := ball.global_position
 	var bearing := _aim_target - from
 	if bearing.length_squared() < 1.0:
 		bearing = _cup_pos - from
 	_aim_target = AimControl.point_along_bearing(from, bearing, est)
-	# Precision sharpens as power approaches the recommend tick.
-	var recommend := shot_routine.power_stance.recommend_power
-	var err := absf(power - recommend)
-	var tight := clampf(1.0 - err / 0.18, 0.0, 1.0)
-	_aim_radius_yd = lerpf(_aim_radius_base_yd, _aim_radius_base_yd * 0.45, tight)
+	_aim_radius_yd = _aim_radius_base_yd
 	_refresh_aim_visuals()
+
+
+func _on_practice_result(verdict: Dictionary) -> void:
+	feedback.text = str(verdict.get("note", "Practice swing"))
+	shot_routine.set_active(false)
+	_power_previewing = false
+	_aiming = true
+	if confirm_aim_btn:
+		confirm_aim_btn.visible = true
+	if _practice_btn:
+		_practice_btn.visible = true
+	_refresh_aim_visuals()
+	var is_putt := ball.get_lie() == "Green"
+	_refresh_wind_indicator(not is_putt)
+	if wind_banner:
+		wind_banner.visible = not is_putt
 
 
 func _set_aim_visuals_visible(on: bool) -> void:
