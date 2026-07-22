@@ -10,6 +10,8 @@ const TARGET_SHORT := 2.0
 const TOL_FULL := 1.1
 const TOL_SHORT := 0.85
 const PURE_BALANCE := 0.72
+## Below this aim distance → chip tempo (2:1); at/above → full (3:1), any club.
+const CHIP_YD := 50.0
 
 ## Contact tiers by |ratio − target| / tolerance (after balance × timing scale).
 ## Slightly off stays GOOD; thin/fat only when clearly wrong; MISS = disaster.
@@ -18,10 +20,11 @@ const BAND_GOOD := 1.15
 const BAND_THIN_FAT := 1.85
 
 
-static func shot_type_for(lie: String, club_name: String, remaining_yd: float) -> String:
+static func shot_type_for(lie: String, remaining_yd: float) -> String:
 	if lie == "Green":
 		return "putt"
-	if club_name.contains("Wedge") or remaining_yd < 60.0:
+	# ponytail: distance = swing-size proxy; gate on committed_power (% of club) when player power-pick lands
+	if remaining_yd < CHIP_YD:
 		return "chip"
 	return "full"
 

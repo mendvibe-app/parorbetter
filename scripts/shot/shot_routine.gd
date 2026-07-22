@@ -73,7 +73,7 @@ func configure(
 		club_max_yards = float(club["max_yards"])
 
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
-	shot_type = TempoGrade.shot_type_for(lie, club_name, aim_distance_yd)
+	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd)
 
 	var wind_str := "Wind %d %s" % [int(wind.length()), _wind_dir(wind)]
 	var ratio_t := TempoGrade.target_ratio(shot_type)
