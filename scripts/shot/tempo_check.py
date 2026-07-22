@@ -16,7 +16,7 @@ TARGET_FULL = 3.0
 TARGET_SHORT = 2.0
 TOL_FULL = 1.1
 TOL_SHORT = 0.85
-BAND_PERFECT = 0.40
+BAND_PERFECT = 0.50
 BAND_GOOD = 1.15
 BAND_THIN_FAT = 1.85
 PURE_BALANCE = 0.72
@@ -63,7 +63,7 @@ def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: fl
     base_tol = TOL_SHORT if shot_type in ("putt", "chip") else TOL_FULL
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     raw_n = abs(err) / max(base, 0.01)
-    bal_for_tol = max(bal, 0.55) if raw_n <= BAND_GOOD else bal
+    bal_for_tol = max(bal, 0.70) if raw_n <= BAND_GOOD else bal
     shrink = 0.35 + (1.0 - 0.35) * min(max(bal_for_tol, 0.0), 1.0)
     tol = base * shrink
     abs_n = abs(err) / max(tol, 0.01)
@@ -80,7 +80,7 @@ def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: fl
         contact = "MISS"
     if bal < 0.35 and contact == "PERFECT":
         contact = "GOOD"
-    if bal < 0.25 and contact == "GOOD":
+    if bal < 0.25 and contact == "GOOD" and raw_n > BAND_GOOD:
         contact = "FAT" if err < 0.0 else "THIN"
     power_mul = min(max(1.0 - abs_n * 0.22, 0.55), 1.0)
     if contact == "MISS":
@@ -97,11 +97,12 @@ def main() -> int:
     assert "TARGET_SHORT := 2.0" in GRADE
     assert "TOL_FULL := 1.1" in GRADE
     assert "TOL_SHORT := 0.85" in GRADE
-    assert "BAND_PERFECT := 0.40" in GRADE
+    assert "BAND_PERFECT := 0.50" in GRADE
     assert "BAND_GOOD := 1.15" in GRADE
     assert "BAND_THIN_FAT := 1.85" in GRADE
     assert "abs_n * 0.22" in GRADE
     assert "abs_n * 0.35" in GRADE
+    assert "maxf(bal, 0.70)" in GRADE or "max(bal, 0.70)" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
     assert "RELEASE_IS_IMPACT" in GESTURE
     assert "TempoGesture" in ROUTINE
@@ -144,6 +145,17 @@ def main() -> int:
     assert gsl["balance"] < 0.4, gsl
     assert gsl["contact"] != "MISS", gsl
     assert gsl["power_mul"] >= 0.55, gsl
+
+    # Playtest best: ~3.5:1 + lurch → GOOD (not THIN), playable carry mul
+    best = {
+        "t_takeaway": 0.0, "t_top": 0.596, "t_impact": 0.766,  # 3.51:1
+        "max_accel": 35.0, "max_jerk": 1.8, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
+    }
+    gb = grade(best, "full")
+    assert abs(gb["ratio"] - 3.5) < 0.05, gb
+    assert gb["balance"] < 0.4, gb
+    assert gb["contact"] in ("PERFECT", "GOOD"), gb
+    assert gb["power_mul"] >= 0.85, gb
 
     # Extreme ~6:1 still MISS with low power
     wild = dict(slow)
@@ -217,7 +229,7 @@ def main() -> int:
     assert "through too quick" in GRADE
     assert "linger" in GRADE or "pull/pause" in GRADE
     assert "on tempo" in GRADE
-    assert "bal_for_tol" in GRADE or "maxf(bal, 0.55)" in GRADE
+    assert "bal_for_tol" in GRADE or "maxf(bal, 0.70)" in GRADE
 
     print("tempo_check: ok")
     return 0

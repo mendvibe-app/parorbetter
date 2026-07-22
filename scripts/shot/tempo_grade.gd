@@ -13,7 +13,7 @@ const PURE_BALANCE := 0.72
 
 ## Contact tiers by |ratio − target| / tolerance (after balance × timing scale).
 ## Slightly off stays GOOD; thin/fat only when clearly wrong; MISS = disaster.
-const BAND_PERFECT := 0.40
+const BAND_PERFECT := 0.50
 const BAND_GOOD := 1.15
 const BAND_THIN_FAT := 1.85
 
@@ -90,7 +90,7 @@ static func grade(
 	# Mild tempo: don't let a snappy through (accel → lurch) collapse the window into MISS.
 	var base := base_tolerance(shot_type) * maxf(tol_scale, 0.15) * maxf(timing_scale, 0.35)
 	var raw_n := absf(err) / maxf(base, 0.01)
-	var bal_for_tol := maxf(bal, 0.55) if raw_n <= BAND_GOOD else bal
+	var bal_for_tol := maxf(bal, 0.70) if raw_n <= BAND_GOOD else bal
 	var tol := base * lerpf(0.35, 1.0, clampf(bal_for_tol, 0.0, 1.0))
 	var abs_n := absf(err) / maxf(tol, 0.01)
 
@@ -116,8 +116,8 @@ static func grade(
 	# Extreme balance loss caps contact — modifier, not a second meter.
 	if bal < 0.35 and contact == ShotResult.ContactQuality.PERFECT:
 		contact = ShotResult.ContactQuality.GOOD
-	# Hosel-adjacent: only a true lurch demotes a playable GOOD
-	if bal < 0.25 and contact == ShotResult.ContactQuality.GOOD:
+	# Hosel-adjacent demotion only when tempo itself is already outside the mild band.
+	if bal < 0.25 and contact == ShotResult.ContactQuality.GOOD and raw_n > BAND_GOOD:
 		contact = ShotResult.ContactQuality.FAT if err < 0.0 else ShotResult.ContactQuality.THIN
 
 	# Gentle distance leak — slight miss ≈ mild shortfall, not a duff.
@@ -153,7 +153,7 @@ static func tempo_note(r: float, target: float, bal: float, back_ms: int = 0, do
 		tempo_word = "on tempo"
 	elif err < 0.0:
 		tempo_word = "rushed to through — brief pause at TOP"
-	elif back_ms > 0 and down_ms > 0 and float(down_ms) < float(back_ms) / target * 0.85:
+	elif back_ms > 0 and down_ms > 0 and float(down_ms) < float(back_ms) / target * 0.92:
 		# High ratio from a fast through (not a long pause at top).
 		tempo_word = "through too quick — match the ghost down"
 	else:
