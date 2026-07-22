@@ -17,6 +17,7 @@ signal exit_range
 @onready var fairway_slider: HSlider = $Panel/VBox/FairwayRow/FairwaySlider
 @onready var tol_slider: HSlider = $Panel/VBox/TolRow/TolSlider
 @onready var bal_slider: HSlider = $Panel/VBox/BalRow/BalSlider
+@onready var ema_slider: HSlider = $Panel/VBox/EmaRow/EmaSlider
 @onready var release_check: CheckButton = $Panel/VBox/ReleaseRow/ReleaseCheck
 @onready var guide_check: CheckButton = $Panel/VBox/GuideRow/GuideCheck
 
@@ -35,6 +36,7 @@ func _ready() -> void:
 	fairway_slider.value = 1.0
 	tol_slider.value = 1.0
 	bal_slider.value = 1.0
+	ema_slider.value = TempoGesture.EMA_ALPHA
 	release_check.button_pressed = TempoGesture.RELEASE_IS_IMPACT
 	guide_check.button_pressed = GameState.tempo_guide_enabled
 	$Panel/VBox/ToggleHint.text = "F1 / Debug — toggle"
@@ -127,6 +129,7 @@ func _apply_tweaks() -> void:
 	GameState.debug_fairway_scale = fairway_slider.value
 	GameState.debug_tempo_tol = tol_slider.value
 	GameState.debug_balance_tighten = bal_slider.value
+	TempoGesture.EMA_ALPHA = ema_slider.value
 	TempoGesture.RELEASE_IS_IMPACT = release_check.button_pressed
 	GameState.tempo_guide_enabled = guide_check.button_pressed
 	if GameState.range_mode:

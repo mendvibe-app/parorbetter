@@ -231,6 +231,40 @@ def main() -> int:
     assert "on tempo" in GRADE
     assert "bal_for_tol" in GRADE or "maxf(bal, 0.70)" in GRADE
 
+    # Mobile-native: interrupt abort (no ghost commit), edge deadzone, EMA knob
+    assert "func _abort_swing" in GESTURE
+    assert "touch.canceled" in GESTURE
+    assert "NOTIFICATION_APPLICATION_FOCUS_OUT" in GESTURE
+    assert "NOTIFICATION_APPLICATION_PAUSED" in GESTURE
+    assert "_abort_swing()" in GESTURE
+    assert "static var EMA_ALPHA" in GESTURE
+    assert "EDGE_DEADZONE_FRAC" in GESTURE
+    assert "func screen_x_ok" in GESTURE
+    # Abort must reset without emitting committed
+    abort_body = GESTURE.split("func _abort_swing")[1].split("func ")[0]
+    assert "reset()" in abort_body
+    assert "committed.emit" not in abort_body
+
+    # Edge rejection math — 4% floor 24px on a 1080-wide viewport
+    EDGE_FRAC = 0.04
+    EDGE_MIN = 24.0
+
+    def edge_margin(w: float) -> float:
+        return max(w * EDGE_FRAC, EDGE_MIN)
+
+    def screen_x_ok(x: float, w: float) -> bool:
+        m = edge_margin(w)
+        return x >= m and x <= w - m
+
+    assert abs(edge_margin(1080.0) - 43.2) < 1e-6
+    assert edge_margin(400.0) == 24.0  # floor kicks in
+    assert screen_x_ok(540.0, 1080.0)
+    assert not screen_x_ok(10.0, 1080.0)
+    assert not screen_x_ok(1070.0, 1080.0)
+    assert screen_x_ok(50.0, 1080.0)
+    assert not screen_x_ok(20.0, 400.0)  # inside floor margin
+    assert screen_x_ok(30.0, 400.0)
+
     print("tempo_check: ok")
     return 0
 

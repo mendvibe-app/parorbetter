@@ -11,12 +11,16 @@ signal live_changed  ## ratio / status changed — meter redraws
 
 ## Feel-test: if true, finger release after top counts as impact (Golden-Tee flick).
 static var RELEASE_IS_IMPACT: bool = false
+## Touch EMA — lower = snappier/jittery, higher = smoother/laggier. F1 knob.
+static var EMA_ALPHA: float = 0.35
 
 const DEADZONE_FRAC := 0.10
-const EMA_ALPHA := 0.35
 const VEL_TOP_EPS := 40.0
 const IMPACT_CROSS_FRAC := 0.12
 const MIN_BACKSWING_FRAC := 0.14
+## ponytail: ~4% L/R edge margin — calibrate on-device with gesture nav on
+const EDGE_DEADZONE_FRAC := 0.04
+const EDGE_DEADZONE_MIN_PX := 24.0
 ## Ideal Tour-Tempo-ish pacing for the pad ghost (seconds).
 const GUIDE_BACK_FULL := 0.75
 const GUIDE_BACK_SHORT := 0.50
@@ -196,6 +200,22 @@ func _deadzone() -> float:
 	return maxf(minf(size.x, size.y) * DEADZONE_FRAC, 18.0)
 
 
+static func edge_margin_px(window_width: float) -> float:
+	return maxf(window_width * EDGE_DEADZONE_FRAC, EDGE_DEADZONE_MIN_PX)
+
+
+static func screen_x_ok(screen_x: float, window_width: float) -> bool:
+	## True when touch is clear of OS edge-gesture zones (L/R).
+	var m := edge_margin_px(window_width)
+	return screen_x >= m and screen_x <= window_width - m
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_FOCUS_OUT or what == NOTIFICATION_APPLICATION_PAUSED:
+		if dragging and _t_impact < 0.0:
+			_abort_swing()
+
+
 func _input(event: InputEvent) -> void:
 	if not active:
 		return
@@ -204,10 +224,17 @@ func _input(event: InputEvent) -> void:
 		var touch := event as InputEventScreenTouch
 		var local := _to_local(touch.position)
 		if touch.pressed and _touch_index < 0 and _rect_has_point(local):
+			# Reject L/R edge starts so OS back-gestures don't steal a swing.
+			var vp_w := get_viewport().get_visible_rect().size.x
+			if not screen_x_ok(touch.position.x, vp_w):
+				return
 			_begin(local, touch.index)
 			get_viewport().set_input_as_handled()
-		elif not touch.pressed and touch.index == _touch_index:
-			_end_touch()
+		elif touch.index == _touch_index and (touch.canceled or not touch.pressed):
+			if touch.canceled:
+				_abort_swing()
+			else:
+				_end_touch()
 			get_viewport().set_input_as_handled()
 		return
 
@@ -330,6 +357,15 @@ func _update(pos: Vector2) -> void:
 	_last_pos = _smoothed
 	live_changed.emit()
 	queue_redraw()
+
+
+func _abort_swing() -> void:
+	## OS cancel / focus-out — free reset, never a ghost commit.
+	if _t_impact >= 0.0:
+		return
+	if not dragging and not swinging:
+		return
+	reset()
 
 
 func _end_touch() -> void:

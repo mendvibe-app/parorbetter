@@ -1129,18 +1129,20 @@ func _on_shot_ready(result: ShotResult) -> void:
 
 
 func _on_pure_strike(_result: ShotResult) -> void:
-	## Slow-mo + camera punch + haptic when dual-finger coordination nails it.
+	## Slow-mo + camera punch + haptic + visual pop (sound-off parity).
 	AudioBus.play_pure()
 	GameState.record_pure_strike()
 	# ponytail: one sharp pulse for pure; scale duration by contact quality after playtest
 	Input.vibrate_handheld(22)
 	Engine.time_scale = 0.55
+	flash_rect.color = Color(1.0, 0.95, 0.55, 1.0)
 	var punch := _desired_camera_zoom() * 1.12
 	var restore := _desired_camera_zoom()
 	var tw := create_tween()
 	tw.set_ignore_time_scale(true)
-	tw.tween_property(camera, "zoom", punch, 0.06)
-	# Hold a beat longer than the old 0.12s so pure flight reads after contact
+	tw.tween_property(flash_rect, "modulate:a", 0.55, 0.04)
+	tw.parallel().tween_property(camera, "zoom", punch, 0.06)
+	tw.tween_property(flash_rect, "modulate:a", 0.0, 0.18)
 	tw.tween_interval(0.22)
 	tw.tween_callback(func(): Engine.time_scale = 1.0)
 	tw.tween_property(camera, "zoom", restore, 0.28)
