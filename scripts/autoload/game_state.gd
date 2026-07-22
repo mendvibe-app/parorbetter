@@ -55,6 +55,8 @@ var last_tempo_metrics: Dictionary = {}
 ## Fadeable tempo guide — shows rhythm only, never widens windows.
 var tempo_guide_enabled: bool = true
 var tempo_guide_forced: bool = false
+## Driving range — infinite tee practice, no lives / hole advance.
+var range_mode: bool = false
 
 
 func _ready() -> void:
@@ -81,6 +83,7 @@ func reset_run() -> void:
 	force_perfect = false
 	force_mishit = false
 	tempo_guide_forced = false
+	range_mode = false
 	course_seed = randi()
 	_regenerate_course()
 	lives_changed.emit(lives)
@@ -258,3 +261,12 @@ func end_run(reason: String) -> void:
 
 func jump_to_hole(hole_index: int) -> void:
 	begin_hole(hole_index)
+
+
+func enter_range_mode() -> void:
+	range_mode = true
+	run_active = true
+
+
+func exit_range_mode() -> void:
+	range_mode = false

@@ -7,25 +7,32 @@ extends Control
 signal committed(sample: Dictionary)
 signal moment(name: String)  ## "takeaway" | "top" | "impact"
 signal trail_updated(points: PackedVector2Array)
+signal live_changed  ## ratio / status changed — meter redraws
 
 ## Feel-test: if true, finger release after top counts as impact (Golden-Tee flick).
 static var RELEASE_IS_IMPACT: bool = false
 
-const DEADZONE_FRAC := 0.10  ## of pad min-dimension
+const DEADZONE_FRAC := 0.10
 const EMA_ALPHA := 0.35
-const VEL_TOP_EPS := 40.0  ## px/s along axis — near-zero = top
-const IMPACT_CROSS_FRAC := 0.12  ## back through address band
+const VEL_TOP_EPS := 40.0
+const IMPACT_CROSS_FRAC := 0.12
 const MIN_BACKSWING_FRAC := 0.14
+## Ideal Tour-Tempo-ish pacing for the pad ghost (seconds).
+const GUIDE_BACK_FULL := 0.75
+const GUIDE_BACK_SHORT := 0.50
 
 var active: bool = false
 var dragging: bool = false
-var swinging: bool = false  ## takeaway confirmed
+var swinging: bool = false
 var trail: PackedVector2Array = PackedVector2Array()
+var shot_type: String = "full"
+var peak_pos: Vector2 = Vector2.ZERO
+var status: String = ""  ## PULL | TOP | THROUGH | ""
 
 var _touch_index: int = -1
 var _address: Vector2 = Vector2.ZERO
 var _smoothed: Vector2 = Vector2.ZERO
-var _axis: Vector2 = Vector2.ZERO  ## unit backswing direction (from address)
+var _axis: Vector2 = Vector2.ZERO
 var _axis_locked: bool = false
 var _disp: float = 0.0
 var _prev_disp: float = 0.0
@@ -38,6 +45,7 @@ var _t_takeaway: float = -1.0
 var _t_top: float = -1.0
 var _t_impact: float = -1.0
 var had_top: bool = false
+var _top_flash_until: int = 0
 
 var _max_accel: float = 0.0
 var _max_jerk: float = 0.0
@@ -58,8 +66,40 @@ func _ready() -> void:
 
 
 func address_hint() -> Vector2:
-	## Suggested thumb start — bottom-center of the pad (natural one-handed rest).
 	return Vector2(size.x * 0.5, size.y * 0.78)
+
+
+func top_hint() -> Vector2:
+	return Vector2(size.x * 0.5, size.y * 0.18)
+
+
+func live_ratio() -> float:
+	## Partial ratio after top; -1 before top / invalid.
+	if not had_top or _t_top < 0.0 or _t_takeaway < 0.0:
+		return -1.0
+	var now := Time.get_ticks_msec() / 1000.0
+	var end_t := _t_impact if _t_impact >= 0.0 else now
+	var bs := _t_top - _t_takeaway
+	var ds := end_t - _t_top
+	if ds <= 0.001:
+		return 99.0
+	if bs <= 0.0:
+		return 0.0
+	return bs / ds
+
+
+func trail_color() -> Color:
+	var r := live_ratio()
+	if r < 0.0:
+		return Color(0.55, 0.7, 0.6, 0.75)  # neutral while pulling
+	var target := TempoGrade.target_ratio(shot_type)
+	var tol := TempoGrade.base_tolerance(shot_type)
+	var abs_n := absf(r - target) / maxf(tol, 0.01)
+	if abs_n <= TempoGrade.BAND_PERFECT:
+		return Color(0.35, 0.92, 0.45, 0.9)
+	if abs_n <= TempoGrade.BAND_GOOD:
+		return Color(0.95, 0.85, 0.25, 0.9)
+	return Color(0.95, 0.35, 0.3, 0.9)
 
 
 func reset() -> void:
@@ -74,10 +114,13 @@ func reset() -> void:
 	_vel = 0.0
 	_prev_vel = 0.0
 	_peak_disp = 0.0
+	peak_pos = top_hint()
 	_t_takeaway = -1.0
 	_t_top = -1.0
 	_t_impact = -1.0
 	had_top = false
+	_top_flash_until = 0
+	status = ""
 	_max_accel = 0.0
 	_max_jerk = 0.0
 	_prev_seg_dir = Vector2.ZERO
@@ -85,6 +128,7 @@ func reset() -> void:
 	_refresh_label("Press gold · pull UP · through")
 	queue_redraw()
 	trail_updated.emit(trail)
+	live_changed.emit()
 
 
 func set_enabled(on: bool) -> void:
@@ -95,13 +139,53 @@ func set_enabled(on: bool) -> void:
 	modulate.a = 1.0 if on else 0.45
 	mouse_filter = Control.MOUSE_FILTER_STOP if on else Control.MOUSE_FILTER_IGNORE
 	set_process_input(on)
-	set_process(on)  # idle pulse for start target
+	set_process(on)
 	queue_redraw()
 
 
 func _process(_delta: float) -> void:
-	if active and not dragging:
+	if active and (not dragging or had_top or _guide_alpha() > 0.02):
 		queue_redraw()
+		if had_top and dragging and _t_impact < 0.0:
+			live_changed.emit()
+
+
+func _guide_alpha() -> float:
+	## Fadeable perfect-swing ghost. Toggle in F1; strong on range / early holes.
+	if not GameState.tempo_guide_enabled:
+		return 0.0
+	if GameState.tempo_guide_forced or GameState.range_mode:
+		return 0.9
+	if GameState.current_hole <= 3:
+		return 0.85
+	return clampf(1.0 - GameState.get_form() * 1.35, 0.0, 0.75)
+
+
+func _guide_back_sec() -> float:
+	return GUIDE_BACK_SHORT if TempoGrade.target_ratio(shot_type) < 2.5 else GUIDE_BACK_FULL
+
+
+func _guide_down_sec() -> float:
+	var back := _guide_back_sec()
+	return back / maxf(TempoGrade.target_ratio(shot_type), 1.0)
+
+
+func _ideal_ghost_pos(elapsed: float) -> Dictionary:
+	## Returns {pos, phase} phase: pull|top|through|done
+	var start := _address if (dragging and _t_takeaway >= 0.0) else address_hint()
+	var top := top_hint()
+	var back := _guide_back_sec()
+	var down := _guide_down_sec()
+	if elapsed < 0.0:
+		return {"pos": start, "phase": "pull"}
+	if elapsed <= back:
+		var u := elapsed / back
+		var phase := "top" if u > 0.92 else "pull"
+		return {"pos": start.lerp(top, u), "phase": phase}
+	if elapsed <= back + down:
+		var u2 := (elapsed - back) / down
+		return {"pos": top.lerp(start, u2), "phase": "through"}
+	return {"pos": start, "phase": "done"}
 
 
 func _accept_mouse() -> bool:
@@ -170,10 +254,12 @@ func _begin(pos: Vector2, index: int) -> void:
 	_last_pos = pos
 	_prev_t = Time.get_ticks_msec() / 1000.0
 	_t_takeaway = _prev_t
+	status = "PULL"
 	trail.append(pos)
 	set_process(true)
 	moment.emit("takeaway")
-	_refresh_label("Takeaway…")
+	_refresh_label("")
+	live_changed.emit()
 	queue_redraw()
 
 
@@ -185,13 +271,12 @@ func _update(pos: Vector2) -> void:
 	_smoothed = _smoothed.lerp(pos, EMA_ALPHA)
 	var delta := _smoothed - _address
 
-	# Lock backswing axis from first significant move.
 	if not _axis_locked:
 		if delta.length() >= _deadzone():
 			_axis = delta.normalized()
 			_axis_locked = true
 			swinging = true
-			_refresh_label("Backswing…")
+			status = "PULL"
 		else:
 			_prev_t = now
 			_last_pos = _smoothed
@@ -212,13 +297,14 @@ func _update(pos: Vector2) -> void:
 			_max_jerk = maxf(_max_jerk, ang)
 		_prev_seg_dir = seg_dir
 
-	_peak_disp = maxf(_peak_disp, _disp)
+	if _disp >= _peak_disp:
+		_peak_disp = _disp
+		peak_pos = _smoothed
 	trail.append(_smoothed)
 	while trail.size() > 64:
 		trail.remove_at(0)
 	trail_updated.emit(trail)
 
-	# Top: after enough backswing, velocity near zero or reverses from positive→negative.
 	var min_bs := maxf(size.y * MIN_BACKSWING_FRAC, _deadzone() * 1.2)
 	if not had_top and _peak_disp >= min_bs:
 		var reversing := _prev_vel > VEL_TOP_EPS and _vel <= VEL_TOP_EPS * 0.25
@@ -226,21 +312,23 @@ func _update(pos: Vector2) -> void:
 		if reversing or peaked:
 			had_top = true
 			_t_top = now
+			status = "TOP"
+			_top_flash_until = Time.get_ticks_msec() + 320
 			moment.emit("top")
-			_refresh_label("Top — through…")
+			live_changed.emit()
 
-	# Impact: after top, cross back near address along axis.
 	if had_top and _t_impact < 0.0:
+		status = "THROUGH"
 		var cross := maxf(size.y * IMPACT_CROSS_FRAC, _deadzone() * 0.5)
 		if _disp <= cross and _vel < 0.0:
 			_finish_impact(now, false)
 			return
-		# Follow-through past address (negative disp)
 		if _disp < 0.0:
 			_follow_through = maxf(_follow_through, -_disp / maxf(size.y, 1.0))
 
 	_prev_t = now
 	_last_pos = _smoothed
+	live_changed.emit()
 	queue_redraw()
 
 
@@ -248,7 +336,6 @@ func _end_touch() -> void:
 	if not dragging:
 		return
 	var now := Time.get_ticks_msec() / 1000.0
-	# Quick tap / never left deadzone — ignore, don't fail.
 	if not _axis_locked or not swinging:
 		dragging = false
 		_touch_index = -1
@@ -259,10 +346,8 @@ func _end_touch() -> void:
 		if had_top and RELEASE_IS_IMPACT:
 			_finish_impact(now, false)
 		elif had_top:
-			# Incomplete follow-through — still grade as mishit.
 			_finish_impact(now, true)
 		else:
-			# Released during backswing — incomplete.
 			_t_top = now
 			_finish_impact(now, true)
 		return
@@ -277,7 +362,6 @@ func _finish_impact(now: float, incomplete: bool) -> void:
 	_t_impact = now
 	if _t_top < 0.0:
 		_t_top = lerpf(_t_takeaway, _t_impact, 0.75)
-	# Tiny backswing after top: nudge so ratio math doesn't explode.
 	if _t_impact - _t_top < 0.02:
 		_t_impact = _t_top + 0.02
 
@@ -292,64 +376,223 @@ func _finish_impact(now: float, incomplete: bool) -> void:
 		"follow_through_len": _follow_through,
 		"incomplete": incomplete,
 	}
+	status = "THROUGH"
 	moment.emit("impact")
 	dragging = false
 	swinging = false
 	_touch_index = -1
-	set_process(false)
-	_refresh_label("Committed")
+	set_process(true)  # keep idle landmarks after commit until disabled
+	_refresh_label("")
 	committed.emit(sample)
+	live_changed.emit()
 	queue_redraw()
 
 
 func _refresh_label(text: String) -> void:
 	if label:
 		label.text = text
-		# Keep label readable over the start cue; hide once swinging.
-		label.modulate.a = 0.0 if dragging or swinging or had_top else 0.95
+		label.modulate.a = 0.0 if dragging or swinging or had_top or text.is_empty() else 0.95
 
 
 func _draw() -> void:
-	var r := Rect2(Vector2.ZERO, size).grow(-6.0)
-	draw_rect(r, Color(0.1, 0.16, 0.12, 0.55), false, 2.0)
-
-	# Idle: scream "start here" + pull-up path. During drag: trail + live thumb.
-	if active and not dragging:
-		_draw_start_cue()
+	_draw_pad_bounds()
+	if active and not dragging and _t_impact < 0.0:
+		_draw_idle_coach()
+		_draw_tempo_ghost(true)
 	else:
-		if trail.size() >= 2:
-			for i in range(1, trail.size()):
-				var a := float(i) / float(trail.size())
-				draw_line(trail[i - 1], trail[i], Color(0.4, 0.85, 0.55, 0.25 + 0.55 * a), 3.0, true)
+		_draw_pull_lane(true)
+		_draw_active_landmarks()
+		_draw_tempo_ghost(false)
+		_draw_trail()
 		if dragging:
-			# Mark address so "through" has a visible target.
-			draw_circle(_address, 8.0, Color(0.95, 0.85, 0.3, 0.55))
-			draw_arc(_address, 14.0, 0.0, TAU, 24, Color(0.95, 0.85, 0.3, 0.7), 2.0, true)
-			draw_circle(_smoothed, 10.0, Color(0.95, 0.9, 0.35, 0.85))
+			draw_circle(_smoothed, 11.0, Color(0.95, 0.9, 0.35, 0.9))
+		_draw_status_chip()
 
 
-func _draw_start_cue() -> void:
+func _draw_tempo_ghost(looping: bool) -> void:
+	var a := _guide_alpha()
+	if a < 0.05:
+		return
+	var back := _guide_back_sec()
+	var down := _guide_down_sec()
+	var cycle := back + down + 0.35  # rest at address before replaying
+	var elapsed: float
+	if looping:
+		elapsed = fmod(Time.get_ticks_msec() / 1000.0, cycle)
+	elif dragging and _t_takeaway >= 0.0:
+		elapsed = Time.get_ticks_msec() / 1000.0 - _t_takeaway
+	else:
+		return
+	var g: Dictionary = _ideal_ghost_pos(elapsed)
+	var pos: Vector2 = g["pos"]
+	var phase: String = str(g["phase"])
+	var col := Color(0.35, 0.85, 1.0, a * 0.55)
+	match phase:
+		"top":
+			col = Color(0.45, 1.0, 0.55, a * 0.7)
+		"through":
+			col = Color(1.0, 0.9, 0.35, a * 0.7)
+		"done":
+			col = Color(0.35, 0.85, 1.0, a * 0.35)
+	# Ghost disc + ring — follow this for perfect spacing
+	draw_circle(pos, 18.0, Color(col.r, col.g, col.b, col.a * 0.35))
+	draw_arc(pos, 20.0, 0.0, TAU, 28, col, 3.0, true)
+	draw_circle(pos, 7.0, col)
+	if looping and phase != "done":
+		draw_string(
+			ThemeDB.fallback_font, pos + Vector2(24, 6), "GUIDE",
+			HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, col
+		)
+	# Beat labels while looping so the 3:1 is obvious
+	if looping:
+		var start := address_hint()
+		var tip := "follow the blue · ~%.0f:1" % TempoGrade.target_ratio(shot_type)
+		draw_string(
+			ThemeDB.fallback_font, Vector2(size.x * 0.5 - 120.0, size.y - 28.0), tip,
+			HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.6, 0.9, 1.0, a * 0.85)
+		)
+		# Tiny beat pips on the lane
+		var top := top_hint()
+		draw_circle(start.lerp(top, 0.33), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
+		draw_circle(start.lerp(top, 0.66), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
+		draw_circle(top, 5.0, Color(0.5, 1.0, 0.6, a * 0.6))
+
+
+func _draw_pad_bounds() -> void:
+	## Whole touchable area — so the player sees where input lives.
+	var r := Rect2(Vector2.ZERO, size).grow(-4.0)
+	draw_rect(r, Color(0.08, 0.14, 0.11, 0.72), true)
+	draw_rect(r, Color(0.45, 0.75, 0.5, 0.85), false, 4.0)
+	# Corner ticks reinforce the rectangle
+	var tick := 22.0
+	var c := Color(0.7, 0.95, 0.7, 0.9)
+	for corner in [r.position, Vector2(r.end.x, r.position.y), Vector2(r.position.x, r.end.y), r.end]:
+		var inward := Vector2(
+			tick if corner.x < size.x * 0.5 else -tick,
+			tick if corner.y < size.y * 0.5 else -tick
+		)
+		draw_line(corner, corner + Vector2(inward.x, 0), c, 3.0, true)
+		draw_line(corner, corner + Vector2(0, inward.y), c, 3.0, true)
+
+
+func _pull_lane_ends() -> PackedVector2Array:
+	## Canonical vertical lane used for teaching (idle + active fill).
+	return PackedVector2Array([address_hint(), top_hint()])
+
+
+func _min_pull_point() -> Vector2:
+	## Where a reversal first counts as TOP (MIN_BACKSWING_FRAC along START→TOP).
+	var ends := _pull_lane_ends()
+	return ends[0].lerp(ends[1], clampf(MIN_BACKSWING_FRAC / 0.60, 0.15, 0.45))
+
+
+func _draw_pull_lane(show_progress: bool) -> void:
+	var ends := _pull_lane_ends()
+	var start: Vector2 = ends[0]
+	var top: Vector2 = ends[1]
+	var min_p := _min_pull_point()
+	# Wide track = the full legal pull length
+	draw_line(start, top, Color(0.2, 0.32, 0.24, 0.95), 22.0, true)
+	draw_line(start, top, Color(0.35, 0.55, 0.4, 0.7), 14.0, true)
+	# Min tick — below this, release won't count as a real top
+	draw_line(min_p + Vector2(-18, 0), min_p + Vector2(18, 0), Color(0.95, 0.75, 0.3, 0.9), 3.0, true)
+	draw_string(
+		ThemeDB.fallback_font, min_p + Vector2(22, 8), "MIN",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.95, 0.8, 0.4, 0.9)
+	)
+	# Full / TOP end cap
+	draw_line(top + Vector2(-22, 0), top + Vector2(22, 0), Color(0.5, 0.95, 0.55, 0.95), 4.0, true)
+	draw_string(
+		ThemeDB.fallback_font, top + Vector2(24, 8), "FULL",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.95, 0.6, 0.95)
+	)
+	if show_progress and dragging and _axis_locked:
+		var lane_len := start.distance_to(top)
+		var prog := clampf(_peak_disp / maxf(lane_len, 1.0), 0.0, 1.0)
+		var tip: Vector2 = start.lerp(top, prog)
+		draw_line(start, tip, Color(0.45, 0.95, 0.55, 0.85), 10.0, true)
+
+
+func _draw_idle_coach() -> void:
 	var start := address_hint()
-	var top := Vector2(size.x * 0.5, size.y * 0.18)
+	var top := top_hint()
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
-	# Ghost path: start → top (backswing) → back through start (downswing feel).
-	var mid := Vector2(size.x * 0.58, size.y * 0.42)
-	draw_line(start, top, Color(0.55, 0.75, 0.55, 0.35 * pulse), 4.0, true)
-	draw_line(top, mid, Color(0.55, 0.75, 0.55, 0.22), 3.0, true)
-	draw_line(mid, start + Vector2(0, 18), Color(0.95, 0.8, 0.35, 0.4), 3.0, true)
-	# Arrow head at top of pull
-	draw_line(top, top + Vector2(-14, 18), Color(0.6, 0.9, 0.55, 0.7 * pulse), 3.0, true)
-	draw_line(top, top + Vector2(14, 18), Color(0.6, 0.9, 0.55, 0.7 * pulse), 3.0, true)
-	# Gold start target — the only place that looks tappable
+	var follow := start + Vector2(0, size.y * 0.12)
+	_draw_pull_lane(false)
+	# Return path ghost
+	draw_line(top, start + Vector2(8, 0), Color(0.95, 0.8, 0.35, 0.45), 4.0, true)
+	draw_line(start, follow, Color(0.5, 0.65, 0.7, 0.35), 3.0, true)
+	draw_line(top, top + Vector2(-14, 18), Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
+	draw_line(top, top + Vector2(14, 18), Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
+	_draw_landmark(top, "TOP", Color(0.55, 0.9, 0.55, 0.85), 10.0)
+	_draw_landmark(follow, "FOLLOW", Color(0.55, 0.7, 0.8, 0.55), 8.0)
+	# Gold START
 	draw_circle(start, 22.0 + pulse * 6.0, Color(1.0, 0.85, 0.25, 0.2 + 0.2 * pulse))
-	draw_circle(start, 14.0, Color(1.0, 0.88, 0.3, 0.85))
+	draw_circle(start, 14.0, Color(1.0, 0.88, 0.3, 0.9))
 	draw_arc(start, 20.0, 0.0, TAU, 28, Color(1.0, 0.9, 0.4, 0.75 * pulse), 3.0, true)
 	draw_string(
-		ThemeDB.fallback_font,
-		start + Vector2(-36, 36),
-		"START",
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		UiScale.CAPTION,
-		Color(1.0, 0.92, 0.55, 0.9),
+		ThemeDB.fallback_font, start + Vector2(-40, 38), "START",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(1.0, 0.92, 0.55, 0.95)
+	)
+
+
+func _draw_active_landmarks() -> void:
+	var addr := _address if dragging or _t_takeaway >= 0.0 else address_hint()
+	var top_p := peak_pos if _peak_disp > 1.0 else top_hint()
+	# Follow zone past address (along −axis if known, else down)
+	var follow_dir := -_axis if _axis_locked else Vector2(0, 1)
+	var follow := addr + follow_dir * (size.y * 0.14)
+
+	var through_label := "THROUGH" if had_top else "START"
+	var through_c := Color(1.0, 0.88, 0.3, 0.95) if had_top else Color(1.0, 0.88, 0.3, 0.75)
+	draw_circle(addr, 16.0 if had_top else 12.0, through_c)
+	draw_arc(addr, 22.0, 0.0, TAU, 28, through_c, 2.5, true)
+	draw_string(
+		ThemeDB.fallback_font, addr + Vector2(-48, 36), through_label,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, through_c
+	)
+
+	var top_c := Color(0.35, 0.95, 0.5, 1.0) if Time.get_ticks_msec() < _top_flash_until else Color(0.55, 0.9, 0.55, 0.85)
+	var top_r := 16.0 if had_top else 10.0
+	_draw_landmark(top_p, "TOP", top_c, top_r)
+
+	draw_circle(follow, 7.0, Color(0.5, 0.7, 0.8, 0.4))
+	draw_string(
+		ThemeDB.fallback_font, follow + Vector2(-36, 22), "FOLLOW",
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.75, 0.85, 0.55)
+	)
+
+
+func _draw_landmark(p: Vector2, text: String, c: Color, radius: float) -> void:
+	draw_circle(p, radius, c)
+	draw_arc(p, radius + 5.0, 0.0, TAU, 20, c, 2.0, true)
+	draw_string(
+		ThemeDB.fallback_font, p + Vector2(-28, -radius - 8), text,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, c
+	)
+
+
+func _draw_trail() -> void:
+	if trail.size() < 2:
+		return
+	var c := trail_color()
+	for i in range(1, trail.size()):
+		var a := float(i) / float(trail.size())
+		draw_line(trail[i - 1], trail[i], Color(c.r, c.g, c.b, 0.25 + 0.6 * a), 4.0, true)
+
+
+func _draw_status_chip() -> void:
+	if status.is_empty():
+		return
+	var chip_c := Color(0.25, 0.45, 0.3, 0.85)
+	match status:
+		"TOP":
+			chip_c = Color(0.2, 0.55, 0.3, 0.9)
+		"THROUGH":
+			chip_c = Color(0.45, 0.4, 0.15, 0.9)
+	var chip := Rect2(size.x * 0.5 - 70.0, 8.0, 140.0, 44.0)
+	draw_rect(chip, chip_c, true)
+	draw_string(
+		ThemeDB.fallback_font, chip.position + Vector2(28, 32), status,
+		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.BODY, Color(0.95, 0.98, 0.9, 1.0)
 	)

@@ -15,12 +15,15 @@ const TEXT_SECONDARY := Color(0.92, 0.95, 0.88, 1.0)
 ## Base layout before safe-area insets (viewport px).
 const HUD_HEIGHT := 200.0
 const CONTROLS_PAD_BOTTOM := 16.0
-const CONTROLS_HEIGHT := 194.0
+## Kept for confirm-aim / legacy callers; swing pad now fills ShotPanel under the hint.
+const CONTROLS_HEIGHT := 480.0
 const CONFIRM_AIM_TOP := -296.0
 const CONFIRM_AIM_BOTTOM := -160.0
 const FEEDBACK_TOP := 220.0
 const WIND_TOP := 290.0
 const SHOT_RESULT_TOP := 220.0
+## Top chrome inside ShotPanel (info + meter + hint) — pad fills the rest.
+const SHOT_PAD_TOP := 208.0
 
 
 ## Map screen safe rect → viewport L/T/R/B via stretch inverse. Pure for self-check.
@@ -80,10 +83,14 @@ static func apply_hole_safe_area(
 		shot_result.offset_top = SHOT_RESULT_TOP + top
 
 	if shot_panel:
+		# Swing pad fills ShotPanel from under the hint to the safe bottom — no dead gap.
 		var controls := shot_panel.get_node_or_null("Controls") as Control
 		if controls:
+			controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+			controls.offset_left = 12.0
+			controls.offset_right = -12.0
+			controls.offset_top = SHOT_PAD_TOP
 			controls.offset_bottom = -(CONTROLS_PAD_BOTTOM + bottom)
-			controls.offset_top = -(CONTROLS_PAD_BOTTOM + CONTROLS_HEIGHT + bottom)
 
 	if confirm_aim:
 		confirm_aim.offset_top = CONFIRM_AIM_TOP - bottom

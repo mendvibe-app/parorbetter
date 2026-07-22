@@ -29,6 +29,15 @@ func refresh(hole: HoleData, strokes: int) -> void:
 	hole_label.text = "HOLE %d/%d  ·  %s" % [hole.hole_number, GameState.HOLE_COUNT, hole.name_label]
 	_refresh_score(hole.par)
 	_on_form(GameState.get_form())
+	lives_row.visible = true
+
+
+func refresh_range(swings: int) -> void:
+	_strokes = swings
+	hole_label.text = "DRIVING RANGE"
+	score_label.text = "Swings %d  ·  no lives  ·  F1 Exit Range" % swings
+	lives_row.visible = false
+	_on_form(GameState.get_form())
 
 
 func _refresh_score(par: int) -> void:

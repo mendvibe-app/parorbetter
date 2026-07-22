@@ -14,6 +14,11 @@ func _ready() -> void:
 	debug_panel.force_perfect.connect(func(): hole_controller.debug_force_shot(true))
 	debug_panel.force_mishit.connect(func(): hole_controller.debug_force_shot(false))
 	debug_panel.reload_hole.connect(func(): hole_controller.load_hole(GameState.current_hole))
+	debug_panel.enter_range.connect(func(): hole_controller.load_range())
+	debug_panel.exit_range.connect(func():
+		GameState.exit_range_mode()
+		hole_controller.load_hole(maxi(GameState.current_hole, 1))
+	)
 	_start_run()
 
 

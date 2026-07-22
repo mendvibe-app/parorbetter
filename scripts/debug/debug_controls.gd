@@ -5,6 +5,8 @@ signal jump_hole(index: int)
 signal force_perfect
 signal force_mishit
 signal reload_hole
+signal enter_range
+signal exit_range
 
 @onready var panel: PanelContainer = $Panel
 @onready var metrics: Label = $Panel/VBox/Metrics
@@ -49,6 +51,14 @@ func _ready() -> void:
 		GameState.force_mishit = false
 	)
 	$Panel/VBox/Buttons/ApplyBtn.pressed.connect(_apply_tweaks)
+	$Panel/VBox/Buttons/RangeBtn.pressed.connect(func():
+		enter_range.emit()
+		AudioBus.play_ui()
+	)
+	$Panel/VBox/Buttons/ExitRangeBtn.pressed.connect(func():
+		exit_range.emit()
+		AudioBus.play_ui()
+	)
 	$Panel/VBox/LivesRow/SetLivesBtn.pressed.connect(func():
 		GameState.set_lives(int(lives_spin.value))
 	)
@@ -119,7 +129,10 @@ func _apply_tweaks() -> void:
 	GameState.debug_balance_tighten = bal_slider.value
 	TempoGesture.RELEASE_IS_IMPACT = release_check.button_pressed
 	GameState.tempo_guide_enabled = guide_check.button_pressed
-	reload_hole.emit()
+	if GameState.range_mode:
+		enter_range.emit()
+	else:
+		reload_hole.emit()
 	AudioBus.play_ui()
 
 

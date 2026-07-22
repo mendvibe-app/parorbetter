@@ -2,7 +2,6 @@
 """Contract check for tempo-ratio swing — fails if the anti-arcade rules drift."""
 from __future__ import annotations
 
-import math
 import sys
 from pathlib import Path
 
@@ -10,14 +9,16 @@ DIR = Path(__file__).parent
 GRADE = DIR.joinpath("tempo_grade.gd").read_text(encoding="utf-8")
 GESTURE = DIR.joinpath("tempo_gesture.gd").read_text(encoding="utf-8")
 ROUTINE = DIR.joinpath("shot_routine.gd").read_text(encoding="utf-8")
+REPORT = DIR.joinpath("../systems/shot_report.gd").read_text(encoding="utf-8")
+METER = DIR.joinpath("meter_display.gd").read_text(encoding="utf-8")
 
 TARGET_FULL = 3.0
 TARGET_SHORT = 2.0
-TOL_FULL = 0.5
-TOL_SHORT = 0.4
-BAND_PERFECT = 0.35
-BAND_GOOD = 0.75
-BAND_THIN_FAT = 1.25
+TOL_FULL = 1.1
+TOL_SHORT = 0.85
+BAND_PERFECT = 0.40
+BAND_GOOD = 1.15
+BAND_THIN_FAT = 1.85
 PURE_BALANCE = 0.72
 
 
@@ -57,11 +58,19 @@ def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_s
 def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: float = 1.0, bal_tighten: float = 1.0) -> dict:
     target = TARGET_SHORT if shot_type in ("putt", "chip") else TARGET_FULL
     bal = balance(sample, bal_tighten)
-    tol = tolerance_width(shot_type, bal, timing_scale, tol_scale)
     r = ratio(sample["t_takeaway"], sample["t_top"], sample["t_impact"])
     err = r - target
+    base_tol = TOL_SHORT if shot_type in ("putt", "chip") else TOL_FULL
+    base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
+    raw_n = abs(err) / max(base, 0.01)
+    bal_for_tol = max(bal, 0.55) if raw_n <= BAND_GOOD else bal
+    shrink = 0.35 + (1.0 - 0.35) * min(max(bal_for_tol, 0.0), 1.0)
+    tol = base * shrink
     abs_n = abs(err) / max(tol, 0.01)
-    if abs_n <= BAND_PERFECT:
+    incomplete = bool(sample.get("incomplete", False))
+    if incomplete:
+        contact = "MISS" if abs_n > BAND_GOOD else ("FAT" if err < 0.0 else "THIN")
+    elif abs_n <= BAND_PERFECT:
         contact = "PERFECT"
     elif abs_n <= BAND_GOOD:
         contact = "GOOD"
@@ -69,17 +78,30 @@ def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: fl
         contact = "FAT" if err < 0.0 else "THIN"
     else:
         contact = "MISS"
-    power_mul = min(max(1.0 - abs_n * 0.55, 0.35), 1.0)
+    if bal < 0.35 and contact == "PERFECT":
+        contact = "GOOD"
+    if bal < 0.25 and contact == "GOOD":
+        contact = "FAT" if err < 0.0 else "THIN"
+    power_mul = min(max(1.0 - abs_n * 0.22, 0.55), 1.0)
     if contact == "MISS":
-        power_mul = min(power_mul, 0.45)
-    path = max(min((1.0 if err > 0.01 else (-1.0 if err < -0.01 else 0.0)) * abs_n * 0.55, 1.0), -1.0)
+        power_mul = min(power_mul, 0.50)
+    path = max(min((1.0 if err > 0.01 else (-1.0 if err < -0.01 else 0.0)) * abs_n * 0.35, 1.0), -1.0)
+    if bal < 0.35:
+        path = max(min(path * (1.0 + (0.35 - bal)), 1.0), -1.0)
     return {"ratio": r, "balance": bal, "tolerance": tol, "contact": contact, "power_mul": power_mul, "path_error": path, "target": target}
 
 
 def main() -> int:
-    # Source contracts
+    # Source contracts — mirror TempoGrade constants
     assert "TARGET_FULL := 3.0" in GRADE
     assert "TARGET_SHORT := 2.0" in GRADE
+    assert "TOL_FULL := 1.1" in GRADE
+    assert "TOL_SHORT := 0.85" in GRADE
+    assert "BAND_PERFECT := 0.40" in GRADE
+    assert "BAND_GOOD := 1.15" in GRADE
+    assert "BAND_THIN_FAT := 1.85" in GRADE
+    assert "abs_n * 0.22" in GRADE
+    assert "abs_n * 0.35" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
     assert "RELEASE_IS_IMPACT" in GESTURE
     assert "TempoGesture" in ROUTINE
@@ -99,14 +121,51 @@ def main() -> int:
     assert gs["contact"] == gf["contact"] == "PERFECT", (gs, gf)
     assert abs(gs["power_mul"] - gf["power_mul"]) < 1e-6
     assert abs(gs["path_error"] - gf["path_error"]) < 1e-6
-
-    # Power multiplier never exceeds 1.0
     assert gs["power_mul"] <= 1.0 + 1e-9
+    assert gs["power_mul"] >= 0.99  # on-tempo keeps carry
 
-    # Rushed costs BOTH distance and accuracy
+    # 14-hcp mild miss (~3.8 at full balance) stays GOOD with playable carry
+    mild = dict(slow)
+    mild["t_top"] = 0.76
+    mild["t_impact"] = 0.96  # 0.76/0.20 = 3.8
+    gm = grade(mild, "full")
+    assert abs(gm["ratio"] - 3.8) < 0.05, gm
+    assert gm["contact"] in ("GOOD", "THIN"), gm
+    assert gm["power_mul"] >= 0.82, gm
+    assert gm["path_error"] > 0.0
+
+    # Mild tempo + lurch balance must stay playable (not hosel from accel alone)
+    snappy = {
+        "t_takeaway": 0.0, "t_top": 0.783, "t_impact": 0.968,  # 4.23:1 like playtest
+        "max_accel": 40.0, "max_jerk": 2.0, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
+    }
+    gsl = grade(snappy, "full")
+    assert abs(gsl["ratio"] - 4.23) < 0.05, gsl
+    assert gsl["balance"] < 0.4, gsl
+    assert gsl["contact"] != "MISS", gsl
+    assert gsl["power_mul"] >= 0.55, gsl
+
+    # Extreme ~6:1 still MISS with low power
+    wild = dict(slow)
+    wild["t_top"] = 0.90
+    wild["t_impact"] = 1.05  # 0.90/0.15 = 6.0
+    gw = grade(wild, "full")
+    assert abs(gw["ratio"] - 6.0) < 0.05, gw
+    assert gw["contact"] == "MISS", gw
+    assert gw["power_mul"] <= 0.50, gw
+
+    # Incomplete + off tempo → hard mishit
+    incomplete = dict(slow)
+    incomplete["incomplete"] = True
+    incomplete["t_top"] = 0.90
+    incomplete["t_impact"] = 1.05
+    incomplete["follow_through_len"] = 0.0
+    gi = grade(incomplete, "full")
+    assert gi["contact"] == "MISS", gi
+    assert gi["power_mul"] <= 0.50, gi
+
+    # Rushed costs BOTH distance and accuracy (milder than old curve)
     rushed = dict(slow)
-    rushed["t_top"] = 0.4
-    rushed["t_impact"] = 0.55  # ratio ~0.4/0.15 ≈ 2.67 — mild; make worse
     rushed["t_top"] = 0.3
     rushed["t_impact"] = 0.55  # 0.3/0.25 = 1.2
     gr = grade(rushed, "full")
@@ -137,10 +196,8 @@ def main() -> int:
     gp = grade(putt_ok, "putt")
     assert gp["target"] == TARGET_SHORT
     assert gp["contact"] == "PERFECT", gp
-    # Same sample vs full target would be off
     gf_wrong = grade(putt_ok, "full")
     assert gf_wrong["contact"] != "PERFECT" or abs(gf_wrong["ratio"] - TARGET_FULL) < 0.2
-    # 2:1 on full is rushed
     assert gf_wrong["ratio"] < TARGET_FULL
     assert gf_wrong["path_error"] <= 0.0 or gf_wrong["contact"] != "PERFECT"
 
@@ -148,6 +205,19 @@ def main() -> int:
     assert "InputEventScreenDrag" in GESTURE
     assert "moment.emit" in GESTURE
     assert "DEADZONE" in GESTURE
+    assert '"START"' in GESTURE or "START" in GESTURE
+    assert '"TOP"' in GESTURE or 'status = "TOP"' in GESTURE
+    assert "THROUGH" in GESTURE
+    assert "FOLLOW" in GESTURE
+    assert "live_ratio" in GESTURE
+    assert "PULL" in GESTURE
+    assert "rushed" in METER and "ideal" in METER and ("too quick" in METER or "dragged" in METER)
+    assert "func glance_text" in REPORT
+    assert "rushed" in GRADE
+    assert "through too quick" in GRADE
+    assert "linger" in GRADE or "pull/pause" in GRADE
+    assert "on tempo" in GRADE
+    assert "bal_for_tol" in GRADE or "maxf(bal, 0.55)" in GRADE
 
     print("tempo_check: ok")
     return 0

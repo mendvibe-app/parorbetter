@@ -22,7 +22,7 @@ func _ready() -> void:
 func show_launch(report: ShotReport) -> void:
 	_waiting = false
 	set_process_input(false)
-	body.text = report.full_text() + "\n\nBall in motion…"
+	body.text = report.glance_text() + "\n\nBall in motion…"
 	if hint:
 		hint.text = ""
 	visible = true
@@ -31,7 +31,7 @@ func show_launch(report: ShotReport) -> void:
 
 
 func show_final(report: ShotReport) -> void:
-	body.text = report.full_text()
+	body.text = report.glance_text()
 	if hint:
 		hint.text = "Tap to continue"
 	visible = true

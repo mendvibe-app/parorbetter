@@ -33,7 +33,7 @@ anchor_right = 1.0
 offset_left = -520.0
 offset_top = 240.0
 offset_right = -16.0
-offset_bottom = 980.0
+offset_bottom = 1080.0
 
 [node name="VBox" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
@@ -167,7 +167,7 @@ layout_mode = 2
 [node name="GuideCheck" type="CheckButton" parent="Panel/VBox/GuideRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-text = "Tempo guide"
+text = "Tempo guide (ghost)"
 
 [node name="Buttons" type="GridContainer" parent="Panel/VBox"]
 layout_mode = 2
@@ -194,5 +194,15 @@ text = "Force Mishit"
 [node name="ApplyBtn" type="Button" parent="Panel/VBox/Buttons"]
 layout_mode = 2
 text = "Apply Tweaks"
+
+[node name="RangeBtn" type="Button" parent="Panel/VBox/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Driving Range"
+
+[node name="ExitRangeBtn" type="Button" parent="Panel/VBox/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Exit Range"
 
 [connection signal="pressed" from="DebugButton" to="." method="_on_debug_button_pressed"]

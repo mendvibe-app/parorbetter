@@ -1,15 +1,12 @@
 class_name MeterDisplay
 extends Control
 
-## Tempo display: ghost trail + moment pulses colored by spacing so far.
+## Live tempo ratio strip — ideal tick, accept band, needle. Pad teaches the motion.
 
 var tempo_gesture: TempoGesture
 var shot_type: String = "full"
 var timing_scale: float = 1.0
 var practice_mode: bool = false
-var _pulse_name: String = ""
-var _pulse_until_ms: int = 0
-var _pulse_color: Color = Color(0.4, 0.9, 0.5)
 var _verdict: Dictionary = {}
 var _guide_alpha: float = 0.0
 var _guide_phase: float = 0.0
@@ -20,9 +17,12 @@ func bind(tg: TempoGesture) -> void:
 	if tempo_gesture:
 		if tempo_gesture.trail_updated.is_connected(_on_trail):
 			tempo_gesture.trail_updated.disconnect(_on_trail)
+		if tempo_gesture.live_changed.is_connected(_on_live):
+			tempo_gesture.live_changed.disconnect(_on_live)
 	tempo_gesture = tg
 	if tempo_gesture:
 		tempo_gesture.trail_updated.connect(_on_trail)
+		tempo_gesture.live_changed.connect(_on_live)
 	queue_redraw()
 
 
@@ -42,11 +42,7 @@ func show_verdict(v: Dictionary) -> void:
 	queue_redraw()
 
 
-func on_moment(name: String) -> void:
-	_pulse_name = name
-	_pulse_until_ms = Time.get_ticks_msec() + 280
-	# Color by spacing so far when we have enough times on the gesture.
-	_pulse_color = _moment_color(name)
+func on_moment(_name: String) -> void:
 	queue_redraw()
 
 
@@ -57,18 +53,14 @@ func _refresh_guide_alpha() -> void:
 	if not GameState.tempo_guide_enabled:
 		_guide_alpha = 0.0
 		return
-	# Fade as form improves — never widens windows, only shows rhythm.
 	_guide_alpha = clampf(1.0 - GameState.get_form() * 1.35, 0.0, 0.85)
 
 
-func _moment_color(name: String) -> Color:
-	if tempo_gesture == null:
-		return Color(0.5, 0.85, 0.5)
-	# Rough live estimate from partial timestamps via last sample fields if available.
-	return Color(0.45, 0.9, 0.5) if name != "impact" else Color(0.95, 0.9, 0.35)
-
-
 func _on_trail(_pts: PackedVector2Array) -> void:
+	queue_redraw()
+
+
+func _on_live() -> void:
 	queue_redraw()
 
 
@@ -82,7 +74,6 @@ func _process(delta: float) -> void:
 		queue_redraw()
 	if _guide_alpha > 0.02 and tempo_gesture and tempo_gesture.active and tempo_gesture.dragging:
 		_guide_phase += delta
-		queue_redraw()
 		if not tempo_gesture.had_top and _guide_phase >= _next_tick_at:
 			AudioBus.play_tick(0.45 * _guide_alpha)
 			var target := TempoGrade.target_ratio(shot_type)
@@ -91,76 +82,82 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var area := Rect2(Vector2.ZERO, size)
-	var rect: Rect2 = ArcMeters.swing_rect(area.size, 36.0, 28.0)
-	rect.position += area.position
-
-	var track: PackedVector2Array = ArcMeters.swing_polyline(rect, 0.0, 1.0, 40)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.12, 0.18, 0.16, 0.95), 18.0)
-	ArcMeters.draw_thick_polyline(self, track, Color(0.2, 0.28, 0.24, 0.9), 12.0)
-
-	# Ideal ratio zones as faint arcs: backswing bulk left, downswing right-bottom.
 	var target := TempoGrade.target_ratio(shot_type)
+	var tol := TempoGrade.base_tolerance(shot_type) * maxf(timing_scale, 0.35)
+
+	var title := "Tempo ~%.0f:1%s" % [target, "  PRACTICE" if practice_mode else ""]
+	if not _verdict.is_empty():
+		title = str(_verdict.get("note", title))
 	draw_string(
 		ThemeDB.fallback_font,
 		area.position + Vector2(12.0, 28.0),
-		"Tempo ~%.0f:1%s" % [target, "  PRACTICE" if practice_mode else ""],
+		title,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
-		UiScale.BODY,
+		UiScale.CAPTION,
 		Color(0.85, 0.92, 0.8, 0.95),
 	)
 
-	# Guide pulse on impact point
-	if _guide_alpha > 0.02:
-		var impact := ArcMeters.swing_point(rect, 0.5)
-		var pulse := 0.5 + 0.5 * sin(_guide_phase * TAU * 1.2)
-		draw_circle(impact, 10.0 + pulse * 6.0, Color(0.95, 0.9, 0.4, _guide_alpha * 0.35 * pulse))
+	# Compact ratio strip for short meter height
+	var strip := Rect2(area.position + Vector2(24.0, 40.0), Vector2(area.size.x - 48.0, 28.0))
+	draw_rect(strip, Color(0.12, 0.18, 0.14, 0.95), true)
+	draw_rect(strip, Color(0.25, 0.35, 0.28, 0.9), false, 2.0)
 
-	# Ghost trail mapped into meter space from gesture local trail
-	if tempo_gesture and tempo_gesture.trail.size() >= 2:
-		var pts := tempo_gesture.trail
-		var gsize := tempo_gesture.size
-		if gsize.x > 1.0 and gsize.y > 1.0:
-			for i in range(1, pts.size()):
-				var a := _map_trail(pts[i - 1], gsize, rect)
-				var b := _map_trail(pts[i], gsize, rect)
-				var t := float(i) / float(pts.size())
-				draw_line(a, b, Color(0.35, 0.85, 0.55, 0.2 + 0.55 * t), 4.0, true)
+	var r_min := 0.5
+	var r_max := 5.5
+	var band_lo := target - tol
+	var band_hi := target + tol
+	var x_lo := strip.position.x + strip.size.x * clampf((band_lo - r_min) / (r_max - r_min), 0.0, 1.0)
+	var x_hi := strip.position.x + strip.size.x * clampf((band_hi - r_min) / (r_max - r_min), 0.0, 1.0)
+	draw_rect(Rect2(x_lo, strip.position.y, maxf(x_hi - x_lo, 2.0), strip.size.y), Color(0.35, 0.7, 0.4, 0.45), true)
 
-	# Moment pulses at arc landmarks
-	var now := Time.get_ticks_msec()
-	if now < _pulse_until_ms:
-		var t_pos := 0.05
-		match _pulse_name:
-			"takeaway":
-				t_pos = 0.05
-			"top":
-				t_pos = 0.28
-			"impact":
-				t_pos = 0.5
-		var p := ArcMeters.swing_point(rect, t_pos)
-		var age := 1.0 - float(_pulse_until_ms - now) / 280.0
-		draw_circle(p, 14.0 + age * 10.0, Color(_pulse_color.r, _pulse_color.g, _pulse_color.b, 0.55 * (1.0 - age)))
+	var x_ideal := strip.position.x + strip.size.x * clampf((target - r_min) / (r_max - r_min), 0.0, 1.0)
+	draw_line(
+		Vector2(x_ideal, strip.position.y - 4.0),
+		Vector2(x_ideal, strip.position.y + strip.size.y + 4.0),
+		Color(1.0, 1.0, 1.0, 0.95), 3.0, true
+	)
 
-	draw_circle(ArcMeters.swing_point(rect, 0.02), 4.0, Color(0.7, 0.75, 0.7, 0.7))
-	draw_circle(ArcMeters.swing_point(rect, 0.5), 6.0, Color(0.95, 0.85, 0.3, 0.85))
-	draw_circle(ArcMeters.swing_point(rect, 0.98), 4.0, Color(0.7, 0.75, 0.7, 0.7))
-
+	var ratio := -1.0
 	if not _verdict.is_empty():
+		ratio = float(_verdict.get("ratio", -1.0))
+	elif tempo_gesture:
+		ratio = tempo_gesture.live_ratio()
+
+	if ratio >= 0.0:
+		var x_n := strip.position.x + strip.size.x * clampf((ratio - r_min) / (r_max - r_min), 0.0, 1.0)
+		var needle_c := Color(0.95, 0.9, 0.35)
+		if tempo_gesture:
+			needle_c = tempo_gesture.trail_color()
+		elif not _verdict.is_empty():
+			var abs_n := absf(ratio - target) / maxf(tol, 0.01)
+			if abs_n <= TempoGrade.BAND_PERFECT:
+				needle_c = Color(0.35, 0.92, 0.45)
+			elif abs_n <= TempoGrade.BAND_GOOD:
+				needle_c = Color(0.95, 0.85, 0.25)
+			else:
+				needle_c = Color(0.95, 0.35, 0.3)
+		draw_circle(Vector2(x_n, strip.position.y + strip.size.y * 0.5), 10.0, needle_c)
 		draw_string(
 			ThemeDB.fallback_font,
-			area.position + Vector2(12.0, area.size.y - 16.0),
-			str(_verdict.get("note", "")),
+			Vector2(x_n - 24.0, strip.position.y - 8.0),
+			"%.1f:1" % ratio,
 			HORIZONTAL_ALIGNMENT_LEFT,
 			-1,
 			UiScale.CAPTION,
-			Color(0.95, 0.92, 0.7, 0.95),
+			needle_c,
 		)
 
-
-func _map_trail(local: Vector2, gsize: Vector2, rect: Rect2) -> Vector2:
-	# Map gesture pad coords onto swing arc t by vertical progress (back = up).
-	var ny := clampf(1.0 - local.y / maxf(gsize.y, 1.0), 0.0, 1.0)
-	var nx := clampf(local.x / maxf(gsize.x, 1.0), 0.0, 1.0)
-	var t := clampf(ny * 0.55 + nx * 0.2, 0.0, 1.0)
-	return ArcMeters.swing_point(rect, t)
+	var lab_y := strip.position.y + strip.size.y + 22.0
+	draw_string(
+		ThemeDB.fallback_font, Vector2(strip.position.x, lab_y),
+		"rushed", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.7, 0.75, 0.7, 0.7)
+	)
+	draw_string(
+		ThemeDB.fallback_font, Vector2(x_ideal - 18, lab_y),
+		"ideal", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.9, 0.95, 0.85, 0.85)
+	)
+	draw_string(
+		ThemeDB.fallback_font, Vector2(strip.end.x - 90, lab_y),
+		"too quick", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.7, 0.75, 0.7, 0.7)
+	)

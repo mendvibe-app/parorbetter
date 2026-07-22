@@ -158,6 +158,7 @@ func _setup_aim_visuals() -> void:
 
 
 func load_hole(hole_index: int) -> void:
+	GameState.exit_range_mode()
 	_end_aim_phase()
 	hole = GameState.get_hole(hole_index)
 	GameState.begin_hole(hole_index)
@@ -172,6 +173,48 @@ func load_hole(hole_index: int) -> void:
 		camera.make_current()
 	_update_hud()
 	_start_shot_ui()
+
+
+func load_range() -> void:
+	## Flat fairway tee — swing practice, no aim phase, infinite reset.
+	_end_aim_phase()
+	GameState.enter_range_mode()
+	hole = _make_range_hole()
+	strokes = 0
+	hole_complete = false
+	ball_in_flight = false
+	_chosen_club.clear()
+	_build_course()
+	ball.reset_at(_tee_pos, "Tee")
+	camera.global_position = Vector2(_tee_pos.x, _tee_pos.y - 120)
+	if not camera.is_current():
+		camera.make_current()
+	_update_hud()
+	feedback.text = "RANGE — pick a club, swing. Ball resets to tee."
+	feedback.modulate = Color(0.85, 0.95, 0.75)
+	_start_shot_ui()
+
+
+func _make_range_hole() -> HoleData:
+	var d := HoleData.new()
+	d.hole_number = 0
+	d.par = 4
+	d.fairway_width = 240.0
+	d.green_radius_x = 36.0
+	d.green_radius_y = 36.0
+	d.pin_offset = Vector2.ZERO
+	d.tee_offset_x = 0.0
+	d.fairway_bend = 0.0
+	d.wind_vector = Vector2.ZERO
+	d.green_slope = Vector2.ZERO
+	d.timing_window_scale = 1.0
+	d.has_bunker = false
+	d.has_water = false
+	d.hazard_bias = HoleData.HazardBias.NONE
+	d.suggested_shape = HoleData.SuggestedShape.STRAIGHT
+	d.name_label = "RANGE"
+	d.archetype = "range"
+	return d
 
 
 func _build_course() -> void:
@@ -620,7 +663,7 @@ func _begin_club_select() -> void:
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
-	feedback.text = "CLUB  ·  %d yd to pin  ·  pick from the bag" % int(pin_yd)
+	feedback.text = "CLUB  ·  RANGE  ·  pick from the bag" if GameState.range_mode else "CLUB  ·  %d yd to pin  ·  pick from the bag" % int(pin_yd)
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 	if wind_banner:
 		wind_banner.visible = true
@@ -632,7 +675,42 @@ func _on_club_chosen(club: Dictionary) -> void:
 	_selecting_club = false
 	_chosen_club = club
 	AudioBus.play_ui()
-	_begin_aim_phase()
+	if GameState.range_mode:
+		_begin_range_swing()
+	else:
+		_begin_aim_phase()
+
+
+func _begin_range_swing() -> void:
+	## Skip aim — fixed center line at recommended carry for the chosen club.
+	_aiming = false
+	_aim_dragging = false
+	if _club_select:
+		_club_select.dismiss()
+	if confirm_aim_btn:
+		confirm_aim_btn.visible = false
+	if _practice_btn:
+		_practice_btn.visible = false
+	_set_green_book_visible(false)
+	_refresh_wind_indicator(false)
+	if wind_banner:
+		wind_banner.visible = false
+	var lie := "Tee"
+	var club_max := float(_chosen_club.get("max_yards", 180.0))
+	var wind: Vector2 = course_root.get_meta("wind", Vector2.ZERO)
+	var recommend := BallPhysics.recommended_power(club_max * 0.85, club_max, lie, wind)
+	var est := BallPhysics.estimate_carry_yards(recommend, club_max, lie)
+	var bearing := _cup_pos - _tee_pos
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	_aim_target = AimControl.point_along_bearing(_tee_pos, bearing, est)
+	_aim_radius_base_yd = GameState.get_aim_radius_yards(false)
+	_aim_radius_yd = _aim_radius_base_yd
+	_aim_lock_yards = est
+	_power_previewing = true
+	_refresh_aim_visuals()
+	_set_aim_visuals_visible(true)
+	_start_power_swing(false)
 
 
 func _begin_aim_phase() -> void:
@@ -1159,17 +1237,20 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		return
 	ball_in_flight = false
 	_set_green_book_visible(false)
-	if pos.distance_to(_cup_pos) < CUP_RADIUS:
+	if not GameState.range_mode and pos.distance_to(_cup_pos) < CUP_RADIUS:
 		_on_holed_out()
 		return
-	ball.set_lie(_classify_lie(pos))
+	if GameState.range_mode:
+		ball.set_lie("Tee")
+	else:
+		ball.set_lie(_classify_lie(pos))
 	_update_hud()
 	var actual := ball.distance_traveled_yards()
 	if _last_report:
 		_last_report.set_actual(actual)
 		GameState.last_shot_metrics["actual_yd"] = actual
-		GameState.last_shot_metrics["summary"] = _last_report.summary_line()
-		feedback.text = _last_report.summary_line()
+		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
+		feedback.text = _last_report.glance_text().replace("\n", "  ·  ")
 		if shot_result_panel and shot_result_panel.has_method("show_final"):
 			shot_result_panel.show_final(_last_report)
 			if not shot_result_panel.dismissed.is_connected(_on_shot_report_dismissed):
@@ -1178,14 +1259,24 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	else:
 		feedback.text = "Stopped  %d yd" % int(actual)
 	feedback.modulate = Color(0.85, 0.9, 0.8)
-	if not hole_complete and GameState.run_active:
-		_start_shot_ui()
+	_after_shot_continue()
 
 
 func _on_shot_report_dismissed() -> void:
 	feedback.modulate = Color(0.85, 0.9, 0.8)
-	if not hole_complete and GameState.run_active:
+	_after_shot_continue()
+
+
+func _after_shot_continue() -> void:
+	if hole_complete or not GameState.run_active:
+		return
+	if GameState.range_mode:
+		ball.reset_at(_tee_pos, "Tee")
+		camera.global_position = Vector2(_tee_pos.x, _tee_pos.y - 120)
+		_set_aim_visuals_visible(false)
 		_start_shot_ui()
+		return
+	_start_shot_ui()
 
 
 func _classify_lie(pos: Vector2) -> String:
@@ -1208,10 +1299,18 @@ func _on_hazard(kind: String) -> void:
 	AudioBus.play_splash()
 	feedback.text = "WATER +1" if kind == "water" else "OOB +1"
 	feedback.modulate = Color(0.4, 0.7, 1.0) if kind == "water" else Color(0.95, 0.5, 0.4)
-	strokes += 1
-	GameState.record_stroke()
 	ball_in_flight = false
 	_set_aim_visuals_visible(false)
+	if GameState.range_mode:
+		feedback.text = "OOB — try again"
+		ball.reset_at(_tee_pos, "Tee")
+		_update_hud()
+		await get_tree().create_timer(0.45).timeout
+		if GameState.range_mode:
+			_start_shot_ui()
+		return
+	strokes += 1
+	GameState.record_stroke()
 	ball.reset_at(ball.get_last_safe(), "Fairway")
 	_update_hud()
 	await get_tree().create_timer(0.55).timeout
@@ -1286,7 +1385,11 @@ func _on_perfect_flash() -> void:
 
 
 func _update_hud() -> void:
-	if hud and hud.has_method("refresh"):
+	if hud == null:
+		return
+	if GameState.range_mode and hud.has_method("refresh_range"):
+		hud.refresh_range(strokes)
+	elif hud.has_method("refresh"):
 		hud.refresh(hole, strokes)
 
 
@@ -1296,6 +1399,8 @@ func _on_run_ended(_deepest: int, _reason: String) -> void:
 
 
 func skip_hole() -> void:
+	if GameState.range_mode:
+		return
 	if hole_complete:
 		return
 	_end_aim_phase()
@@ -1307,6 +1412,10 @@ func skip_hole() -> void:
 func debug_force_shot(perfect: bool) -> void:
 	if ball_in_flight or hole_complete:
 		return
-	if _aiming:
+	if GameState.range_mode and not shot_routine.visible:
+		if _selecting_club:
+			return
+		_begin_range_swing()
+	elif _aiming:
 		_confirm_aim()
 	shot_routine.force_result(perfect)

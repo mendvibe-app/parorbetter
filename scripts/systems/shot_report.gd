@@ -128,19 +128,26 @@ func _build_reasons(result: ShotResult) -> void:
 
 
 func summary_line() -> String:
-	var actual_txt := "—"
+	return glance_text()
+
+
+func glance_text() -> String:
+	## One glance: tempo diagnosis + contact + balance word + yards if known.
+	var hero := tempo_note
+	if hero.is_empty() and not GameState.last_tempo_metrics.is_empty():
+		hero = str(GameState.last_tempo_metrics.get("note", ""))
+	if hero.is_empty():
+		hero = "Tempo —"
+	var bal_word := "steady" if stance >= TempoGrade.PURE_BALANCE else ("shaky" if stance >= 0.4 else "lurch")
+	var sub := "Contact %s · Balance %s" % [contact.to_upper(), bal_word]
+	var yards := ""
 	if actual_yards >= 0.0:
-		actual_txt = "%d yd" % int(actual_yards)
-	return "%s  %d%%  %s  →  plan %d yd  got %s" % [
-		club_name,
-		int(power * 100.0),
-		contact.to_upper(),
-		int(planned_yards),
-		actual_txt,
-	]
+		yards = "\n→ %d yd" % int(actual_yards)
+	return "%s\n%s%s" % [hero, sub, yards]
 
 
 func full_text() -> String:
+	## Debug / F1 detail dump — not shown on the player result panel.
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("SHOT RESULT")
 	lines.append("%s  (max %d yd)  from %s" % [club_name, int(club_max_yards), lie])

@@ -88,17 +88,18 @@ func begin_shot(p_practice: bool = false) -> void:
 	phase = Phase.ACTIVE
 	last_verdict.clear()
 	tempo_gesture.reset()
+	tempo_gesture.shot_type = shot_type
 	tempo_gesture.set_enabled(true)
 	if meter_display:
 		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
 	if practice_mode:
-		hint_label.text = "PRACTICE — press START · pull UP · pause · drag back through the gold."
+		hint_label.text = "PRACTICE — follow the blue GUIDE ghost (~%.0f:1)." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
-		hint_label.text = "PUTT ~2:1 — press START · pull UP slowly · through the gold."
+		hint_label.text = "PUTT ~2:1 — follow blue ghost, or turn guide off in F1."
 	elif shot_type == "chip":
-		hint_label.text = "CHIP ~2:1 — press START · pull UP · through the gold."
+		hint_label.text = "CHIP ~2:1 — follow blue ghost · don't linger at TOP."
 	else:
-		hint_label.text = "SWING ~3:1 — press START · pull UP (~3 beats) · through (~1 beat)."
+		hint_label.text = "SWING ~3:1 — follow blue GUIDE (~¾s up, ~¼s through)."
 	phase_changed.emit("active")
 	set_active(true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
