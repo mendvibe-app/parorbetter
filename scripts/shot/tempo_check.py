@@ -32,18 +32,21 @@ def ratio(t_takeaway: float, t_top: float, t_impact: float) -> float:
     return bs / ds
 
 
-def balance(sample: dict, tighten: float = 1.0) -> float:
+def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> float:
     t = max(tighten, 0.0)
     accel = float(sample.get("max_accel", 0.0))
     jerk = float(sample.get("max_jerk", 0.0))
     bs_len = float(sample.get("backswing_len", 0.0))
     ft_len = float(sample.get("follow_through_len", 0.0))
     incomplete = bool(sample.get("incomplete", False))
+    short_game = shot_type in ("putt", "chip")
+    bs_floor = 0.10 if short_game else 0.18
+    ft_floor = 0.04 if short_game else 0.08
     accel_pen = min(max((accel - 8.0) / 24.0, 0.0), 1.0) * t
     jerk_pen = min(max((jerk - 0.6) / 1.4, 0.0), 1.0) * t
-    short_bs = min(max((0.18 - bs_len) / 0.18, 0.0), 1.0)
-    short_ft = 0.0 if incomplete else min(max((0.08 - ft_len) / 0.08, 0.0), 1.0)
-    incomplete_pen = 0.55 if incomplete else 0.0
+    short_bs = min(max((bs_floor - bs_len) / bs_floor, 0.0), 1.0)
+    short_ft = 0.0 if incomplete else min(max((ft_floor - ft_len) / ft_floor, 0.0), 1.0)
+    incomplete_pen = ((0.30 if short_game else 0.55) if incomplete else 0.0)
     pen = accel_pen * 0.35 + jerk_pen * 0.30 + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
     return min(max(1.0 - pen, 0.0), 1.0)
 
@@ -57,7 +60,7 @@ def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_s
 
 def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: float = 1.0, bal_tighten: float = 1.0) -> dict:
     target = TARGET_SHORT if shot_type in ("putt", "chip") else TARGET_FULL
-    bal = balance(sample, bal_tighten)
+    bal = balance(sample, bal_tighten, shot_type)
     r = ratio(sample["t_takeaway"], sample["t_top"], sample["t_impact"])
     err = r - target
     base_tol = TOL_SHORT if shot_type in ("putt", "chip") else TOL_FULL
@@ -212,6 +215,23 @@ def main() -> int:
     assert gf_wrong["contact"] != "PERFECT" or abs(gf_wrong["ratio"] - TARGET_FULL) < 0.2
     assert gf_wrong["ratio"] < TARGET_FULL
     assert gf_wrong["path_error"] <= 0.0 or gf_wrong["contact"] != "PERFECT"
+
+    # Natural short putt length must not get full-swing balance punishment
+    short_putt = {
+        "t_takeaway": 0.0, "t_top": 0.4, "t_impact": 0.6,
+        "max_accel": 3.0, "max_jerk": 0.3, "backswing_len": 0.12, "follow_through_len": 0.05, "incomplete": False,
+    }
+    bp_full = balance(short_putt, 1.0, "full")
+    bp_putt = balance(short_putt, 1.0, "putt")
+    assert bp_putt > bp_full, (bp_putt, bp_full)
+    assert bp_putt >= 0.85, bp_putt
+    gp_short = grade(short_putt, "putt")
+    assert gp_short["contact"] == "PERFECT", gp_short
+    assert gp_short["balance"] >= 0.72, gp_short
+
+    # Soft green path amplify still present but milder than old 1.35
+    assert "path * 1.1" in ROUTINE
+    assert "bs_floor" in GRADE and "short_game" in GRADE
 
     # Gesture reads continuous path, not three taps
     assert "InputEventScreenDrag" in GESTURE

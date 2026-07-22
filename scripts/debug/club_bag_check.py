@@ -25,12 +25,17 @@ def shot_need(remaining: float, lie: str) -> float:
 def clubs_for_lie(lie: str):
     if lie == "Sand":
         return [c for c in BAG if "Wedge" in c[0]]
+    if lie != "Tee":
+        return [c for c in BAG if c[0] != "Driver"]
     return list(BAG)
+
+
+PUTTER_MAX_YD = 35.0
 
 
 def pick_club(remaining: float, lie: str):
     if lie == "Green":
-        return ("Putter", max(4.0, min(remaining * 1.6, 35.0)))
+        return ("Putter", PUTTER_MAX_YD)
     need = shot_need(remaining, lie)
     available = clubs_for_lie(lie)
     for name, mx in reversed(available):
@@ -55,8 +60,13 @@ def main() -> None:
 
     assert all(BAG[i][1] > BAG[i + 1][1] for i in range(len(BAG) - 1))
 
-    assert pick_club(10, "Green")[0] == "Putter"
+    assert pick_club(10, "Green") == ("Putter", PUTTER_MAX_YD)
+    assert pick_club(3, "Green") == ("Putter", PUTTER_MAX_YD)
+    assert pick_club(40, "Green") == ("Putter", PUTTER_MAX_YD)
     assert all("Wedge" in n for n, _ in clubs_for_lie("Sand"))
+    assert clubs_for_lie("Tee")[0][0] == "Driver"
+    assert all(n != "Driver" for n, _ in clubs_for_lie("Fairway"))
+    assert all(n != "Driver" for n, _ in clubs_for_lie("Rough"))
 
     # 150 yd fairway → need 162 → 6-Iron (175)
     assert pick_club(150, "Fairway") == ("6-Iron", 175.0)

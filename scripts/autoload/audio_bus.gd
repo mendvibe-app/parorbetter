@@ -1,11 +1,25 @@
 extends Node
 
-## Lightweight procedural SFX via AudioStreamGenerator — no asset pack required.
+## Sample contact/pure/putt + procedural splash/birdie/ui/tick.
+
+const _CONTACT := {
+	"perfect": preload("res://assets/sfx/contact_perfect.wav"),
+	"good": preload("res://assets/sfx/contact_good.wav"),
+	"thin": preload("res://assets/sfx/contact_thin.wav"),
+	"fat": preload("res://assets/sfx/contact_fat.wav"),
+	"miss": preload("res://assets/sfx/contact_fat.wav"),  # no miss clip; reuse fat
+}
+const _PURE: AudioStream = preload("res://assets/sfx/contact_pure.wav")
+## Loaded in _ready — avoids parse-time preload race before Godot imports new WAVs.
+var _PUTT: AudioStream
+var _PUTT_DROP: AudioStream
 
 var _players: Dictionary = {}
 
 
 func _ready() -> void:
+	_PUTT = load("res://assets/sfx/putt.wav") as AudioStream
+	_PUTT_DROP = load("res://assets/sfx/putt_drop.wav") as AudioStream
 	for sfx_id in ["contact", "perfect", "birdie", "splash", "putt", "ui"]:
 		var p := AudioStreamPlayer.new()
 		p.name = "SFX_%s" % sfx_id
@@ -40,53 +54,33 @@ func play_noise(kind: String, duration: float = 0.02, volume_db: float = -10.0, 
 
 
 func play_contact(quality: String) -> void:
-	match quality:
-		"perfect":
-			# Short clean hit; earned pure uses play_pure() compression transient
-			play_tone("contact", 480.0, 0.08, -8.0)
-			play_tone("perfect", 720.0, 0.1, -10.0)
-		"thin":
-			play_tone("contact", 720.0, 0.08, -10.0)
-		"fat":
-			play_tone("contact", 180.0, 0.14, -6.0)
-		_:
-			play_tone("contact", 320.0, 0.1, -10.0)
+	var stream: AudioStream = _CONTACT.get(quality, _CONTACT["good"])
+	_play_stream("contact", stream, -6.0)
 
 
-## Flush pure contact: short low-mid compression → release. Not a chime.
+## Earned pure sting — layered on top of play_contact("perfect").
 func play_pure() -> void:
-	var sample_rate := 22050.0
-	var playback := _begin_playback("perfect", -4.0, 0.22)
-	if playback == null:
+	_play_stream("perfect", _PURE, -4.0)
+
+
+func _play_stream(kind: String, stream: AudioStream, volume_db: float) -> void:
+	if stream == null:
 		return
-	# Compression: tight band-passed knock (solid, quiet, physical)
-	_push_filtered_noise(playback, sample_rate, 0.018, 0.62, 0.22)
-	# Release: low-mid pitch drops off — face leaving the ball
-	_push_pitch_sweep(playback, sample_rate, 240.0, 70.0, 0.07, 0.55)
-	_push_silence(playback, sample_rate, 0.02)
+	var player: AudioStreamPlayer = _players.get(kind, _players["ui"])
+	player.stop()
+	player.stream = stream
+	player.volume_db = volume_db
+	player.play()
 
 
-## Ball clips the cup liner, then bottoms out — one continuous clip on the putt bus.
+## Putter face → ball.
+func play_putt() -> void:
+	_play_stream("putt", _PUTT, -6.0)
+
+
+## Ball drops in the cup.
 func play_putt_drop() -> void:
-	var sample_rate := 22050.0
-	var playback := _begin_playback("putt", -5.0, 0.4)
-	if playback == null:
-		return
-
-	# Rattle first (~120ms of short muffled noise pulses with gaps)
-	var t := 0.0
-	while t < 0.12:
-		var burst := randf_range(0.012, 0.028)
-		_push_filtered_noise(playback, sample_rate, burst, 0.55)
-		t += burst
-		if t >= 0.12:
-			break
-		var gap := randf_range(0.006, 0.018)
-		_push_silence(playback, sample_rate, gap)
-		t += gap
-
-	# Bottom-out thud: short pitch sweep, solid plastic cup floor
-	_push_pitch_sweep(playback, sample_rate, 200.0, 55.0, 0.045, 0.7)
+	_play_stream("putt", _PUTT_DROP, -5.0)
 
 
 func _begin_playback(kind: String, volume_db: float, buffer_length: float) -> AudioStreamGeneratorPlayback:

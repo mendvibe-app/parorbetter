@@ -188,9 +188,9 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	var path: float = float(verdict["path_error"])
 	var power := clampf(committed_power * float(verdict["power_mul"]), 0.05, 1.0)
 
-	# Putts: path hurts more (same as old routine)
+	# Putts: slight line emphasis — physics already scales contact/stance.
 	if current_lie == "Green":
-		path = clampf(path * 1.35, -1.0, 1.0)
+		path = clampf(path * 1.1, -1.0, 1.0)
 
 	_haptic_impact(contact)
 

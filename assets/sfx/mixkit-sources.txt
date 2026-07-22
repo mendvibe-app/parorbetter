@@ -1,0 +1,18 @@
+﻿Mixkit free golf SFX (no attribution required).
+contact_good.wav <- mixkit-hitting-golf-ball-2080
+contact_good_alt.wav <- mixkit-golf-ball-hit-2105
+contact_perfect.wav <- mixkit-sharp-golf-hit-2122
+contact_thin.wav <- mixkit-golf-metal-shot-2123
+contact_fat.wav <- mixkit-golf-ball-hard-hit-2120
+contact_pure.wav <- mixkit-powerful-golf-shot-2126
+contact_short.wav <- mixkit-short-golf-shot-2127
+contact_quick.wav <- mixkit-quick-golf-hit-2121
+contact_quick_alt.wav <- mixkit-quick-shot-golf-2125
+swing_whoosh.wav <- mixkit-golf-ball-swing-2117
+swing_hard.wav <- mixkit-hard-golf-swing-2119
+swing_air.wav <- mixkit-golf-shot-breaking-the-air-2124
+shot_whistle.wav <- mixkit-golf-shot-with-whistle-2118
+ball_bounce.wav <- mixkit-golf-ball-bouncing-2075
+
+putt.wav <- putt_sound.wav (Desktop/paradedb)
+putt_drop.wav <- into-the-hole.wav (Desktop/paradedb; freesound minigolf putt into hole)

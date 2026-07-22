@@ -44,7 +44,7 @@ static func ratio(sample: Dictionary) -> float:
 	return bs / ds
 
 
-static func balance(sample: Dictionary, tighten: float = 1.0) -> float:
+static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String = "full") -> float:
 	## Gesture qualities → 0..1. tighten scales how harshly spikes hurt (debug knob).
 	var t := maxf(tighten, 0.0)
 	var accel := float(sample.get("max_accel", 0.0))
@@ -52,13 +52,18 @@ static func balance(sample: Dictionary, tighten: float = 1.0) -> float:
 	var bs_len := float(sample.get("backswing_len", 0.0))
 	var ft_len := float(sample.get("follow_through_len", 0.0))
 	var incomplete: bool = bool(sample.get("incomplete", false))
+	# Short strokes are shorter — don't grade putt/chip length against a full-swing pad.
+	var short_game := shot_type == "putt" or shot_type == "chip"
+	var bs_floor := 0.10 if short_game else 0.18
+	var ft_floor := 0.04 if short_game else 0.08
 
 	# ponytail: accel/jerk thresholds are playtest knobs — calibrate on-device
 	var accel_pen := clampf((accel - 8.0) / 24.0, 0.0, 1.0) * t
 	var jerk_pen := clampf((jerk - 0.6) / 1.4, 0.0, 1.0) * t
-	var short_bs := clampf((0.18 - bs_len) / 0.18, 0.0, 1.0)
-	var short_ft := 0.0 if incomplete else clampf((0.08 - ft_len) / 0.08, 0.0, 1.0)
-	var incomplete_pen := 0.55 if incomplete else 0.0
+	var short_bs := clampf((bs_floor - bs_len) / bs_floor, 0.0, 1.0)
+	var short_ft := 0.0 if incomplete else clampf((ft_floor - ft_len) / ft_floor, 0.0, 1.0)
+	# Incomplete still hurts; short game less — early release is common on a putt stroke.
+	var incomplete_pen := (0.30 if short_game else 0.55) if incomplete else 0.0
 
 	var pen := accel_pen * 0.35 + jerk_pen * 0.30 + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
 	return clampf(1.0 - pen, 0.0, 1.0)
@@ -84,7 +89,7 @@ static func grade(
 	balance_tighten: float = 1.0
 ) -> Dictionary:
 	var target := target_ratio(shot_type)
-	var bal := balance(sample, balance_tighten)
+	var bal := balance(sample, balance_tighten, shot_type)
 	var r := ratio(sample)
 	var err := r - target
 	# Mild tempo: don't let a snappy through (accel → lurch) collapse the window into MISS.

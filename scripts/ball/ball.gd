@@ -392,13 +392,24 @@ func _on_area_entered(other: Area2D) -> void:
 		_clear_ghosts()
 		holed_out.emit()
 		return
-	if other.is_in_group("water") or other.is_in_group("oob"):
-		var kind := "water" if other.is_in_group("water") else "oob"
-		_lie = "Water" if kind == "water" else "OOB"
+	if other.is_in_group("water"):
+		# Putting surface wins — island water volumes can graze the green edge.
+		for a in area.get_overlapping_areas():
+			if a.is_in_group("green"):
+				_lie = "Green"
+				return
+		_lie = "Water"
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
-		entered_hazard.emit(kind)
+		entered_hazard.emit("water")
+		return
+	if other.is_in_group("oob"):
+		_lie = "OOB"
+		velocity = Vector2.ZERO
+		state = State.SETTLED
+		set_physics_process(false)
+		entered_hazard.emit("oob")
 		return
 	if other.is_in_group("sand"):
 		_lie = "Sand"

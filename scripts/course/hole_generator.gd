@@ -2,7 +2,7 @@ class_name HoleGenerator
 extends RefCounted
 
 ## Data-driven hole / course factory.
-## Archetype picks identity; difficulty_t only scales intensity inside that profile.
+## Archetype picks identity; difficulty_t scales intensity and unlocks hard profiles.
 
 const DEFAULT_HOLE_COUNT := 18
 const BUNKER_BASE_CHANCE := 0.75
@@ -75,6 +75,8 @@ const ARCHETYPES: Dictionary = {
 			"bend": 0.5,
 			"hazard_side": 0.55,
 			"force_water": true,
+			# ~hole 9 on 18 (difficulty_t = u²); opening par-3s stay long-iron / short-pitch.
+			"min_t": 0.22,
 		},
 	],
 	4: [
@@ -282,7 +284,7 @@ static func generate_hole(
 	else:
 		par = int(pick_weighted(rng, [3, 4, 5], [0.22, 0.56, 0.22]))
 
-	var arch: Dictionary = _pick_archetype(rng, par, archetype_history)
+	var arch: Dictionary = _pick_archetype(rng, par, archetype_history, t)
 
 	# Advances course RNG; visual length is fixed COURSE_LENGTH in the controller.
 	_pick_yardage(rng, par, t, arch)
@@ -381,7 +383,12 @@ static func _archetypes_for_par(par: int) -> Array:
 
 
 ## Anti-repeat: never back-to-back same id; heavily downweight within a 3-hole span.
-static func archetype_weight(id: String, par: int, history: Array) -> float:
+## min_t locks hard identities (island, etc.) until the difficulty curve unlocks them.
+static func archetype_weight(
+	id: String, par: int, history: Array, t: float = 0.0, min_t: float = 0.0
+) -> float:
+	if t < min_t:
+		return 0.0
 	var w := 1.0
 	var start := maxi(0, history.size() - 3)
 	for i in range(start, history.size()):
@@ -400,11 +407,15 @@ static func archetype_weight(id: String, par: int, history: Array) -> float:
 	return w
 
 
-static func _pick_archetype(rng: RandomNumberGenerator, par: int, history: Array) -> Dictionary:
+static func _pick_archetype(
+	rng: RandomNumberGenerator, par: int, history: Array, t: float = 0.0
+) -> Dictionary:
 	var list: Array = _archetypes_for_par(par)
 	var weights: Array[float] = []
 	for a in list:
-		weights.append(archetype_weight(str(a.get("id", "")), par, history))
+		weights.append(
+			archetype_weight(str(a.get("id", "")), par, history, t, float(a.get("min_t", 0.0)))
+		)
 	return pick_weighted(rng, list, weights)
 
 
@@ -507,15 +518,17 @@ static func _pick_green_shape(
 	rng: RandomNumberGenerator, t: float, arch: Dictionary = {}
 ) -> HoleData.GreenShape:
 	## Archetype shape table first; t softly unlocks harder shapes.
+	## Peninsula is hard-locked early so non-island arches can't sneak an island green.
 	var arch_g: Array = arch.get("green", [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
 	var easy_boost := lerpf(1.25, 0.85, t)
 	var hard_boost := lerpf(0.75, 1.25, t)
+	var peninsula_gate := 0.0 if t < 0.22 else hard_boost
 	var weights: Array[float] = [
 		GREEN_SHAPE_WEIGHTS_BASE[0] * float(arch_g[0]) * easy_boost,
 		GREEN_SHAPE_WEIGHTS_BASE[1] * float(arch_g[1]) * easy_boost,
 		GREEN_SHAPE_WEIGHTS_BASE[2] * float(arch_g[2]) * lerpf(0.85, 1.15, t),
 		GREEN_SHAPE_WEIGHTS_BASE[3] * float(arch_g[3]) * hard_boost,
-		GREEN_SHAPE_WEIGHTS_BASE[4] * float(arch_g[4]) * hard_boost,
+		GREEN_SHAPE_WEIGHTS_BASE[4] * float(arch_g[4]) * peninsula_gate,
 		GREEN_SHAPE_WEIGHTS_BASE[5] * float(arch_g[5]) * hard_boost,
 	]
 	return pick_weighted(rng, GREEN_SHAPE_ITEMS, weights)
@@ -540,7 +553,9 @@ static func _layout_for_archetype(
 	t: float,
 	rng: RandomNumberGenerator
 ) -> HoleData.LayoutStyle:
-	if shape == HoleData.GreenShape.PENINSULA or bool(arch.get("force_water", false)):
+	if t >= 0.22 and (
+		shape == HoleData.GreenShape.PENINSULA or bool(arch.get("force_water", false))
+	):
 		if shape == HoleData.GreenShape.PENINSULA or rng.randf() < 0.65:
 			return HoleData.LayoutStyle.ISLAND
 	if bool(arch.get("prefer_dogleg", false)):

@@ -33,6 +33,12 @@ static func clamp_aim(pos: Vector2) -> Vector2:
 
 const GREEN_Y_MIN := -200.0
 const TEE_Y_MAX := 920.0
+## Screen-space nudge so the fingertip doesn't cover the aim marker (touch only).
+const TOUCH_AIM_OFFSET_PX := Vector2(0, -72)
+
+
+static func touch_aim_screen(screen_pos: Vector2) -> Vector2:
+	return screen_pos + TOUCH_AIM_OFFSET_PX
 
 
 static func make_circle_points(center: Vector2, radius_px: float, segments: int = 48) -> PackedVector2Array:
@@ -60,7 +66,8 @@ static func retarget_bearing(from: Vector2, world: Vector2, lock_yards: float) -
 
 
 ## Directional aim wedge: wide near ball, tapers into the dispersion circle.
-## shape_bend −draw / +fade. power_preview sharpens (narrower, denser) once % is live.
+## shape_bend −draw / +fade (mid bulge only). Tip stays on from→to so cone meets the circle.
+## power_preview sharpens (narrower, denser) once % is live.
 static func make_aim_cone(
 	from: Vector2,
 	to: Vector2,
@@ -78,8 +85,9 @@ static func make_aim_cone(
 	var right := Vector2(-dir.y, dir.x)
 	# Stop just short of the circle so cone + circle read as one composition.
 	var tip_len := length * (0.92 if power_preview else 0.88)
-	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.10)
-	var tip := from + dir * tip_len + right * (shape_bend * tip_len * 0.20)
+	# Tip must sit on the aim axis — bending it offline was desyncing the landing circle.
+	var tip := from + dir * tip_len
+	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.08)
 	var near_w := near_half_w * (0.55 if power_preview else 1.0)
 	var far_w := far_half_w * (0.7 if power_preview else 1.0)
 	var pts := PackedVector2Array([

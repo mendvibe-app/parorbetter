@@ -52,7 +52,7 @@ var _green_center: Vector2 = Vector2.ZERO
 var _tee_pos: Vector2 = Vector2(540, TEE_Y)
 var _fairway_half: float = 70.0
 var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
-var _green_book: Node2D  ## aim-only yardage-book overlay (heat + slope arrow)
+var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
 
 var _aiming: bool = false
 var _selecting_club: bool = false
@@ -378,10 +378,15 @@ func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
 			if place_bunker:
 				_add_bunker(Vector2(540 + 40, 120), 36.0, 2)
 		HoleData.LayoutStyle.ISLAND:
-			# Water ring is the island identity.
-			_add_rect(course_root, Rect2(540 - 160, GREEN_Y - 30, 90, 160), water_tint, "water", TEX_WATER, 260.0)
-			_add_rect(course_root, Rect2(540 + 70, GREEN_Y - 30, 90, 160), water_tint, "water", TEX_WATER, 260.0)
-			_add_rect(course_root, Rect2(540 - 100, GREEN_Y + 90, 200, 70), water_tint, "water", TEX_WATER, 260.0)
+			# Keep water outside green detection + ball Area sensor (10px).
+			# Fixed (540±70) rects used to overlap the putting surface on early/large greens.
+			var clear := maxf(hole.green_radius_x, hole.green_radius_y) + 14.0 + 12.0
+			var side_w := 90.0
+			var side_h := 160.0
+			var side_y := GREEN_Y - 30.0
+			_add_rect(course_root, Rect2(540.0 - clear - side_w, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
+			_add_rect(course_root, Rect2(540.0 + clear, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
+			_add_rect(course_root, Rect2(540.0 - 100.0, GREEN_Y + clear, 200.0, 70.0), water_tint, "water", TEX_WATER, 260.0)
 			if place_bunker:
 				_add_bunker(Vector2(540 + side * 90, 300), 40.0, 0)
 		HoleData.LayoutStyle.BI_TIER:
@@ -503,33 +508,15 @@ func _build_green_book() -> void:
 				]),
 				"color": heat_lut[ci],
 			})
-
-	# Downhill arrow from the shared slope field (replaces marching-squares contours).
-	var slope := hole.green_slope_at(Vector2.ZERO)
-	if slope.length() > 0.02:
-		drawer.arrow_dir = slope.normalized()
-		drawer.arrow_len = minf(rx, ry) * 0.38
 	drawer.queue_redraw()
 
 
 class _GreenBookDraw extends Node2D:
 	var heat: Array = []
-	var arrow_dir: Vector2 = Vector2.ZERO
-	var arrow_len: float = 0.0
-	var arrow_width: float = 2.4
 
 	func _draw() -> void:
 		for h in heat:
 			draw_colored_polygon(h["pts"], h["color"])
-		if arrow_dir == Vector2.ZERO or arrow_len <= 0.0:
-			return
-		var tip := arrow_dir * arrow_len
-		var base := -arrow_dir * arrow_len * 0.15
-		var c := Color(0.08, 0.12, 0.1, 0.78)
-		draw_line(base, tip, c, arrow_width, true)
-		var across := Vector2(-arrow_dir.y, arrow_dir.x) * arrow_len * 0.18
-		draw_line(tip, tip - arrow_dir * arrow_len * 0.22 + across, c, arrow_width, true)
-		draw_line(tip, tip - arrow_dir * arrow_len * 0.22 - across, c, arrow_width, true)
 
 
 func _should_show_green_book() -> bool:
@@ -569,9 +556,6 @@ func _sync_screen_line_widths() -> void:
 			if c is Line2D:
 				var target_px := float(c.get_meta("screen_px", 2.2))
 				(c as Line2D).width = target_px / z
-			elif c is _GreenBookDraw:
-				(c as _GreenBookDraw).arrow_width = 2.4 / z
-				(c as _GreenBookDraw).queue_redraw()
 
 
 func _add_rect(parent: Node2D, rect: Rect2, color: Color, group: String, texture: Texture2D = null, tile_px: float = 300.0) -> Area2D:
@@ -755,7 +739,7 @@ func _begin_aim_phase() -> void:
 				wind_banner.text = "%s\n%s" % [wind_txt, wind_advice]
 	var club_bit := String(_chosen_club.get("name", ""))
 	if is_putt:
-		feedback.text = "READ THE GREEN  ○%d yd — drag aim, then Confirm" % int(_aim_radius_yd)
+		_refresh_putt_pace_feedback()
 	elif show_book:
 		feedback.text = "%s  ·  AIM + GREEN READ  ○%d yd — drag line/shape, Confirm" % [
 			club_bit, int(_aim_radius_yd)
@@ -869,16 +853,28 @@ func _start_power_swing(p_practice: bool = false) -> void:
 	_set_green_book_visible(false)
 	if p_practice:
 		feedback.text = "Practice — find your tempo. Confirm Aim when ready."
+	elif lie == "Green":
+		var pace_yd := BallPhysics.estimate_carry_yards(
+			shot_routine.committed_power, club_max, lie
+		)
+		feedback.text = "Putter · pace %d yd (%d%%) · nail the tempo" % [
+			int(pace_yd), int(shot_routine.committed_power * 100.0)
+		]
 	else:
 		feedback.text = "%s · committed %d%% · nail the tempo" % [
 			club_name, int(shot_routine.committed_power * 100.0)
 		]
 
 
+func _refresh_putt_pace_feedback() -> void:
+	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
+	var pace_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
+	feedback.text = "READ THE GREEN  ·  pin %d yd  ·  pace %d yd" % [int(pin_yd), int(pace_yd)]
+	feedback.modulate = Color(0.95, 0.92, 0.7)
+
+
 func _apply_committed_preview() -> void:
 	var lie := ball.get_lie()
-	if lie == "Green":
-		return
 	var club_max := float(_chosen_club.get("max_yards", shot_routine.club_max_yards))
 	var power := shot_routine.committed_power
 	var est := BallPhysics.estimate_carry_yards(power, club_max, lie)
@@ -1000,8 +996,10 @@ func _accept_mouse() -> bool:
 func _apply_aim_world(world: Vector2) -> void:
 	var from := ball.global_position
 	if ball.get_lie() == "Green":
-		# Putts still aim a real point on the green.
+		# Putts aim a real point — distance is the pace commit.
 		_aim_target = AimControl.clamp_aim(world)
+		if _aiming:
+			_refresh_putt_pace_feedback()
 	else:
 		_aim_target = AimControl.retarget_bearing(from, world, _aim_lock_yards)
 	_refresh_aim_visuals()
@@ -1019,7 +1017,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
 			_aim_dragging = true
-			var world := get_viewport().get_canvas_transform().affine_inverse() * touch.position
+			var screen := AimControl.touch_aim_screen(touch.position)
+			var world := get_viewport().get_canvas_transform().affine_inverse() * screen
 			_apply_aim_world(world)
 		else:
 			_aim_dragging = false
@@ -1028,7 +1027,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 	if event is InputEventScreenDrag and _aim_dragging:
 		var drag := event as InputEventScreenDrag
-		var world := get_viewport().get_canvas_transform().affine_inverse() * drag.position
+		var screen := AimControl.touch_aim_screen(drag.position)
+		var world := get_viewport().get_canvas_transform().affine_inverse() * screen
 		_apply_aim_world(world)
 		get_viewport().set_input_as_handled()
 		return
@@ -1082,7 +1082,10 @@ func _on_shot_ready(result: ShotResult) -> void:
 		wind_banner.visible = false
 	var lie_at_strike := ball.get_lie()
 	_set_green_book_visible(false)
-	AudioBus.play_contact(result.contact_label())
+	if lie_at_strike == "Green":
+		AudioBus.play_putt()
+	else:
+		AudioBus.play_contact(result.contact_label())
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	var aim_offset := AimControl.aim_offset_label(ball.global_position, _aim_target, _cup_pos)
 	var wind_note := ""
@@ -1115,16 +1118,13 @@ func _on_shot_ready(result: ShotResult) -> void:
 	var slope: Vector2 = course_root.get_meta("slope", hole.green_slope)
 	ball.launch(result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center)
 	_follow_ball()
-	feedback.text = _last_report.summary_line()
+	# Panel owns the glance — don't stack the same tempo text on Feedback.
 	if result.is_perfect() and result.stance_stability >= 0.72:
 		feedback.text = "PURE"
 		feedback.modulate = Color(1.0, 0.92, 0.35)
 		_pulse_pure_label()
-	elif result.contact_quality == ShotResult.ContactQuality.FAT \
-		or result.contact_quality == ShotResult.ContactQuality.MISS \
-		or result.contact_quality == ShotResult.ContactQuality.THIN:
-		feedback.modulate = Color(1.0, 0.55, 0.4)
 	else:
+		feedback.text = ""
 		feedback.modulate = Color(0.9, 0.9, 0.9)
 
 
@@ -1252,7 +1252,8 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		_last_report.set_actual(actual)
 		GameState.last_shot_metrics["actual_yd"] = actual
 		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
-		feedback.text = _last_report.glance_text().replace("\n", "  ·  ")
+		# Panel owns the report; clearing Feedback avoids the stacked double-text bug.
+		feedback.text = ""
 		if shot_result_panel and shot_result_panel.has_method("show_final"):
 			shot_result_panel.show_final(_last_report)
 			if not shot_result_panel.dismissed.is_connected(_on_shot_report_dismissed):

@@ -25,15 +25,16 @@ const BAG: Array[Dictionary] = [
 ## Sensible swing pocket — outside this, force_factor > 0 (accuracy tax).
 const POWER_POCKET_LO := 0.60
 const POWER_POCKET_HI := 0.92
+## Fixed putter range — never derive from remaining (that canceled to a constant %).
+const PUTTER_MAX_YD := 35.0
 
 
 static func is_wedge_family(club_name: String) -> bool:
 	return club_name.contains("Wedge")
 
 
-static func putter_for(remaining_yd: float) -> Dictionary:
-	# Scale putter to this putt — avoid a huge 12–50 yd club on tap-ins
-	return {"name": "Putter", "max_yards": clampf(remaining_yd * 1.6, 4.0, 35.0)}
+static func putter_for(_remaining_yd: float = 0.0) -> Dictionary:
+	return {"name": "Putter", "max_yards": PUTTER_MAX_YD}
 
 
 ## Clubs the player may choose for this lie (excludes putter — green skips select).
@@ -42,7 +43,10 @@ static func clubs_for_lie(lie: String) -> Array[Dictionary]:
 	if lie == "Green":
 		return out
 	for club in BAG:
-		if lie == "Sand" and not is_wedge_family(String(club["name"])):
+		var name := String(club["name"])
+		if name == "Driver" and lie != "Tee":
+			continue
+		if lie == "Sand" and not is_wedge_family(name):
 			continue
 		out.append(club)
 	return out
@@ -169,7 +173,10 @@ static func launch_velocity(
 
 	var is_putt := lie == "Green"
 	var force := 0.0 if is_putt else force_factor(result.power)
-	var power_mul := result.power * lie_multiplier(lie) * contact_multiplier(result.contact_quality)
+	# Putts: tempo power_mul already leaked distance — don't stack contact ×0.4.
+	var power_mul := result.power * lie_multiplier(lie)
+	if not is_putt:
+		power_mul *= contact_multiplier(result.contact_quality)
 	# Mash doesn't buy clean extra yards — contact gets jumpy instead.
 	if force > 0.0 and result.power > POWER_POCKET_HI:
 		power_mul *= lerpf(1.0, 0.94, force)
@@ -177,26 +184,25 @@ static func launch_velocity(
 	var total_px := yards_to_pixels(total_yards)
 
 	if is_putt:
-		# Contact/path scale line more than full shots; soft clamp only
+		# Contact/path scale line; kept milder so tempo testing isn't a line lottery.
 		var contact_scale := 1.0
 		match result.contact_quality:
 			ShotResult.ContactQuality.PERFECT:
-				contact_scale = 0.55
+				contact_scale = 0.45
 			ShotResult.ContactQuality.GOOD:
-				contact_scale = 0.85
+				contact_scale = 0.70
 			ShotResult.ContactQuality.THIN, ShotResult.ContactQuality.FAT:
-				contact_scale = 1.35
+				contact_scale = 1.15
 			_:
-				contact_scale = 1.6
-		var line_miss := clampf(result.path_error, -1.0, 1.0) * 0.18 * contact_scale * (1.4 - result.stance_stability)
+				contact_scale = 1.35
+		var line_miss := clampf(result.path_error, -1.0, 1.0) * 0.14 * contact_scale * (1.25 - result.stance_stability * 0.7)
+		# THIN/FAT still shift pace; MISS distance already paid in tempo power_mul.
 		var dist_err := 1.0
 		match result.contact_quality:
 			ShotResult.ContactQuality.THIN:
 				dist_err = 1.12
 			ShotResult.ContactQuality.FAT:
 				dist_err = 0.78
-			ShotResult.ContactQuality.MISS:
-				dist_err = 0.65
 			_:
 				dist_err = 1.0
 		total_yards *= dist_err
