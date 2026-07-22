@@ -11,6 +11,7 @@ enum CourseTheme { PARKLAND, LINKS, DESERT }
 
 @export var hole_number: int = 1
 @export var par: int = 4
+@export var yardage: float = 400.0  ## tee→green yards (drives layout length)
 @export var fairway_width: float = 140.0
 @export var green_radius_x: float = 48.0
 @export var green_radius_y: float = 48.0

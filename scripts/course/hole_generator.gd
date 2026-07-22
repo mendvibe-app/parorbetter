@@ -286,8 +286,7 @@ static func generate_hole(
 
 	var arch: Dictionary = _pick_archetype(rng, par, archetype_history, t)
 
-	# Advances course RNG; visual length is fixed COURSE_LENGTH in the controller.
-	_pick_yardage(rng, par, t, arch)
+	var yardage := _pick_yardage(rng, par, t, arch)
 	var green_shape: HoleData.GreenShape = _pick_green_shape(rng, t, arch)
 	var layout := _layout_for_archetype(arch, green_shape, t, rng)
 	var has_bunker := rng.randf() < _bunker_chance(t, mods, float(arch.get("bunker", 1.0)))
@@ -354,6 +353,7 @@ static func generate_hole(
 	var d := HoleData.new()
 	d.hole_number = hole_number
 	d.par = par
+	d.yardage = yardage
 	d.fairway_width = fairway_width
 	d.green_radius_x = radii.x
 	d.green_radius_y = radii.y

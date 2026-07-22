@@ -32,7 +32,8 @@ static func clamp_aim(pos: Vector2) -> Vector2:
 
 
 const GREEN_Y_MIN := -200.0
-const TEE_Y_MAX := 920.0
+## Covers max par-5 band (~650 yd → tee Y ≈ 1380) + slack.
+const TEE_Y_MAX := 1500.0
 ## Screen-space nudge so the fingertip doesn't cover the aim marker (touch only).
 const TOUCH_AIM_OFFSET_PX := Vector2(0, -72)
 

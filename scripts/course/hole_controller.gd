@@ -4,9 +4,9 @@ extends Node2D
 signal request_game_over
 signal request_next_hole
 
-const COURSE_LENGTH := 980.0
-const TEE_Y := 860.0
 const GREEN_Y := -80.0
+## Legacy span used to convert old absolute hazard Y → fraction along tee→green.
+const _LEGACY_SPAN := 940.0
 const AIM_NUDGE_PX := 14.0
 ## Catch / draw radius. ~7px ≈ playable (not real 4.25"); was 14px + ball Area → magnetized.
 const CUP_RADIUS := 7.0
@@ -49,7 +49,7 @@ var ball_in_flight: bool = false
 var hole_complete: bool = false
 var _cup_pos: Vector2 = Vector2.ZERO
 var _green_center: Vector2 = Vector2.ZERO
-var _tee_pos: Vector2 = Vector2(540, TEE_Y)
+var _tee_pos: Vector2 = Vector2(540, 860.0)
 var _fairway_half: float = 70.0
 var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
@@ -214,6 +214,7 @@ func _make_range_hole() -> HoleData:
 	d.suggested_shape = HoleData.SuggestedShape.STRAIGHT
 	d.name_label = "RANGE"
 	d.archetype = "range"
+	d.yardage = 420.0
 	return d
 
 
@@ -239,12 +240,14 @@ func _build_course() -> void:
 	course_root.set_meta("wind", wind)
 	course_root.set_meta("slope", hole.green_slope)
 
-	_tee_pos = Vector2(540.0 + hole.tee_offset_x, TEE_Y)
+	var tee_y := GREEN_Y + BallPhysics.yards_to_pixels(maxf(hole.yardage, 80.0))
+	_tee_pos = Vector2(540.0 + hole.tee_offset_x, tee_y)
 	_green_center = Vector2(540.0, GREEN_Y)
 	_cup_pos = _green_center + hole.pin_offset
+	var course_len := (tee_y - GREEN_Y) + 180.0
 
 	# Rough apron
-	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, COURSE_LENGTH + 220), Color(0.92, 0.98, 0.92), "", TEX_ROUGH, 340.0)
+	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, course_len + 220), Color(0.92, 0.98, 0.92), "", TEX_ROUGH, 340.0)
 
 	# Bent / shaped fairway
 	_add_bent_fairway(fairway_w, hole.fairway_bend)
@@ -272,8 +275,8 @@ func _build_course() -> void:
 
 	_place_layout_hazards(adapt_bias)
 
-	_add_rect(course_root, Rect2(-80, GREEN_Y - 140, 70, COURSE_LENGTH + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
-	_add_rect(course_root, Rect2(1090, GREEN_Y - 140, 70, COURSE_LENGTH + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
+	_add_rect(course_root, Rect2(-80, GREEN_Y - 140, 70, course_len + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
+	_add_rect(course_root, Rect2(1090, GREEN_Y - 140, 70, course_len + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
 	_scatter_trees()
 	_add_fog_band()
 	_add_circle(course_root, _tee_pos, 8.0, Color(0.95, 0.95, 0.2), "")
@@ -284,9 +287,10 @@ func _build_course() -> void:
 func _add_bent_fairway(width: float, bend: float) -> void:
 	## Trapezoid / dogleg strip from tee to green.
 	var half := width * 0.5
+	var tee_y := _tee_pos.y
 	var top := Vector2(540.0 + bend * 0.35, GREEN_Y - 20.0)
-	var mid := Vector2(540.0 + bend, TEE_Y * 0.45 + GREEN_Y * 0.55)
-	var bot := Vector2(_tee_pos.x, TEE_Y - 20.0)
+	var mid := Vector2(540.0 + bend, tee_y * 0.45 + GREEN_Y * 0.55)
+	var bot := Vector2(_tee_pos.x, tee_y - 20.0)
 	var poly := Polygon2D.new()
 	poly.color = Color(1, 1, 1)
 	poly.texture = TEX_FAIRWAY
@@ -349,6 +353,11 @@ func _green_texture_for_hole() -> Texture2D:
 	return GREEN_SHAPE_TEXTURES.get(hole.green_shape, GREEN_DEFAULT)
 
 
+func _y_at(frac: float) -> float:
+	## 0 = green, 1 = tee. Fracs from legacy absolute Y / _LEGACY_SPAN.
+	return lerpf(GREEN_Y, _tee_pos.y, frac)
+
+
 func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
 	var side := 1.0
 	if adapt_bias == HoleData.HazardBias.LEFT:
@@ -358,25 +367,36 @@ func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
 
 	var place_bunker := hole.has_bunker
 	var place_water := hole.has_water
+	var h_scale := clampf((_tee_pos.y - GREEN_Y) / _LEGACY_SPAN, 0.35, 1.35)
 
 	var water_tint := Color(1, 1, 1, 0.92)
 	match hole.layout:
 		HoleData.LayoutStyle.DOGLEG_RIGHT:
 			if place_bunker:
-				_add_bunker(Vector2(540 + 110, 380), 50.0, 0)
+				_add_bunker(Vector2(540 + 110, _y_at(460.0 / _LEGACY_SPAN)), 50.0, 0)
 			if place_water:
-				_add_rect(course_root, Rect2(700, 200, 90, 180), water_tint, "water", TEX_WATER, 260.0)
+				_add_rect(
+					course_root,
+					Rect2(700, _y_at(280.0 / _LEGACY_SPAN), 90, 180.0 * h_scale),
+					water_tint, "water", TEX_WATER, 260.0
+				)
 		HoleData.LayoutStyle.DOGLEG_LEFT:
 			if place_bunker:
-				_add_bunker(Vector2(540 - 120, 360), 55.0, 1)
+				_add_bunker(Vector2(540 - 120, _y_at(440.0 / _LEGACY_SPAN)), 55.0, 1)
 			if place_water:
-				_add_rect(course_root, Rect2(200, 160, 100, 220), water_tint, "water", TEX_WATER, 260.0)
+				_add_rect(
+					course_root,
+					Rect2(200, _y_at(240.0 / _LEGACY_SPAN), 100, 220.0 * h_scale),
+					water_tint, "water", TEX_WATER, 260.0
+				)
 		HoleData.LayoutStyle.CHUTE:
 			if place_water:
-				_add_rect(course_root, Rect2(540 - _fairway_half - 70, 250, 55, 280), water_tint, "water", TEX_WATER, 260.0)
-				_add_rect(course_root, Rect2(540 + _fairway_half + 15, 250, 55, 280), water_tint, "water", TEX_WATER, 260.0)
+				var chute_y := _y_at(330.0 / _LEGACY_SPAN)
+				var chute_h := 280.0 * h_scale
+				_add_rect(course_root, Rect2(540 - _fairway_half - 70, chute_y, 55, chute_h), water_tint, "water", TEX_WATER, 260.0)
+				_add_rect(course_root, Rect2(540 + _fairway_half + 15, chute_y, 55, chute_h), water_tint, "water", TEX_WATER, 260.0)
 			if place_bunker:
-				_add_bunker(Vector2(540 + 40, 120), 36.0, 2)
+				_add_bunker(Vector2(540 + 40, _y_at(200.0 / _LEGACY_SPAN)), 36.0, 2)
 		HoleData.LayoutStyle.ISLAND:
 			# Keep water outside green detection + ball Area sensor (10px).
 			# Fixed (540±70) rects used to overlap the putting surface on early/large greens.
@@ -388,15 +408,19 @@ func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
 			_add_rect(course_root, Rect2(540.0 + clear, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
 			_add_rect(course_root, Rect2(540.0 - 100.0, GREEN_Y + clear, 200.0, 70.0), water_tint, "water", TEX_WATER, 260.0)
 			if place_bunker:
-				_add_bunker(Vector2(540 + side * 90, 300), 40.0, 0)
+				_add_bunker(Vector2(540 + side * 90, _y_at(380.0 / _LEGACY_SPAN)), 40.0, 0)
 		HoleData.LayoutStyle.BI_TIER:
 			if place_bunker:
-				_add_bunker(Vector2(540 + 80, 200), 48.0, 1)
+				_add_bunker(Vector2(540 + 80, _y_at(280.0 / _LEGACY_SPAN)), 48.0, 1)
 			if place_water:
-				_add_rect(course_root, Rect2(300, 140, 80, 200), water_tint, "water", TEX_WATER, 260.0)
+				_add_rect(
+					course_root,
+					Rect2(300, _y_at(220.0 / _LEGACY_SPAN), 80, 200.0 * h_scale),
+					water_tint, "water", TEX_WATER, 260.0
+				)
 		_:
 			if place_bunker and hole.hole_number >= 2:
-				_add_bunker(Vector2(540 + side * (_fairway_half + 36), 320), 42.0, 2)
+				_add_bunker(Vector2(540 + side * (_fairway_half + 36), _y_at(400.0 / _LEGACY_SPAN)), 42.0, 2)
 
 
 func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
@@ -416,7 +440,7 @@ func _scatter_trees() -> void:
 	rng.seed = hash("trees_%d" % hole.hole_number)
 	for strip_x in [-45.0, 1125.0]:
 		var y := GREEN_Y - 100.0
-		while y < TEE_Y + 60.0:
+		while y < _tee_pos.y + 60.0:
 			var tex: Texture2D = TREE_TEXTURES[rng.randi_range(0, TREE_TEXTURES.size() - 1)]
 			var spr := Sprite2D.new()
 			spr.texture = tex
