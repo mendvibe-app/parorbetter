@@ -23,10 +23,10 @@ color = Color(0.05, 0.08, 0.06, 0.65)
 layout_mode = 1
 offset_left = 24.0
 offset_top = 20.0
-offset_right = 700.0
+offset_right = 780.0
 offset_bottom = 76.0
 theme_override_font_sizes/font_size = 48
-text = "HOLE 1/6"
+text = "HOLE 1 · PAR 4 · 400 YDS"
 
 [node name="ScoreLabel" type="Label" parent="."]
 layout_mode = 1
@@ -35,7 +35,7 @@ offset_top = 84.0
 offset_right = 560.0
 offset_bottom = 136.0
 theme_override_font_sizes/font_size = 40
-text = "Par 4   Strokes 0"
+text = "Strokes 0"
 
 [node name="LivesRow" type="HBoxContainer" parent="."]
 layout_mode = 1
@@ -51,6 +51,7 @@ theme_override_constants/separation = 8
 alignment = 2
 
 [node name="AdaptLabel" type="Label" parent="."]
+visible = false
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
@@ -61,5 +62,5 @@ offset_right = -24.0
 offset_bottom = 136.0
 theme_override_colors/font_color = Color(0.92, 0.95, 0.88, 1)
 theme_override_font_sizes/font_size = 32
-text = "Neutral"
+text = ""
 horizontal_alignment = 2

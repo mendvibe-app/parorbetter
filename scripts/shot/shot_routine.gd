@@ -75,12 +75,11 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd)
 
-	var wind_str := "Wind %d %s" % [int(wind.length()), _wind_dir(wind)]
-	var ratio_t := TempoGrade.target_ratio(shot_type)
-	info_label.text = "%s  ·  Aim %d yd (pin %d)  ·  %s @ %d%%  ·  %s  ·  Tempo ~%.0f:1" % [
-		lie, int(aim_distance_yd), int(pin_distance_yd), club_name,
-		int(committed_power * 100.0), wind_str, ratio_t
-	]
+	# Pin yd is the rangefinder number — lie/club/wind/tempo live elsewhere (HUD cleanup).
+	if absf(aim_distance_yd - pin_distance_yd) < 1.5:
+		info_label.text = "%d yd" % int(pin_distance_yd)
+	else:
+		info_label.text = "Aim %d · pin %d yd" % [int(aim_distance_yd), int(pin_distance_yd)]
 
 
 func begin_shot(p_practice: bool = false) -> void:
@@ -229,7 +228,3 @@ func _emit_result(result: ShotResult) -> void:
 		pure_strike.emit(result)
 	shot_ready.emit(result)
 
-
-func _wind_dir(wind: Vector2) -> String:
-	var full := AimControl.wind_label(wind)
-	return full.replace("Wind ", "")

@@ -9,3 +9,5 @@ Log of gameplay-affecting decisions, added as they happen.
 - Pure-strike SFX: dropped the three-tone chime for a short low-mid noise knock + pitch-down release (same physical-transient approach as cup-in) so flush contact reads solid, not arcade-triumphant.
 - ~~Concurrent shot input~~ (retired): power/stance + swing timing dual pads resolved on impact tap.
 - ~~Early-release soft crush~~ (retired with dual-pad): lifting finger 1 crushed stability; replaced by balance-from-gesture.
+- **HUD cleanup (PR1):** scorecard header `HOLE n · PAR p · YDS`; AdaptLabel form/○radius/bias text retired (circle + F1 carry form); aim/shot copy shortened — wind advice sentences not always-on (flag-tap epic next).
+
