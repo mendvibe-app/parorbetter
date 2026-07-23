@@ -55,6 +55,9 @@ var last_tempo_metrics: Dictionary = {}
 ## Fadeable tempo guide — shows rhythm only, never widens windows.
 var tempo_guide_enabled: bool = true
 var tempo_guide_forced: bool = false
+## Tap-in fast path (putt ceremony skip). Playtest knobs via F1.
+var tap_in_yd: float = 4.0
+var tap_in_break: float = 0.12
 ## Driving range — infinite tee practice, no lives / hole advance.
 var range_mode: bool = false
 

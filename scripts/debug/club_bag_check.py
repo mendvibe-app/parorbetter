@@ -44,11 +44,15 @@ def pick_club(remaining: float, lie: str):
     return available[0]
 
 
-def force_factor(power: float) -> float:
+def force_factor(power: float, club_max: float = 0.0, lie: str = "") -> float:
     p = max(0.0, min(1.0, power))
     if p > POWER_POCKET_HI:
         return min(1.0, (p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI))
     if p < POWER_POCKET_LO:
+        if club_max > 0.0 and lie:
+            available = clubs_for_lie(lie)
+            if available and club_max <= available[-1][1] + 0.5:
+                return 0.0
         return min(1.0, (POWER_POCKET_LO - p) / POWER_POCKET_LO)
     return 0.0
 
@@ -82,6 +86,13 @@ def main() -> None:
     assert force_factor(1.0) == 1.0
     assert force_factor(0.0) == 1.0
     assert 0.4 < force_factor(0.3) < 0.6
+    # Gap is shortest — partial swing is correct short-game, not baby tax
+    assert force_factor(0.40, 85.0, "Fairway") == 0.0
+    assert force_factor(0.40, 85.0, "Sand") == 0.0
+    # PW partial still taxed (should have used Gap)
+    assert force_factor(0.40, 110.0, "Fairway") > 0.3
+    # Mash on Gap still taxed
+    assert force_factor(1.0, 85.0, "Fairway") == 1.0
 
     print("club_bag_check: ok")
 

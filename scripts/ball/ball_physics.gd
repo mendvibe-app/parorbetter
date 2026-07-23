@@ -135,12 +135,23 @@ static func recommended_power(remaining_yd: float, club_max_yards: float, lie: S
 	return clampf(need / effective_max, 0.05, 1.0)
 
 
-## 0 = in the pocket, 1 = fully forced (mash near 100% or baby a club).
-static func force_factor(power: float) -> float:
+## True when this club is the shortest available for the lie (Gap on turf/sand).
+static func is_shortest_available(club_max_yards: float, lie: String) -> bool:
+	var available := clubs_for_lie(lie)
+	if available.is_empty():
+		return true
+	return club_max_yards <= float(available[available.size() - 1]["max_yards"]) + 0.5
+
+
+## 0 = in the pocket, 1 = fully forced (mash near 100% or baby a longer club).
+## Shortest-club partials skip baby tax — that's correct short-game, not wrong bag.
+static func force_factor(power: float, club_max_yards: float = 0.0, lie: String = "") -> float:
 	var p := clampf(power, 0.0, 1.0)
 	if p > POWER_POCKET_HI:
 		return clampf((p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI), 0.0, 1.0)
 	if p < POWER_POCKET_LO:
+		if club_max_yards > 0.0 and not lie.is_empty() and is_shortest_available(club_max_yards, lie):
+			return 0.0
 		return clampf((POWER_POCKET_LO - p) / POWER_POCKET_LO, 0.0, 1.0)
 	return 0.0
 
@@ -172,7 +183,7 @@ static func launch_velocity(
 		dir = Vector2(0, -1)
 
 	var is_putt := lie == "Green"
-	var force := 0.0 if is_putt else force_factor(result.power)
+	var force := 0.0 if is_putt else force_factor(result.power, club_max_yards, lie)
 	# Putts: tempo power_mul already leaked distance — don't stack contact ×0.4.
 	var power_mul := result.power * lie_multiplier(lie)
 	if not is_putt:

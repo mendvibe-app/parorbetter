@@ -76,7 +76,7 @@ func configure(
 		club_max_yards = float(club["max_yards"])
 
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
-	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd)
+	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
 	# Pin yd is the rangefinder number; lie/club are icons beside it.
 	if absf(aim_distance_yd - pin_distance_yd) < 1.5:
@@ -97,13 +97,20 @@ func begin_shot(p_practice: bool = false) -> void:
 	last_verdict.clear()
 	tempo_gesture.reset()
 	tempo_gesture.shot_type = shot_type
+	if shot_type == "putt":
+		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
 	tempo_gesture.set_enabled(true)
 	if meter_display:
 		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
+		if shot_type == "putt":
+			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	if practice_mode:
-		hint_label.text = "PRACTICE — follow the blue GUIDE ghost (~%.0f:1)." % TempoGrade.target_ratio(shot_type)
+		if shot_type == "putt":
+			hint_label.text = "PRACTICE PUTT — pull to the marker · match it back through."
+		else:
+			hint_label.text = "PRACTICE — follow the blue GUIDE ghost (~%.0f:1)." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
-		hint_label.text = "PUTT ~2:1 — follow blue ghost, or turn guide off in F1."
+		hint_label.text = "PUTT — pull to the marker · match it back through."
 	elif shot_type == "chip":
 		hint_label.text = "CHIP ~2:1 — follow blue ghost · don't linger at TOP."
 	else:
@@ -146,6 +153,12 @@ func _on_tempo_moment(name: String) -> void:
 	if meter_display:
 		meter_display.on_moment(name)
 	match name:
+		"takeaway":
+			if shot_type == "putt":
+				AudioBus.play_putt_tick(0.35)
+		"marker":
+			if shot_type == "putt":
+				AudioBus.play_putt_tick(0.7)
 		"top":
 			Input.vibrate_handheld(8)
 		"impact":
@@ -163,36 +176,76 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	if GameState.debug_balance_tighten != null:
 		bal_tighten = float(GameState.debug_balance_tighten)
 
-	var verdict := TempoGrade.grade(sample, shot_type, timing_scale, tol_scale, bal_tighten)
+	var verdict: Dictionary
+	if shot_type == "putt":
+		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten)
+	else:
+		verdict = TempoGrade.grade(sample, shot_type, timing_scale, tol_scale, bal_tighten)
 	last_verdict = verdict
 	GameState.last_tempo_metrics = verdict
 
 	if GameState.force_perfect:
-		verdict = {
-			"ratio": TempoGrade.target_ratio(shot_type),
-			"target": TempoGrade.target_ratio(shot_type),
-			"balance": 1.0,
-			"contact": ShotResult.ContactQuality.PERFECT,
-			"power_mul": 1.0,
-			"path_error": 0.0,
-			"note": "Tempo forced perfect",
-			"backswing_ms": 750,
-			"downswing_ms": 250,
-		}
+		if shot_type == "putt":
+			var tf := PuttStroke.marker_frac(committed_power)
+			verdict = {
+				"ratio": 1.0,
+				"target": tf,
+				"target_frac": tf,
+				"actual_frac": tf,
+				"follow_frac": tf,
+				"balance": 1.0,
+				"contact": ShotResult.ContactQuality.PERFECT,
+				"power_mul": 1.0,
+				"path_error": 0.0,
+				"note": "Putt forced perfect",
+				"backswing_ms": 400,
+				"downswing_ms": 400,
+			}
+		else:
+			verdict = {
+				"ratio": TempoGrade.target_ratio(shot_type),
+				"target": TempoGrade.target_ratio(shot_type),
+				"balance": 1.0,
+				"contact": ShotResult.ContactQuality.PERFECT,
+				"power_mul": 1.0,
+				"path_error": 0.0,
+				"note": "Tempo forced perfect",
+				"backswing_ms": 750,
+				"downswing_ms": 250,
+			}
 		last_verdict = verdict
+		GameState.last_tempo_metrics = verdict
 	elif GameState.force_mishit:
-		verdict = {
-			"ratio": 1.2,
-			"target": TempoGrade.target_ratio(shot_type),
-			"balance": 0.25,
-			"contact": ShotResult.ContactQuality.FAT,
-			"power_mul": 0.55,
-			"path_error": 0.8,
-			"note": "Tempo forced mishit",
-			"backswing_ms": 200,
-			"downswing_ms": 180,
-		}
+		if shot_type == "putt":
+			var tf2 := PuttStroke.marker_frac(committed_power)
+			verdict = {
+				"ratio": 0.55,
+				"target": tf2,
+				"target_frac": tf2,
+				"actual_frac": tf2 * 0.55,
+				"follow_frac": tf2 * 0.3,
+				"balance": 0.25,
+				"contact": ShotResult.ContactQuality.FAT,
+				"power_mul": 0.55,
+				"path_error": 0.55,
+				"note": "Putt forced mishit",
+				"backswing_ms": 180,
+				"downswing_ms": 120,
+			}
+		else:
+			verdict = {
+				"ratio": 1.2,
+				"target": TempoGrade.target_ratio(shot_type),
+				"balance": 0.25,
+				"contact": ShotResult.ContactQuality.FAT,
+				"power_mul": 0.55,
+				"path_error": 0.8,
+				"note": "Tempo forced mishit",
+				"backswing_ms": 200,
+				"downswing_ms": 180,
+			}
 		last_verdict = verdict
+		GameState.last_tempo_metrics = verdict
 
 	var contact: ShotResult.ContactQuality = verdict["contact"]
 	var bal: float = float(verdict["balance"])

@@ -38,7 +38,8 @@ def main() -> int:
     assert "_wind_dir" not in SHOT
 
     assert "class_name WindFlag" in FLAG
-    assert "wind_aim_hint" in FLAG
+    assert "mph" in FLAG, "tap tip is just the speed"
+    assert "wind_aim_hint" not in FLAG, "advice sentence retired; direction reads from lean"
     assert "MAX_LEAN" in FLAG
     assert "pin_flag.png" in FLAG
 

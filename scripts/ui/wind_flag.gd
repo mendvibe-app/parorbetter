@@ -90,16 +90,14 @@ func _process(_delta: float) -> void:
 	var t := float(Time.get_ticks_msec()) * 0.001
 	# ponytail: lean capped ~35°; cloth sim if this ever looks silly in a gale.
 	var lean_amt := clampf(strength / 40.0, 0.0, 1.0)
-	var side := 0.0
-	if absf(_wind.x) > 0.5:
-		side = signf(_wind.x)
-	elif strength >= 4.0:
-		side = signf(_wind.x) if _wind.x != 0.0 else 1.0
+	# Lean = crosswind only; pure head/tail wind keeps the flag upright (flutter only).
+	var side := signf(_wind.x) if absf(_wind.x) > 0.5 else 0.0
 	var lean := side * lean_amt * MAX_LEAN
 	var wave := 0.0
 	if lean_amt > 0.02:
 		var speed := 1.2 + lean_amt * 3.5
-		wave = sin(t * speed * TAU) * deg_to_rad(5.0 + lean_amt * 7.0)
+		# Flutter amplitude scales with strength so a wind-4 breeze barely ripples.
+		wave = sin(t * speed * TAU) * deg_to_rad(12.0 * lean_amt)
 	_flag.rotation = lean + wave
 
 	if _tip.visible and Time.get_ticks_msec() >= _tip_until_msec:
@@ -120,10 +118,7 @@ func _on_gui_input(event: InputEvent) -> void:
 
 func _show_tip() -> void:
 	var lines: PackedStringArray = PackedStringArray()
-	lines.append(AimControl.wind_label(_wind))
-	var advice := AimControl.wind_aim_hint(_wind)
-	if not advice.is_empty():
-		lines.append(advice)
+	lines.append("%d mph" % int(roundf(_wind.length())))
 	if not _extra.is_empty():
 		lines.append(_extra)
 	_tip.text = "\n".join(lines)

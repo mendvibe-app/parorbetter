@@ -21,12 +21,16 @@ BAND_GOOD = 1.15
 BAND_THIN_FAT = 1.85
 PURE_BALANCE = 0.72
 CHIP_YD = 50.0
+CHIP_POWER_CAP = 0.42
 
 
-def shot_type_for(lie: str, remaining_yd: float) -> str:
+def shot_type_for(lie: str, remaining_yd: float, club_max_yards: float = 0.0) -> str:
     if lie == "Green":
         return "putt"
-    if remaining_yd < CHIP_YD:
+    gate = CHIP_YD
+    if club_max_yards > 1.0:
+        gate = min(CHIP_YD, club_max_yards * CHIP_POWER_CAP)
+    if remaining_yd < gate:
         return "chip"
     return "full"
 
@@ -124,15 +128,23 @@ def main() -> int:
     assert "practice_mode" in ROUTINE
     assert "PURE_BALANCE" in ROUTINE
     assert "CHIP_YD := 50.0" in GRADE
+    assert "CHIP_POWER_CAP" in GRADE
     assert 'club_name.contains("Wedge")' not in GRADE
-    assert "remaining_yd < CHIP_YD" in GRADE
-    # Chip vs full is swing size (distance), not club identity — full wedge ≠ chip
+    assert "club_max_yards" in GRADE
+    # Chip vs full is swing size, not club identity — but gate caps by club % so Gap
+    # isn't forced onto 2:1 while still near a stock swing.
     assert shot_type_for("Fairway", 90.0) == "full"
     assert shot_type_for("Fairway", 70.0) == "full"
-    assert shot_type_for("Fairway", 49.0) == "chip"
+    assert shot_type_for("Fairway", 49.0) == "chip"  # no club → absolute CHIP_YD
     assert shot_type_for("Fairway", 10.0) == "chip"
     assert shot_type_for("Green", 90.0) == "putt"
     assert shot_type_for("Sand", 80.0) == "full"
+    # Gap 85 yd: chip gate = min(50, 85*0.42) ≈ 35.7 — 40 yd stays full like an iron
+    assert shot_type_for("Fairway", 40.0, 85.0) == "full"
+    assert shot_type_for("Fairway", 30.0, 85.0) == "chip"
+    # Mid-iron unchanged: still chips below 50
+    assert shot_type_for("Fairway", 49.0, 160.0) == "chip"
+    assert shot_type_for("Fairway", 55.0, 160.0) == "full"
 
     # Speed invariance: same ratio at 2× overall speed grades identically
     slow = {"t_takeaway": 0.0, "t_top": 0.75, "t_impact": 1.0, "max_accel": 2.0, "max_jerk": 0.2, "backswing_len": 0.35, "follow_through_len": 0.15, "incomplete": False}

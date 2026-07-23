@@ -161,3 +161,16 @@ func play_ui() -> void:
 ## Soft metronome tick for fadeable tempo guide — golf-leaning, not arcade beep.
 func play_tick(volume_scale: float = 1.0) -> void:
 	play_tone("ui", 520.0, 0.035, lerpf(-22.0, -14.0, clampf(volume_scale, 0.0, 1.0)))
+
+
+## Soft putt-pad ticks (takeaway / marker cross) — cooler + quieter than swing metronome.
+func play_putt_tick(volume_scale: float = 1.0) -> void:
+	play_tone("ui", 380.0, 0.028, lerpf(-24.0, -16.0, clampf(volume_scale, 0.0, 1.0)))
+
+
+## Gentle pure-putt chime — replaces the full-swing compression crack on greens.
+func play_putt_pure() -> void:
+	play_tone("perfect", 660.0, 0.08, -10.0)
+	get_tree().create_timer(0.06).timeout.connect(
+		func(): play_tone("perfect", 880.0, 0.12, -8.0), CONNECT_ONE_SHOT
+	)

@@ -666,9 +666,53 @@ func _start_shot_ui() -> void:
 	if lie == "Green":
 		var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 		_chosen_club = BallPhysics.putter_for(pin_yd)
-		_begin_aim_phase()
+		if _is_tap_in(pin_yd):
+			_begin_tap_in_stroke(pin_yd)
+		else:
+			_begin_aim_phase()
 	else:
 		_begin_club_select()
+
+
+func _is_tap_in(pin_yd: float) -> bool:
+	## Short + flat → skip read/aim ceremony; stroke still required.
+	if pin_yd > GameState.tap_in_yd:
+		return false
+	var local := ball.global_position - _green_center
+	var break_mag := hole.green_slope_at(local).length()
+	return break_mag <= GameState.tap_in_break
+
+
+func _begin_tap_in_stroke(pin_yd: float) -> void:
+	## Auto-aim slightly past the cup; go straight to the putt stroke.
+	_aiming = false
+	_aim_dragging = false
+	_selecting_club = false
+	if _club_select:
+		_club_select.dismiss()
+	if confirm_aim_btn:
+		confirm_aim_btn.visible = false
+	if _practice_btn:
+		_practice_btn.visible = false
+	_set_green_book_visible(false)
+	_refresh_wind_indicator(false)
+	_aim_radius_base_yd = GameState.get_aim_radius_yards(true)
+	_aim_radius_yd = _aim_radius_base_yd
+	var from := ball.global_position
+	var to_cup := _cup_pos - from
+	var past := maxf(pin_yd * 0.15, 0.4)  # small past-hole pace bias
+	var past_px := BallPhysics.yards_to_pixels(past)
+	if to_cup.length_squared() < 1.0:
+		_aim_target = _cup_pos
+	else:
+		_aim_target = AimControl.clamp_aim(_cup_pos + to_cup.normalized() * past_px)
+	_aim_lock_yards = BallPhysics.pixels_to_yards(from.distance_to(_aim_target))
+	_power_previewing = true
+	_refresh_aim_visuals()
+	_set_aim_visuals_visible(true)
+	feedback.text = "Tap-in · stroke"
+	feedback.modulate = Color(0.75, 0.9, 0.95)
+	_start_power_swing(false)
 
 
 func _begin_club_select() -> void:
@@ -1170,7 +1214,10 @@ func _on_shot_ready(result: ShotResult) -> void:
 
 func _on_pure_strike(_result: ShotResult) -> void:
 	## Slow-mo + camera punch + haptic + visual pop (sound-off parity).
-	AudioBus.play_pure()
+	if ball.get_lie() == "Green":
+		AudioBus.play_putt_pure()
+	else:
+		AudioBus.play_pure()
 	GameState.record_pure_strike()
 	# ponytail: one sharp pulse for pure; scale duration by contact quality after playtest
 	Input.vibrate_handheld(22)

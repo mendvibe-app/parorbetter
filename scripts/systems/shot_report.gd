@@ -40,7 +40,11 @@ static func from_shot(
 	r.contact = result.contact_label()
 	r.contact_mul = BallPhysics.contact_multiplier(result.contact_quality)
 	r.lie_mul = BallPhysics.lie_multiplier(p_lie)
-	r.planned_yards = p_club_max * result.power * r.lie_mul * r.contact_mul
+	# Putts skip contact_mul in launch_velocity — don't lie in the planned yards.
+	if p_lie == "Green":
+		r.planned_yards = p_club_max * result.power * r.lie_mul
+	else:
+		r.planned_yards = p_club_max * result.power * r.lie_mul * r.contact_mul
 	r.aim_radius_yd = p_aim_radius_yd
 	r.aim_offset = p_aim_offset
 	r.wind_note = p_wind_note
@@ -59,6 +63,9 @@ func set_actual(yards: float) -> void:
 
 func _build_reasons(result: ShotResult) -> void:
 	reasons.clear()
+	if lie == "Green":
+		_build_putt_reasons(result)
+		return
 	match result.contact_quality:
 		ShotResult.ContactQuality.PERFECT:
 			reasons.append("Contact PURE — small distance bonus")
@@ -71,7 +78,7 @@ func _build_reasons(result: ShotResult) -> void:
 		ShotResult.ContactQuality.MISS:
 			reasons.append("Contact MISS — only %d%% distance" % int(contact_mul * 100.0))
 
-	var force := BallPhysics.force_factor(power)
+	var force := BallPhysics.force_factor(power, club_max_yards, lie)
 	if force > 0.35:
 		if power >= BallPhysics.POWER_POCKET_HI:
 			reasons.append("Forced mash (%d%%) — accuracy tax" % int(power * 100.0))
@@ -103,8 +110,6 @@ func _build_reasons(result: ShotResult) -> void:
 			reasons.append("Lie ROUGH — %d%% club distance" % int(lie_mul * 100.0))
 		"Sand":
 			reasons.append("Lie SAND — %d%% club distance" % int(lie_mul * 100.0))
-		"Green":
-			reasons.append("Putt — rolls toward aim")
 		"Tee":
 			reasons.append("Lie TEE")
 		_:
@@ -127,19 +132,55 @@ func _build_reasons(result: ShotResult) -> void:
 		reasons.append("WHY SHORT: bad lie eats distance")
 
 
+func _build_putt_reasons(result: ShotResult) -> void:
+	match result.contact_quality:
+		ShotResult.ContactQuality.PERFECT:
+			reasons.append("Stroke length on pace")
+		ShotResult.ContactQuality.GOOD:
+			reasons.append("Stroke length close")
+		ShotResult.ContactQuality.FAT:
+			reasons.append("Stroke short — left it")
+		ShotResult.ContactQuality.THIN:
+			reasons.append("Stroke long — past the hole")
+		ShotResult.ContactQuality.MISS:
+			reasons.append("Stroke way off pace")
+	if absf(path_error) > 0.35:
+		var side := "right" if path_error > 0.0 else "left"
+		reasons.append("Pushed/pulled %s of the line" % side)
+	elif absf(path_error) > 0.18:
+		var side2 := "right" if path_error > 0.0 else "left"
+		reasons.append("Line a bit %s" % side2)
+	if stance < 0.4:
+		reasons.append("Stroke tempo spoiled the roll")
+	elif stance >= PuttStroke.PURE_BALANCE:
+		reasons.append("Smooth stroke")
+	reasons.append("Putt — rolls toward aim")
+	if aim_offset != "":
+		reasons.append("Aimed %s vs pin" % aim_offset)
+
+
 func summary_line() -> String:
 	return glance_text()
 
 
 func glance_text() -> String:
-	## One glance: tempo diagnosis + contact + balance word + yards if known.
+	## One glance: putt → distance/line hero; full → tempo diagnosis.
 	var hero := tempo_note
 	if hero.is_empty() and not GameState.last_tempo_metrics.is_empty():
 		hero = str(GameState.last_tempo_metrics.get("note", ""))
 	if hero.is_empty():
-		hero = "Tempo —"
+		hero = "Putt —" if lie == "Green" else "Tempo —"
 	var bal_word := "steady" if stance >= TempoGrade.PURE_BALANCE else ("shaky" if stance >= 0.4 else "lurch")
-	var sub := "Contact %s · Balance %s" % [contact.to_upper(), bal_word]
+	var sub: String
+	if lie == "Green":
+		var line := "on line"
+		if absf(path_error) > 0.35:
+			line = "pushed right" if path_error > 0.0 else "pulled left"
+		elif absf(path_error) > 0.18:
+			line = "a bit right" if path_error > 0.0 else "a bit left"
+		sub = "%s · %s" % [contact.to_upper(), line]
+	else:
+		sub = "Contact %s · Balance %s" % [contact.to_upper(), bal_word]
 	var yards := ""
 	if actual_yards >= 0.0:
 		yards = "\n→ %d yd" % int(actual_yards)

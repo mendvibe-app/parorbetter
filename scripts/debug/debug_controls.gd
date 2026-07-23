@@ -21,6 +21,9 @@ signal exit_range
 @onready var release_check: CheckButton = $Panel/VBox/ReleaseRow/ReleaseCheck
 @onready var guide_check: CheckButton = $Panel/VBox/GuideRow/GuideCheck
 
+var tap_yd_slider: HSlider
+var tap_break_slider: HSlider
+
 
 func _ready() -> void:
 	visible = true
@@ -40,6 +43,7 @@ func _ready() -> void:
 	ema_slider.value = TempoGesture.EMA_ALPHA
 	release_check.button_pressed = TempoGesture.RELEASE_IS_IMPACT
 	guide_check.button_pressed = GameState.tempo_guide_enabled
+	_add_tap_in_rows()
 	$Panel/VBox/ToggleHint.text = "F1 / Debug — toggle"
 	$Panel/VBox/Buttons/SkipBtn.pressed.connect(func(): skip_hole.emit())
 	$Panel/VBox/Buttons/JumpBtn.pressed.connect(func(): jump_hole.emit(int(hole_spin.value)))
@@ -74,6 +78,45 @@ func _ready() -> void:
 	)
 
 
+func _add_tap_in_rows() -> void:
+	## Playtest knobs for putt ceremony skip — inserted above the button grid.
+	var vbox := $Panel/VBox as VBoxContainer
+	var buttons := $Panel/VBox/Buttons as Control
+	var idx := buttons.get_index()
+
+	var yd_row := HBoxContainer.new()
+	yd_row.name = "TapYdRow"
+	var yd_lab := Label.new()
+	yd_lab.custom_minimum_size = Vector2(100, 0)
+	yd_lab.text = "Tap-in yd"
+	tap_yd_slider = HSlider.new()
+	tap_yd_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tap_yd_slider.min_value = 1.0
+	tap_yd_slider.max_value = 10.0
+	tap_yd_slider.step = 0.5
+	tap_yd_slider.value = GameState.tap_in_yd
+	yd_row.add_child(yd_lab)
+	yd_row.add_child(tap_yd_slider)
+	vbox.add_child(yd_row)
+	vbox.move_child(yd_row, idx)
+
+	var br_row := HBoxContainer.new()
+	br_row.name = "TapBreakRow"
+	var br_lab := Label.new()
+	br_lab.custom_minimum_size = Vector2(100, 0)
+	br_lab.text = "Tap break"
+	tap_break_slider = HSlider.new()
+	tap_break_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	tap_break_slider.min_value = 0.02
+	tap_break_slider.max_value = 0.40
+	tap_break_slider.step = 0.02
+	tap_break_slider.value = GameState.tap_in_break
+	br_row.add_child(br_lab)
+	br_row.add_child(tap_break_slider)
+	vbox.add_child(br_row)
+	vbox.move_child(br_row, idx + 1)
+
+
 func _park_below_hud() -> void:
 	## Sit under the HUD strip (incl. safe-area top) so Debug never shares AdaptLabel's band.
 	var btn := $DebugButton as Control
@@ -98,14 +141,22 @@ func _process(_delta: float) -> void:
 	var t: Dictionary = GameState.last_tempo_metrics
 	var tempo_line := "Tempo: —"
 	if not t.is_empty():
-		tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms\n%s" % [
-			float(t.get("ratio", 0.0)),
-			float(t.get("target", 3.0)),
-			int(float(t.get("balance", 0.0)) * 100.0),
-			int(t.get("backswing_ms", 0)),
-			int(t.get("downswing_ms", 0)),
-			str(t.get("note", "")),
-		]
+		if t.has("target_frac"):
+			tempo_line = "Putt frac %.2f (tgt %.2f)  bal %d%%\n%s" % [
+				float(t.get("actual_frac", 0.0)),
+				float(t.get("target_frac", 0.0)),
+				int(float(t.get("balance", 0.0)) * 100.0),
+				str(t.get("note", "")),
+			]
+		else:
+			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms\n%s" % [
+				float(t.get("ratio", 0.0)),
+				float(t.get("target", 3.0)),
+				int(float(t.get("balance", 0.0)) * 100.0),
+				int(t.get("backswing_ms", 0)),
+				int(t.get("downswing_ms", 0)),
+				str(t.get("note", "")),
+			]
 	if m.is_empty():
 		metrics.text = "Adapt: %s (%.2f)\nForm: %s (%.2f) circle %d yd\n%s\nLast shot: —" % [
 			GameState.bias_label(),
@@ -143,6 +194,10 @@ func _apply_tweaks() -> void:
 	TempoGesture.EMA_ALPHA = ema_slider.value
 	TempoGesture.RELEASE_IS_IMPACT = release_check.button_pressed
 	GameState.tempo_guide_enabled = guide_check.button_pressed
+	if tap_yd_slider:
+		GameState.tap_in_yd = tap_yd_slider.value
+	if tap_break_slider:
+		GameState.tap_in_break = tap_break_slider.value
 	if GameState.range_mode:
 		enter_range.emit()
 	else:

@@ -114,34 +114,6 @@ static func make_aim_cone(
 	return {"points": pts, "colors": cols}
 
 
-static func wind_label(wind: Vector2) -> String:
-	if wind.length() < 4.0:
-		return "Wind calm"
-	var a := rad_to_deg(atan2(wind.x, -wind.y))
-	var dir := "↑ into"
-	if a >= -45.0 and a < 45.0:
-		dir = "↓ helping"
-	elif a >= 45.0 and a < 135.0:
-		dir = "→ right-to-left push"
-	elif a >= -135.0 and a < -45.0:
-		dir = "← left-to-right push"
-	return "Wind %d  %s" % [int(wind.length()), dir]
-
-
-static func wind_aim_hint(wind: Vector2) -> String:
-	## Plain advice for where to shift the landing circle.
-	if wind.length() < 4.0:
-		return "No wind adjust needed"
-	# Ball is pushed in wind vector direction (x right, -y up/help toward pin from tee)
-	if absf(wind.x) >= absf(wind.y):
-		if wind.x > 0.0:
-			return "Aim LEFT of target (wind pushes right)"
-		return "Aim RIGHT of target (wind pushes left)"
-	if wind.y < 0.0:
-		return "Club down / aim shorter (helping wind)"
-	return "Take more club / aim longer (into wind)"
-
-
 static func aim_offset_label(ball_pos: Vector2, aim: Vector2, cup: Vector2) -> String:
 	var pin_dir := (cup - ball_pos).normalized()
 	if pin_dir == Vector2.ZERO:

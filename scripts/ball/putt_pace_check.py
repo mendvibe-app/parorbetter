@@ -62,13 +62,15 @@ def main() -> int:
     assert miss_roll <= intended * 0.55, miss_roll
     assert miss_roll > old_stack * 2.5, (miss_roll, old_stack)
 
-    # Tempo still owns the MISS distance floor
-    assert "power_mul = minf(power_mul, 0.50)" in GRADE or "min(power_mul, 0.50)" in GRADE
+    # Putt stroke owns the MISS distance floor (not TempoGrade ratio)
+    PUTT = DIR.joinpath("../shot/putt_stroke.gd").read_text(encoding="utf-8")
+    assert "power_mul = minf(power_mul, 0.50)" in PUTT or "min(power_mul, 0.50)" in PUTT
+    assert "PuttStroke" in DIR.joinpath("../shot/shot_routine.gd").read_text(encoding="utf-8")
 
     # Pace UI wired
     assert "_refresh_putt_pace_feedback" in HOLE
-    assert "pace %d yd" in HOLE
-    assert "pin %d yd" in HOLE
+    assert "pace %d yd" in HOLE or "pace %d" in HOLE
+    assert "Pin %d yd" in HOLE
 
     print("putt_pace_check: ok")
     return 0

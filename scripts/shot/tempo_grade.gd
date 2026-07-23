@@ -3,6 +3,7 @@ extends RefCounted
 
 ## Pure tempo math — backswing:downswing ratio vs target, balance as window modifier.
 ## Speed-invariant: only the ratio of the two intervals is graded.
+## Putts use PuttStroke (amplitude + path), not this ratio model.
 
 const TARGET_FULL := 3.0
 const TARGET_SHORT := 2.0
@@ -10,8 +11,11 @@ const TARGET_SHORT := 2.0
 const TOL_FULL := 1.1
 const TOL_SHORT := 0.85
 const PURE_BALANCE := 0.72
-## Below this aim distance → chip tempo (2:1); at/above → full (3:1), any club.
+## Below this aim distance → chip tempo (2:1); at/above → full (3:1).
 const CHIP_YD := 50.0
+## Cap chip-gate as a fraction of club max so short clubs (Gap) aren't forced
+## onto 2:1 while still swinging a near-stock % — same pad feel as longer clubs.
+const CHIP_POWER_CAP := 0.42
 
 ## Contact tiers by |ratio − target| / tolerance (after balance × timing scale).
 ## Slightly off stays GOOD; thin/fat only when clearly wrong; MISS = disaster.
@@ -20,11 +24,13 @@ const BAND_GOOD := 1.15
 const BAND_THIN_FAT := 1.85
 
 
-static func shot_type_for(lie: String, remaining_yd: float) -> String:
+static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
 	if lie == "Green":
 		return "putt"
-	# ponytail: distance = swing-size proxy; gate on committed_power (% of club) when player power-pick lands
-	if remaining_yd < CHIP_YD:
+	var gate := CHIP_YD
+	if club_max_yards > 1.0:
+		gate = minf(CHIP_YD, club_max_yards * CHIP_POWER_CAP)
+	if remaining_yd < gate:
 		return "chip"
 	return "full"
 
