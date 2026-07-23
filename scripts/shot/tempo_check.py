@@ -20,6 +20,15 @@ BAND_PERFECT = 0.50
 BAND_GOOD = 1.15
 BAND_THIN_FAT = 1.85
 PURE_BALANCE = 0.72
+CHIP_YD = 50.0
+
+
+def shot_type_for(lie: str, remaining_yd: float) -> str:
+    if lie == "Green":
+        return "putt"
+    if remaining_yd < CHIP_YD:
+        return "chip"
+    return "full"
 
 
 def ratio(t_takeaway: float, t_top: float, t_impact: float) -> float:
@@ -114,6 +123,16 @@ def main() -> int:
     assert "committed_power" in ROUTINE
     assert "practice_mode" in ROUTINE
     assert "PURE_BALANCE" in ROUTINE
+    assert "CHIP_YD := 50.0" in GRADE
+    assert 'club_name.contains("Wedge")' not in GRADE
+    assert "remaining_yd < CHIP_YD" in GRADE
+    # Chip vs full is swing size (distance), not club identity — full wedge ≠ chip
+    assert shot_type_for("Fairway", 90.0) == "full"
+    assert shot_type_for("Fairway", 70.0) == "full"
+    assert shot_type_for("Fairway", 49.0) == "chip"
+    assert shot_type_for("Fairway", 10.0) == "chip"
+    assert shot_type_for("Green", 90.0) == "putt"
+    assert shot_type_for("Sand", 80.0) == "full"
 
     # Speed invariance: same ratio at 2× overall speed grades identically
     slow = {"t_takeaway": 0.0, "t_top": 0.75, "t_impact": 1.0, "max_accel": 2.0, "max_jerk": 0.2, "backswing_len": 0.35, "follow_through_len": 0.15, "incomplete": False}
