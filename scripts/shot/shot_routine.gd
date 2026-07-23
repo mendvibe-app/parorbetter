@@ -28,7 +28,10 @@ var committed_power: float = 0.75
 var shot_type: String = "full"
 var last_verdict: Dictionary = {}
 
-@onready var info_label: Label = $InfoLabel
+@onready var info_label: Label = $GlanceRow/InfoLabel
+@onready var lie_icon: TextureRect = $GlanceRow/LieIcon
+@onready var club_icon: TextureRect = $GlanceRow/ClubIcon
+@onready var club_label: Label = $GlanceRow/ClubLabel
 @onready var meter_display: MeterDisplay = $MeterDisplay
 @onready var tempo_gesture: TempoGesture = $Controls/TempoGesture
 @onready var hint_label: Label = $HintLabel
@@ -75,11 +78,17 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd)
 
-	# Pin yd is the rangefinder number — lie/club/wind/tempo live elsewhere (HUD cleanup).
+	# Pin yd is the rangefinder number; lie/club are icons beside it.
 	if absf(aim_distance_yd - pin_distance_yd) < 1.5:
 		info_label.text = "%d yd" % int(pin_distance_yd)
 	else:
-		info_label.text = "Aim %d · pin %d yd" % [int(aim_distance_yd), int(pin_distance_yd)]
+		info_label.text = "Aim %d · pin %d" % [int(aim_distance_yd), int(pin_distance_yd)]
+	if lie_icon:
+		lie_icon.texture = HudIcons.lie_texture(lie)
+	if club_icon:
+		club_icon.texture = HudIcons.club_texture(club_name)
+	if club_label:
+		club_label.text = club_name
 
 
 func begin_shot(p_practice: bool = false) -> void:
@@ -102,6 +111,9 @@ func begin_shot(p_practice: bool = false) -> void:
 	phase_changed.emit("active")
 	set_active(true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var glance := get_node_or_null("GlanceRow") as Control
+	if glance:
+		glance.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if info_label:
 		info_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if hint_label:

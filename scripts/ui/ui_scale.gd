@@ -55,10 +55,11 @@ static func viewport_safe_margins(vp: Viewport) -> Vector4:
 
 
 ## Apply top/bottom safe insets to hole UI chrome.
+## `wind_slot` is the wind flag (or legacy banner) under feedback.
 static func apply_hole_safe_area(
 	hud: Control,
 	feedback: Control,
-	wind_banner: Control,
+	wind_slot: Control,
 	shot_panel: Control,
 	confirm_aim: Control,
 	shot_result: Control = null,
@@ -74,10 +75,10 @@ static func apply_hole_safe_area(
 
 	if feedback:
 		feedback.offset_top = FEEDBACK_TOP + top
-		feedback.offset_bottom = feedback.offset_top + 60.0
-	if wind_banner:
-		wind_banner.offset_top = WIND_TOP + top
-		wind_banner.offset_bottom = wind_banner.offset_top + 90.0
+		feedback.offset_bottom = feedback.offset_top + 80.0
+	if wind_slot:
+		wind_slot.offset_top = WIND_TOP + top
+		wind_slot.offset_bottom = wind_slot.offset_top + 128.0
 
 	if shot_result:
 		shot_result.offset_top = SHOT_RESULT_TOP + top
