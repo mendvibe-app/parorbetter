@@ -32,6 +32,8 @@ var trail: PackedVector2Array = PackedVector2Array()
 var shot_type: String = "full"
 ## Putt: target backswing fraction of lane (set by ShotRoutine). Unused for full/chip.
 var putt_target_frac: float = 0.5
+## Practice only — scored strokes stay blind on length (no PACE tick / band).
+var putt_show_marker: bool = false
 var peak_pos: Vector2 = Vector2.ZERO
 var status: String = ""  ## PULL | TOP | THROUGH | ""
 
@@ -79,7 +81,11 @@ func _is_putt() -> bool:
 
 
 func _idle_prompt() -> String:
-	return "Press · pull to marker · through" if _is_putt() else "Press gold · pull UP · through"
+	if not _is_putt():
+		return "Press gold · pull UP · through"
+	if putt_show_marker:
+		return "Press · pull to marker · through"
+	return "Press · pull to your pace · through"
 
 
 func address_hint() -> Vector2:
@@ -133,12 +139,16 @@ func trail_color() -> Color:
 
 
 func _putt_trail_color() -> Color:
+	## Live color = tempo smoothness only — never length-vs-target (that's the answer leak).
 	if not _axis_locked:
 		return Color(0.45, 0.7, 0.85, 0.75)
-	var abs_n := absf(live_backswing_frac() - putt_target_frac) / maxf(PuttStroke.BAND_HALF, 0.01)
-	if abs_n <= PuttStroke.BAND_PERFECT:
+	# Mirror TempoGrade.balance accel/jerk pens (putt-aware thresholds).
+	var accel_n := clampf((_max_accel - 8.0) / 24.0, 0.0, 1.0)
+	var jerk_n := clampf((_max_jerk - 0.6) / 1.4, 0.0, 1.0)
+	var rough := maxf(accel_n, jerk_n)
+	if rough <= 0.25:
 		return Color(0.4, 0.85, 0.95, 0.9)
-	if abs_n <= PuttStroke.BAND_GOOD:
+	if rough <= 0.55:
 		return Color(0.95, 0.85, 0.35, 0.9)
 	return Color(0.95, 0.4, 0.35, 0.9)
 
@@ -377,8 +387,8 @@ func _update(pos: Vector2) -> void:
 		trail.remove_at(0)
 	trail_updated.emit(trail)
 
-	# Putt: soft tick when pull first crosses the target marker.
-	if _is_putt() and not _marker_crossed and not had_top:
+	# Putt: soft tick when pull first crosses the target marker (practice only).
+	if _is_putt() and putt_show_marker and not _marker_crossed and not had_top:
 		var tgt_disp := putt_target_frac * _lane_len()
 		if _peak_disp >= tgt_disp:
 			_marker_crossed = true
@@ -505,34 +515,72 @@ func _draw() -> void:
 
 
 func _draw_putt() -> void:
-	## Cool palette, narrower lane, target marker + band + mirrored through target.
+	## Cool palette, narrower lane. Affordance only live; PACE/band practice-only.
 	var r := Rect2(Vector2.ZERO, size).grow(-8.0)
 	draw_rect(r, Color(0.06, 0.12, 0.16, 0.78), true)
 	draw_rect(r, Color(0.35, 0.7, 0.85, 0.75), false, 3.0)
 
 	var start := address_hint()
 	var top := top_hint()
+	var lane := _lane_len()
+	var through_dir := Vector2(0, 1)
+	var through_end := start + through_dir * (lane * 0.45)
+
+	# Arc-width lane: edge grows with distance (line affordance, no length answer).
+	_draw_putt_arc_lane(start, top, Color(0.15, 0.28, 0.35, 0.95), Color(0.3, 0.55, 0.7, 0.55))
+	draw_line(start, through_end, Color(0.15, 0.28, 0.35, 0.45), 10.0, true)
+
+	if putt_show_marker:
+		_draw_putt_practice_marker(start, top, through_dir)
+
+	# Address disc
+	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
+	if not dragging and _t_impact < 0.0:
+		draw_circle(start, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
+	draw_circle(start, 11.0, Color(0.55, 0.9, 1.0, 0.9))
+	draw_arc(start, 16.0, 0.0, TAU, 24, Color(0.55, 0.9, 1.0, 0.65 * pulse), 2.5, true)
+
+	# Live pull fill (color = smoothness, not length)
+	if dragging and _axis_locked:
+		var prog := clampf(_peak_disp / lane, 0.0, 1.0)
+		var tip: Vector2 = start.lerp(top, prog)
+		draw_line(start, tip, trail_color(), 8.0, true)
+
+	_draw_trail()
+	if dragging:
+		draw_circle(_smoothed, 10.0, Color(0.7, 0.95, 1.0, 0.9))
+	if status != "":
+		_draw_status_chip()
+
+
+func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Color) -> void:
+	## Center line + widening edges from arc_allowance — teaches path, not pace.
+	draw_line(start, top, fill_c, 14.0, true)
+	var steps := 8
+	var perp := Vector2(-(top - start).y, (top - start).x).normalized()
+	for i in range(steps):
+		var u0 := float(i) / float(steps)
+		var u1 := float(i + 1) / float(steps)
+		var a0 := PuttStroke.arc_allowance(u0) * size.y
+		var a1 := PuttStroke.arc_allowance(u1) * size.y
+		var p0: Vector2 = start.lerp(top, u0)
+		var p1: Vector2 = start.lerp(top, u1)
+		draw_line(p0 + perp * a0, p1 + perp * a1, edge_c, 2.0, true)
+		draw_line(p0 - perp * a0, p1 - perp * a1, edge_c, 2.0, true)
+
+
+func _draw_putt_practice_marker(start: Vector2, top: Vector2, through_dir: Vector2) -> void:
+	## Practice-only answer: PACE/THRU ticks + tolerance band.
 	var tgt := clampf(putt_target_frac, PuttStroke.MARKER_MIN_FRAC, PuttStroke.MARKER_MAX_FRAC)
 	var band := PuttStroke.BAND_HALF
 	var mark: Vector2 = start.lerp(top, tgt)
 	var band_lo: Vector2 = start.lerp(top, clampf(tgt - band, 0.0, 1.0))
 	var band_hi: Vector2 = start.lerp(top, clampf(tgt + band, 0.0, 1.0))
-	# Mirrored through target below address (matched halves).
-	var through_dir := Vector2(0, 1)
 	var through_mark := start + through_dir * (start.distance_to(mark))
 	var through_lo := start + through_dir * (start.distance_to(band_lo))
 	var through_hi := start + through_dir * (start.distance_to(band_hi))
-
-	# Narrow cool lane
-	draw_line(start, top, Color(0.15, 0.28, 0.35, 0.95), 16.0, true)
-	draw_line(start, top, Color(0.3, 0.55, 0.7, 0.65), 8.0, true)
-	draw_line(start, through_hi, Color(0.15, 0.28, 0.35, 0.55), 12.0, true)
-
-	# Tolerance bands (same space as grade)
 	draw_line(band_lo, band_hi, Color(0.35, 0.75, 0.9, 0.35), 22.0, true)
 	draw_line(through_lo, through_hi, Color(0.35, 0.75, 0.9, 0.22), 18.0, true)
-
-	# Target ticks
 	var tick_c := Color(0.55, 0.95, 1.0, 0.95)
 	draw_line(mark + Vector2(-20, 0), mark + Vector2(20, 0), tick_c, 3.5, true)
 	draw_string(
@@ -544,25 +592,6 @@ func _draw_putt() -> void:
 		ThemeDB.fallback_font, through_mark + Vector2(20, 6), "THRU",
 		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.85, 0.95, 0.7)
 	)
-
-	# Address disc
-	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
-	if not dragging and _t_impact < 0.0:
-		draw_circle(start, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
-	draw_circle(start, 11.0, Color(0.55, 0.9, 1.0, 0.9))
-	draw_arc(start, 16.0, 0.0, TAU, 24, Color(0.55, 0.9, 1.0, 0.65 * pulse), 2.5, true)
-
-	# Live pull fill
-	if dragging and _axis_locked:
-		var prog := clampf(_peak_disp / _lane_len(), 0.0, 1.0)
-		var tip: Vector2 = start.lerp(top, prog)
-		draw_line(start, tip, trail_color(), 8.0, true)
-
-	_draw_trail()
-	if dragging:
-		draw_circle(_smoothed, 10.0, Color(0.7, 0.95, 1.0, 0.9))
-	if status != "":
-		_draw_status_chip()
 
 
 func _draw_tempo_ghost(looping: bool) -> void:

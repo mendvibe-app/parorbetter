@@ -25,7 +25,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Dispersion circle (full shot) | `GameState.AIM_RADIUS_WEAK_YD/MID/PRO` (40 / 22 / 10 yd); `get_aim_radius_yards()` |
 | Dispersion circle (putt) | `GameState.PUTT_RADIUS_WEAK_YD/PRO` (2.7 / 1.0 yd) |
 | Form history window | `GameState.FORM_HISTORY_MAX` (8) |
-| Cup catch radius | `HoleController.CUP_RADIUS` (7.0 px) |
+| Cup catch radius | `HoleController.CUP_RADIUS` (12.0 px); ball `BALL_R` (5.0) — cup ≈ 2.4× ball |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |
 | Green slope field | `HoleData.green_slope` + `green_height_at` / `green_slope_at` (shared by putt physics + green book) |

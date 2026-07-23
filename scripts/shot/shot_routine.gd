@@ -78,8 +78,10 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
-	# Pin yd is the rangefinder number; lie/club are icons beside it.
-	if absf(aim_distance_yd - pin_distance_yd) < 1.5:
+	# Pin yd is the rangefinder number; putts stay blind (no live yardage during stroke).
+	if lie == "Green":
+		info_label.text = "Putt"
+	elif absf(aim_distance_yd - pin_distance_yd) < 1.5:
 		info_label.text = "%d yd" % int(pin_distance_yd)
 	else:
 		info_label.text = "Aim %d · pin %d" % [int(aim_distance_yd), int(pin_distance_yd)]
@@ -99,6 +101,9 @@ func begin_shot(p_practice: bool = false) -> void:
 	tempo_gesture.shot_type = shot_type
 	if shot_type == "putt":
 		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
+		tempo_gesture.putt_show_marker = practice_mode
+	else:
+		tempo_gesture.putt_show_marker = false
 	tempo_gesture.set_enabled(true)
 	if meter_display:
 		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
@@ -110,7 +115,7 @@ func begin_shot(p_practice: bool = false) -> void:
 		else:
 			hint_label.text = "PRACTICE — follow the blue GUIDE ghost (~%.0f:1)." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
-		hint_label.text = "PUTT — pull to the marker · match it back through."
+		hint_label.text = "PUTT — pull to your pace · match it back through."
 	elif shot_type == "chip":
 		hint_label.text = "CHIP ~2:1 — follow blue ghost · don't linger at TOP."
 	else:
@@ -178,7 +183,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 
 	var verdict: Dictionary
 	if shot_type == "putt":
-		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten)
+		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards)
 	else:
 		verdict = TempoGrade.grade(sample, shot_type, timing_scale, tol_scale, bal_tighten)
 	last_verdict = verdict

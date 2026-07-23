@@ -67,7 +67,7 @@ def main() -> None:
         assert path.is_file() and path.stat().st_size > 1000, f"parked missing {name}"
         _wav_pcm16(path)
     # procedural hooks still present
-    for fn in ("play_splash", "play_birdie", "play_ui", "play_tick"):
+    for fn in ("play_splash", "play_birdie", "play_ui", "play_tick", "set_roll_intensity"):
         assert f"func {fn}" in BUS, f"missing procedural {fn}"
     print("audio_bus_check: ok")
 

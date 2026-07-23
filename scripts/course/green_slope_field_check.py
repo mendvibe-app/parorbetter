@@ -73,6 +73,13 @@ def slope_at(local, slope, infs):
 
 
 def main() -> int:
+    from pathlib import Path
+
+    gen = Path(__file__).parent.joinpath("hole_generator.gd").read_text(encoding="utf-8")
+    # Slope must not ramp with round-progression t — per-hole roll instead.
+    assert "lerpf(0.04, 0.42, t)" not in gen
+    assert "lerpf(0.04, 0.42, rng.randf())" in gen
+
     slope = (0.3, 0.1)
     rx, ry = 50.0, 40.0
     pin = (20.0, -10.0)

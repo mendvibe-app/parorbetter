@@ -324,7 +324,7 @@ static func generate_hole(
 	wind.x = clampf(wind.x, -60.0, 60.0)
 	wind.y = clampf(wind.y * 0.35, -20.0, 20.0)
 
-	var slope_mag := lerpf(0.04, 0.42, t) * float(mods.get("slope_mult", 1.0))
+	var slope_mag := lerpf(0.04, 0.42, rng.randf()) * float(mods.get("slope_mult", 1.0))
 	var slope := Vector2(
 		rng.randf_range(-1.0, 1.0),
 		rng.randf_range(-1.0, 1.0)

@@ -44,7 +44,7 @@ var ground_lie_at: Callable = Callable()
 @onready var area: Area2D = $Area
 
 
-const BALL_R := 9.0
+const BALL_R := 5.0
 const TRAIL_TEX := preload("res://assets/ball/ball_trail.png")
 
 var _ball_scale: float = 1.0
@@ -362,6 +362,11 @@ func _process_roll(delta: float) -> void:
 	if collision and not _is_putt:
 		velocity = velocity.bounce(collision.get_normal()) * 0.3
 
+	if _lie == "Green":
+		AudioBus.set_roll_intensity(velocity.length() / 400.0)
+	else:
+		AudioBus.set_roll_intensity(0.0)
+
 	if velocity.length() < 10.0:
 		_finish_settle()
 
@@ -370,6 +375,7 @@ func _finish_settle() -> void:
 	velocity = Vector2.ZERO
 	state = State.SETTLED
 	set_physics_process(false)
+	AudioBus.set_roll_intensity(0.0)
 	_clear_ghosts()
 	if _lie != "Water" and _lie != "OOB":
 		_last_safe_pos = global_position
@@ -383,12 +389,13 @@ func _on_area_entered(other: Area2D) -> void:
 	if other.is_in_group("cup"):
 		# Area overlap includes this ball's ~10px sensor; require center inside the cup.
 		var cs := other.get_child(0) as CollisionShape2D
-		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 7.0
+		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 12.0
 		if global_position.distance_to(other.global_position) > cup_r:
 			return
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
+		AudioBus.set_roll_intensity(0.0)
 		_clear_ghosts()
 		holed_out.emit()
 		return
@@ -402,6 +409,7 @@ func _on_area_entered(other: Area2D) -> void:
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
+		AudioBus.set_roll_intensity(0.0)
 		entered_hazard.emit("water")
 		return
 	if other.is_in_group("oob"):
@@ -409,6 +417,7 @@ func _on_area_entered(other: Area2D) -> void:
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
+		AudioBus.set_roll_intensity(0.0)
 		entered_hazard.emit("oob")
 		return
 	if other.is_in_group("sand"):

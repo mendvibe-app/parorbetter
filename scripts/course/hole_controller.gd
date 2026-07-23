@@ -8,8 +8,8 @@ const GREEN_Y := -80.0
 ## Legacy span used to convert old absolute hazard Y → fraction along tee→green.
 const _LEGACY_SPAN := 940.0
 const AIM_NUDGE_PX := 14.0
-## Catch / draw radius. ~7px ≈ playable (not real 4.25"); was 14px + ball Area → magnetized.
-const CUP_RADIUS := 7.0
+## Catch / draw radius. Cup ≈ 2.4× ball (BALL_R 5) — real hole ≈ 2.5× ball.
+const CUP_RADIUS := 12.0
 
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
@@ -916,18 +916,14 @@ func _start_power_swing(p_practice: bool = false) -> void:
 	if p_practice:
 		feedback.text = "Practice — find your tempo"
 	elif lie == "Green":
-		var pace_yd := BallPhysics.estimate_carry_yards(
-			shot_routine.committed_power, club_max, lie
-		)
-		feedback.text = "Putter · pace %d yd" % int(pace_yd)
+		feedback.text = "Putter"
 	else:
 		feedback.text = "%s · nail the tempo" % club_name
 
 
 func _refresh_putt_pace_feedback() -> void:
-	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
-	var pace_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
-	feedback.text = "Pin %d yd · pace %d" % [int(pin_yd), int(pace_yd)]
+	## Spatial read only — no live pace/pin numbers (those leak the stroke answer).
+	feedback.text = "Putt — set line & pace"
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 
 

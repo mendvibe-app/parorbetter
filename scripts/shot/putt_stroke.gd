@@ -52,7 +52,8 @@ static func grade(
 	sample: Dictionary,
 	committed_power: float,
 	tol_scale: float = 1.0,
-	balance_tighten: float = 1.0
+	balance_tighten: float = 1.0,
+	club_max_yd: float = 35.0
 ) -> Dictionary:
 	var target := marker_frac(committed_power)
 	var band := BAND_HALF * maxf(tol_scale, 0.15)
@@ -101,7 +102,9 @@ static func grade(
 	if bal < 0.35:
 		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
 
-	var note := putt_note(frac_err, abs_n, path, bal, tempo_bias, contact)
+	var target_yd := committed_power * club_max_yd
+	var rolled_yd := clampf(committed_power * power_mul, 0.05, 1.0) * club_max_yd
+	var note := putt_note(target_yd, rolled_yd, path, bal, tempo_bias, abs_n, contact)
 
 	return {
 		"ratio": actual / maxf(target, 0.01),  # F1-friendly stand-in (not a tempo ratio)
@@ -109,6 +112,8 @@ static func grade(
 		"target_frac": target,
 		"actual_frac": actual,
 		"follow_frac": follow,
+		"target_yd": target_yd,
+		"rolled_yd": rolled_yd,
 		"balance": bal,
 		"tolerance": band,
 		"contact": contact,
@@ -122,11 +127,12 @@ static func grade(
 
 
 static func putt_note(
-	frac_err: float,
-	abs_n: float,
+	target_yd: float,
+	rolled_yd: float,
 	path: float,
 	bal: float,
 	tempo_bias: float,
+	abs_n: float,
 	contact: ShotResult.ContactQuality
 ) -> String:
 	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
@@ -136,18 +142,23 @@ static func putt_note(
 	elif absf(path) > 0.18:
 		line_word = " · a bit right" if path > 0.0 else " · a bit left"
 
+	var delta := rolled_yd - target_yd
+	var yd_core := "Target %.0f yd → %.1f" % [target_yd, rolled_yd]
+	if absf(delta) < 0.35:
+		yd_core += " — on pace"
+	elif delta < 0.0:
+		yd_core += " — %.1f short" % absf(delta)
+	else:
+		yd_core += " — %.1f long" % delta
+
 	# Amplitude was in band but tempo spoiled it — lead with tempo (real-instruction diagnostic).
 	if abs_n <= BAND_GOOD and absf(tempo_bias) > 0.02:
 		var why := "jabbed through" if tempo_bias > 0.0 else "decelerated into impact"
-		return "Length ok — %s (%s)%s" % [why, bal_word, line_word]
+		return "%s · %s (%s)%s" % [yd_core, why, bal_word, line_word]
 
 	if contact == ShotResult.ContactQuality.PERFECT or abs_n <= BAND_PERFECT:
-		return "On pace · %s%s" % [bal_word, line_word]
-	if frac_err < 0.0:
-		return "Pull shy — left it short%s · %s" % [line_word, bal_word]
-	if abs_n <= BAND_GOOD:
-		return "Pull a touch long%s · %s" % [line_word, bal_word]
-	return "Pull ran long — past the hole%s · %s" % [line_word, bal_word]
+		return "%s · %s%s" % [yd_core, bal_word, line_word]
+	return "%s · %s%s" % [yd_core, bal_word, line_word]
 
 
 static func _power_to_u(committed_power: float) -> float:

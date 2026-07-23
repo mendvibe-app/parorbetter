@@ -15,17 +15,68 @@ var _PUTT: AudioStream
 var _PUTT_DROP: AudioStream
 
 var _players: Dictionary = {}
+## Looping green-roll noise — intensity driven by ball speed on Green.
+var _roll_intensity: float = 0.0
+var _roll_player: AudioStreamPlayer
+var _roll_playback: AudioStreamGeneratorPlayback
+var _roll_lp_fast: float = 0.0
+var _roll_lp_slow: float = 0.0
 
 
 func _ready() -> void:
 	_PUTT = load("res://assets/sfx/putt.wav") as AudioStream
 	_PUTT_DROP = load("res://assets/sfx/putt_drop.wav") as AudioStream
-	for sfx_id in ["contact", "perfect", "birdie", "splash", "putt", "ui"]:
+	for sfx_id in ["contact", "perfect", "birdie", "splash", "putt", "ui", "roll"]:
 		var p := AudioStreamPlayer.new()
 		p.name = "SFX_%s" % sfx_id
 		p.bus = "Master"
 		add_child(p)
 		_players[sfx_id] = p
+	_roll_player = _players["roll"]
+	set_process(true)
+
+
+func _process(_delta: float) -> void:
+	_feed_roll()
+
+
+## 0 = silent; ~1 = full green roll hiss. Call every frame while rolling on Green.
+func set_roll_intensity(v: float) -> void:
+	_roll_intensity = clampf(v, 0.0, 1.0)
+	if _roll_intensity <= 0.001:
+		if _roll_player and _roll_player.playing:
+			_roll_player.stop()
+		_roll_playback = null
+		_roll_lp_fast = 0.0
+		_roll_lp_slow = 0.0
+
+
+func _feed_roll() -> void:
+	if _roll_intensity <= 0.001:
+		return
+	if _roll_playback == null or not _roll_player.playing:
+		var gen := AudioStreamGenerator.new()
+		gen.mix_rate = 22050.0
+		gen.buffer_length = 0.15
+		_roll_player.stream = gen
+		_roll_player.volume_db = lerpf(-28.0, -14.0, _roll_intensity)
+		_roll_player.play()
+		_roll_playback = _roll_player.get_stream_playback() as AudioStreamGeneratorPlayback
+		if _roll_playback == null:
+			return
+	_roll_player.volume_db = lerpf(-28.0, -14.0, _roll_intensity)
+	# Keep ~40ms ahead so the loop never underruns.
+	var want := int(22050.0 * 0.04)
+	var amp := 0.22 * _roll_intensity
+	var a_fast := lerpf(0.12, 0.28, _roll_intensity)
+	var a_slow := a_fast * 0.25
+	while _roll_playback.get_frames_available() > 0 and want > 0:
+		var n := randf_range(-1.0, 1.0)
+		_roll_lp_fast += a_fast * (n - _roll_lp_fast)
+		_roll_lp_slow += a_slow * (n - _roll_lp_slow)
+		var sample := (_roll_lp_fast - _roll_lp_slow) * amp
+		_roll_playback.push_frame(Vector2(sample, sample))
+		want -= 1
 
 
 func play_tone(kind: String, freq: float = 440.0, duration: float = 0.12, volume_db: float = -8.0) -> void:

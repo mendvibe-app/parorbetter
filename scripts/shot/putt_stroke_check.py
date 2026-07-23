@@ -83,6 +83,23 @@ def main() -> int:
     assert "tap_in_yd" in HOLE or "GameState.tap_in_yd" in HOLE
     assert "play_putt_tick" in ROUTINE or "play_putt_tick" in Path(DIR.parent / "autoload/audio_bus.gd").read_text(encoding="utf-8")
 
+    # Blind stroke: live pad has no answer; PACE/THRU only behind putt_show_marker (practice)
+    assert "putt_show_marker" in GESTURE
+    assert "putt_show_marker = practice_mode" in ROUTINE or "putt_show_marker = practice_mode" in GESTURE
+    assert "putt_show_marker = practice_mode" in ROUTINE
+    assert "_draw_putt_practice_marker" in GESTURE
+    assert 'if putt_show_marker:' in GESTURE
+    # Live trail color must not compare against putt_target_frac (length answer as color)
+    trail_fn = GESTURE.split("func _putt_trail_color")[1].split("func ")[0]
+    assert "putt_target_frac" not in trail_fn
+    assert "_max_accel" in trail_fn or "_max_jerk" in trail_fn
+    # Post-stroke reveal note is numeric target-vs-actual
+    assert "Target %.0f yd → %.1f" in PUTT or 'Target %.0f yd' in PUTT
+    assert "target_yd" in PUTT and "rolled_yd" in PUTT
+    # Meter: live neutral, reveal only with verdict
+    assert "blind stroke" in METER or "revealing" in METER
+    assert "feel your pace" in METER or "Stroke — feel" in METER
+
     # Marker floor — tap-in still legible / above MIN_BACKSWING
     m_short = marker_frac(POWER_FLOOR)
     assert abs(m_short - MARKER_MIN) < 1e-6, m_short

@@ -67,10 +67,14 @@ def main() -> int:
     assert "power_mul = minf(power_mul, 0.50)" in PUTT or "min(power_mul, 0.50)" in PUTT
     assert "PuttStroke" in DIR.joinpath("../shot/shot_routine.gd").read_text(encoding="utf-8")
 
-    # Pace UI wired
+    # Pace UI: aim/stroke stay blind — no live pace/pin numbers on screen
     assert "_refresh_putt_pace_feedback" in HOLE
-    assert "pace %d yd" in HOLE or "pace %d" in HOLE
-    assert "Pin %d yd" in HOLE
+    assert "Putt — set line & pace" in HOLE
+    assert "Pin %d yd" not in HOLE
+    assert "pace %d yd" not in HOLE
+    assert 'feedback.text = "Putter"' in HOLE
+    # Internal pace still computed for grading (aim distance → committed_power)
+    assert "aim_yd" in HOLE or "pace_yd" in HOLE or "distance_to(_aim_target)" in HOLE
 
     print("putt_pace_check: ok")
     return 0
