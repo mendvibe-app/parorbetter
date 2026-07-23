@@ -14,7 +14,7 @@ Minimal Godot 4 mobile golf prototype — tempo-ratio swing, aim circles, lives,
 ## Controls
 
 ### 0) Club (approaches)
-- Tap a club (suggested ★), then **Confirm** (short lock so you commit). Sand → wedges only. Green skips this (putter).
+- Tap one of 3 suggested clubs (★), or **Full bag** for the rest; then **Confirm**. Sand → wedges only. Green skips this (putter).
 
 ### 1) Aim / shape
 - Directional **wedge** shows start line + shape; drag changes **bearing only**.

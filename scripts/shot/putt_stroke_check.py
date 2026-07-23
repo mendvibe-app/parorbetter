@@ -83,22 +83,44 @@ def main() -> int:
     assert "tap_in_yd" in HOLE or "GameState.tap_in_yd" in HOLE
     assert "play_putt_tick" in ROUTINE or "play_putt_tick" in Path(DIR.parent / "autoload/audio_bus.gd").read_text(encoding="utf-8")
 
-    # Blind stroke: live pad has no answer; PACE/THRU only behind putt_show_marker (practice)
+    # Shared pad principles on putts: golf shape, practice-only length answer, no tempo ghost
     assert "putt_show_marker" in GESTURE
-    assert "putt_show_marker = practice_mode" in ROUTINE or "putt_show_marker = practice_mode" in GESTURE
     assert "putt_show_marker = practice_mode" in ROUTINE
     assert "_draw_putt_practice_marker" in GESTURE
     assert 'if putt_show_marker:' in GESTURE
+    assert '"PACE"' not in GESTURE
+    assert '"THRU"' not in GESTURE
+    assert "func _draw_putt_follow_cue" in GESTURE
+    assert "func _draw_putt_address" in GESTURE
+    assert "func _draw_pad_ball" in GESTURE
+    assert "_putt_follow_len" in GESTURE
+    assert "addr.y - 20.0" in GESTURE or "addr.y - 20" in GESTURE
+    # Putt draw path must not pull in the full-swing tempo ghost
+    putt_draw = GESTURE.split("func _draw_putt")[1].split("func _putt_follow_len")[0]
+    assert "_draw_tempo_ghost" not in putt_draw
+    assert "_draw_pad_ball" in GESTURE.split("func _draw_putt_address")[1].split("func ")[0]
+    # Impact at the ball (shared detector) — not the old 12% early fire
+    assert "IMPACT_CROSS_FRAC := 0.02" in GESTURE
     # Live trail color must not compare against putt_target_frac (length answer as color)
     trail_fn = GESTURE.split("func _putt_trail_color")[1].split("func ")[0]
     assert "putt_target_frac" not in trail_fn
     assert "_max_accel" in trail_fn or "_max_jerk" in trail_fn
-    # Post-stroke reveal note is numeric target-vs-actual
+    # Miss copy: yardage + finish-through when that's the story
     assert "Target %.0f yd → %.1f" in PUTT or 'Target %.0f yd' in PUTT
+    assert "didn't finish through the ball" in PUTT
+    assert "decelerated into impact" not in PUTT
     assert "target_yd" in PUTT and "rolled_yd" in PUTT
-    # Meter: live neutral, reveal only with verdict
-    assert "blind stroke" in METER or "revealing" in METER
-    assert "feel your pace" in METER or "Stroke — feel" in METER
+    # Meter: hidden live; reveal after verdict; no short/pace/long words
+    assert 'visible = p_type != "putt"' in METER or "visible = p_type != \"putt\"" in METER
+    assert "if _verdict.is_empty():" in METER
+    assert "blind stroke" not in METER
+    assert "feel your pace" not in METER
+    assert '"short"' not in METER
+    assert '"long"' not in METER
+    # One live putt instruction — golf language
+    assert "Address · feel your pace · through the ball." in ROUTINE
+    assert 'info_label.text = "Putt"' not in ROUTINE
+    assert 'feedback.text = "Putter"' not in HOLE
 
     # Marker floor — tap-in still legible / above MIN_BACKSWING
     m_short = marker_frac(POWER_FLOOR)

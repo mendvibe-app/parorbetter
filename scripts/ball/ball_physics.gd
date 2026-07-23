@@ -77,6 +77,26 @@ static func pick_club(remaining_yd: float, lie: String) -> Dictionary:
 	return available[0]
 
 
+## Compact picker window: up to `count` clubs centered on pick_club (clamped at bag ends).
+static func suggest_clubs(remaining_yd: float, lie: String, count: int = 3) -> Array[Dictionary]:
+	var available := clubs_for_lie(lie)
+	if available.is_empty() or count <= 0:
+		return []
+	var picked := pick_club(remaining_yd, lie)
+	var idx := 0
+	for i in available.size():
+		if String(available[i]["name"]) == String(picked["name"]):
+			idx = i
+			break
+	var window := mini(count, available.size())
+	var half := window >> 1
+	var start := clampi(idx - half, 0, available.size() - window)
+	var out: Array[Dictionary] = []
+	for i in range(start, start + window):
+		out.append(available[i])
+	return out
+
+
 ## Percent of club for this distance (same math as recommended_power).
 static func club_percent_today(
 	remaining_yd: float, club_max_yards: float, lie: String, wind: Vector2 = Vector2.ZERO

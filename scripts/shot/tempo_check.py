@@ -11,6 +11,7 @@ GESTURE = DIR.joinpath("tempo_gesture.gd").read_text(encoding="utf-8")
 ROUTINE = DIR.joinpath("shot_routine.gd").read_text(encoding="utf-8")
 REPORT = DIR.joinpath("../systems/shot_report.gd").read_text(encoding="utf-8")
 METER = DIR.joinpath("meter_display.gd").read_text(encoding="utf-8")
+DEBUG = DIR.joinpath("../debug/debug_controls.gd").read_text(encoding="utf-8")
 
 TARGET_FULL = 3.0
 TARGET_SHORT = 2.0
@@ -264,23 +265,41 @@ def main() -> int:
     assert "path * 1.1" in ROUTINE
     assert "bs_floor" in GRADE and "short_game" in GRADE
 
-    # Gesture reads continuous path, not three taps
+    # Gesture reads continuous path, not three taps — pad marks only, no word labels
     assert "InputEventScreenDrag" in GESTURE
     assert "moment.emit" in GESTURE
     assert "DEADZONE" in GESTURE
-    assert '"START"' in GESTURE or "START" in GESTURE
-    assert '"TOP"' in GESTURE or 'status = "TOP"' in GESTURE
-    assert "THROUGH" in GESTURE
-    assert "FOLLOW" in GESTURE
+    assert '"FOLLOW"' not in GESTURE
+    assert '"GUIDE"' not in GESTURE
+    assert '"START"' not in GESTURE
+    assert '"MIN"' not in GESTURE
+    assert '"FULL"' not in GESTURE
+    assert "example pace" not in GESTURE
+    assert "_draw_status_chip" not in GESTURE
+    assert "var status" not in GESTURE
     assert "live_ratio" in GESTURE
-    assert "PULL" in GESTURE
-    assert "rushed" in METER and "ideal" in METER and ("too quick" in METER or "dragged" in METER)
+    assert "rushed" not in METER
+    assert "too quick" not in METER
+    assert '"ideal"' not in METER
     assert "func glance_text" in REPORT
     assert "rushed" in GRADE
     assert "through too quick" in GRADE
     assert "linger" in GRADE or "pull/pause" in GRADE
     assert "on tempo" in GRADE
+    assert "backswing too short" in GRADE
     assert "bal_for_tol" in GRADE or "maxf(bal, 0.70)" in GRADE
+
+    # Option A pad: golf shape, no permanent MIN tick, soft follow + address→ball
+    pull_lane = GESTURE.split("func _draw_pull_lane")[1].split("func ")[0]
+    assert "_min_pull_point" not in GESTURE
+    assert "0.95, 0.75, 0.3" not in pull_lane  # amber MIN tick color gone from lane
+    assert "func _draw_follow_cue" in GESTURE
+    assert "func _draw_pad_ball" in GESTURE
+    assert "func _draw_address_mark" in GESTURE
+    assert 'preload("res://assets/ball/ball.png")' in GESTURE
+    assert "IMPACT_CROSS_FRAC := 0.02" in GESTURE
+    assert "IMPACT_CROSS_FLOOR_PX := 6.0" in GESTURE
+    assert "deadzone() * 0.5" not in GESTURE.split("func _impact_cross")[1].split("func ")[0]
 
     # Mobile-native: interrupt abort (no ghost commit), edge deadzone, EMA knob
     assert "func _abort_swing" in GESTURE
@@ -295,6 +314,64 @@ def main() -> int:
     abort_body = GESTURE.split("func _abort_swing")[1].split("func ")[0]
     assert "reset()" in abort_body
     assert "committed.emit" not in abort_body
+
+    # Ghost guide: through ends at ≈ address (impact at the ball).
+    assert "GUIDE_BACK_FULL := 0.75" in GESTURE
+    assert "GUIDE_BACK_SHORT := 0.50" in GESTURE
+    assert "func _impact_cross" in GESTURE
+    assert "func _ghost_impact_pos" in GESTURE
+    assert "_ghost_impact_pos" in GESTURE.split("func _ideal_ghost_pos")[1].split("func ")[0]
+    assert "top.lerp(impact_end" in GESTURE
+    assert "TempoGesture.GUIDE_BACK_SHORT" in METER
+    assert "TempoGesture.GUIDE_BACK_FULL" in METER
+    assert "0.75 / maxf(target" not in METER
+    assert "through the ball" in ROUTINE
+    assert "address · to the top · through the ball" in ROUTINE
+    assert "address on gold" not in ROUTINE
+    assert "blue ghost is pace" not in ROUTINE
+    assert "match the ratio, not the clock" not in ROUTINE
+    # Tick interval equals ghost backswing for both shot types
+    GUIDE_BACK_FULL = 0.75
+    GUIDE_BACK_SHORT = 0.50
+    assert (GUIDE_BACK_SHORT if TARGET_SHORT < 2.5 else GUIDE_BACK_FULL) == 0.50
+    assert (GUIDE_BACK_SHORT if TARGET_FULL < 2.5 else GUIDE_BACK_FULL) == 0.75
+    # Impact ≈ address (small early band); old 12% shortfall is gone
+    IMPACT_CROSS_FRAC = 0.02
+    IMPACT_CROSS_FLOOR_PX = 6.0
+    # Hardcoded down=back: address upper (y=0), top lower (y=100)
+    start, top = (0.0, 0.0), (0.0, 100.0)
+    lane_len = 100.0
+    size_y = 100.0
+    cross_px = max(size_y * IMPACT_CROSS_FRAC, IMPACT_CROSS_FLOOR_PX)
+    cross_u = min(cross_px, lane_len * 0.45) / lane_len
+    impact_y = start[1] + (top[1] - start[1]) * cross_u
+    assert abs(impact_y - 6.0) < 1e-6, impact_y
+    assert abs(impact_y - start[1]) <= 8.0, "ghost ends at the ball, not 12% early"
+    assert IMPACT_CROSS_FRAC < 0.12
+
+    # Down=back locked: address above top on pad; through-dir from lane; no F1 flip toggle.
+    assert "FLIP_SWING" not in GESTURE
+    assert "FLIP_SWING" not in DEBUG
+    assert "func _lane_through_dir" in GESTURE
+    assert "_lane_through_dir()" in GESTURE.split("func _draw_putt_follow_cue")[1].split("func ")[0]
+    assert "_lane_through_dir()" in GESTURE.split("func _draw_idle_coach")[1].split("func ")[0]
+    assert "pull DOWN" in GESTURE
+    assert "pull UP" not in GESTURE
+    assert "finish through the ball" in GRADE or "through the ball" in GRADE
+    assert "match the ghost through" not in GRADE
+    assert "ghost down" not in GRADE
+    assert "%dms back / %dms thru" in GRADE
+    assert 'y := 0.36 if _is_putt() else 0.18' in GESTURE.split("func address_hint")[1].split("func ")[0]
+    assert 'y := 0.80 if _is_putt() else 0.78' in GESTURE.split("func top_hint")[1].split("func ")[0]
+
+    for putt in (False, True):
+        addr_y = 0.36 if putt else 0.18
+        top_y = 0.80 if putt else 0.78
+        assert addr_y < top_y, "address above top (toward target)"
+        assert (addr_y - top_y) < 0.0  # through = address - top → −Y (up)
+        if putt:
+            # Soft follow (≤0.12 of pad) must fit above address
+            assert addr_y - 0.12 > 0.05, "putt through room on-pad"
 
     # Edge rejection math — 4% floor 24px on a 1080-wide viewport
     EDGE_FRAC = 0.04

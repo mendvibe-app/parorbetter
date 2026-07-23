@@ -72,9 +72,9 @@ def main() -> int:
     assert "Putt — set line & pace" in HOLE
     assert "Pin %d yd" not in HOLE
     assert "pace %d yd" not in HOLE
-    assert 'feedback.text = "Putter"' in HOLE
+    assert 'feedback.text = "Putter"' not in HOLE
     # Internal pace still computed for grading (aim distance → committed_power)
-    assert "aim_yd" in HOLE or "pace_yd" in HOLE or "distance_to(_aim_target)" in HOLE
+    assert "aim_yd" in HOLE or "distance_to(_aim_target)" in HOLE
 
     print("putt_pace_check: ok")
     return 0

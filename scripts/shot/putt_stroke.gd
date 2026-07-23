@@ -104,7 +104,7 @@ static func grade(
 
 	var target_yd := committed_power * club_max_yd
 	var rolled_yd := clampf(committed_power * power_mul, 0.05, 1.0) * club_max_yd
-	var note := putt_note(target_yd, rolled_yd, path, bal, tempo_bias, abs_n, contact)
+	var note := putt_note(target_yd, rolled_yd, path, bal, tempo_bias, abs_n, contact, actual, follow)
 
 	return {
 		"ratio": actual / maxf(target, 0.01),  # F1-friendly stand-in (not a tempo ratio)
@@ -133,7 +133,9 @@ static func putt_note(
 	bal: float,
 	tempo_bias: float,
 	abs_n: float,
-	contact: ShotResult.ContactQuality
+	contact: ShotResult.ContactQuality,
+	actual_frac: float = -1.0,
+	follow_frac: float = -1.0
 ) -> String:
 	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
 	var line_word := ""
@@ -151,9 +153,16 @@ static func putt_note(
 	else:
 		yd_core += " — %.1f long" % delta
 
-	# Amplitude was in band but tempo spoiled it — lead with tempo (real-instruction diagnostic).
+	# Short leave + unfinished through — same story as the old off-pad THRU cue.
+	var short_through := (
+		actual_frac > 0.05 and follow_frac >= 0.0 and follow_frac < actual_frac * 0.65
+	)
+	if delta < -0.35 and short_through:
+		return "%s · didn't finish through the ball (%s)%s" % [yd_core, bal_word, line_word]
+
+	# Amplitude was in band but tempo spoiled it — lead with the golf why.
 	if abs_n <= BAND_GOOD and absf(tempo_bias) > 0.02:
-		var why := "jabbed through" if tempo_bias > 0.0 else "decelerated into impact"
+		var why := "jabbed through" if tempo_bias > 0.0 else "didn't finish through the ball"
 		return "%s · %s (%s)%s" % [yd_core, why, bal_word, line_word]
 
 	if contact == ShotResult.ContactQuality.PERFECT or abs_n <= BAND_PERFECT:

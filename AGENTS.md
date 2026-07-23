@@ -8,7 +8,7 @@ Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before 
 
 Orchestrated by `HoleController` + `ShotRoutine`.
 
-1. **Club select** (`ClubSelect`) — Off green: pick from `BallPhysics` bag (sand → wedges only). Green skips to putter. Confirm commits. **Driving range** (F1 → Driving Range): same club pick, then skip aim.
+1. **Club select** (`ClubSelect`) — Off green: 3 clubs near `BallPhysics.pick_club` (★), **Full bag** for the rest (sand → wedges only). Green skips to putter. Confirm commits. **Driving range** (F1 → Driving Range): same club pick, then skip aim.
 2. **Aim** (`HoleController` aim phase + `AimControl`) — Drag bearing; yellow dispersion circle = form radius from `GameState.get_aim_radius_yards`. Confirm Aim / Space locks target. Optional **Practice Swing** grades tempo with no stroke. Range mode skips this (fixed center aim). On green: aim-drag is line + pace; short flat putts (`GameState.tap_in_yd` / `tap_in_break`) skip aim and go straight to stroke.
 3. **Strike** — Full/chip: `TempoGesture` + `TempoGrade` (backswing:downswing ratio). Putt: same gesture pad, re-skinned; `PuttStroke` grades **amplitude vs pace marker** (power), **arc path** (line), tempo as miss-explainer. Committed power = `recommended_power`; gesture multiplies. Pure = PERFECT + balance ≥ 0.72.
 4. **Result** — Glance panel (`ShotReport.glance_text`: tempo diagnosis for full; distance/line for putt). Full dump stays in F1. Range: ball resets to tee and loops. Course: settle → next shot / hole-out lives via `Scoring`.

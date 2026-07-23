@@ -916,7 +916,7 @@ func _start_power_swing(p_practice: bool = false) -> void:
 	if p_practice:
 		feedback.text = "Practice — find your tempo"
 	elif lie == "Green":
-		feedback.text = "Putter"
+		feedback.text = ""  # club icon/label + hint own the stroke UI
 	else:
 		feedback.text = "%s · nail the tempo" % club_name
 

@@ -35,6 +35,8 @@ func set_shot_context(p_type: String, p_timing: float, p_practice: bool = false)
 	_guide_phase = 0.0
 	_next_tick_at = 0.15
 	_refresh_guide_alpha()
+	# Putt: hide dead empty bar until post-stroke reveal (hint owns live instruction).
+	visible = p_type != "putt"
 	queue_redraw()
 
 
@@ -45,6 +47,7 @@ func set_putt_target(frac: float) -> void:
 
 func show_verdict(v: Dictionary) -> void:
 	_verdict = v
+	visible = true
 	queue_redraw()
 
 
@@ -76,6 +79,8 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if not visible:
+		return
 	if tempo_gesture and (tempo_gesture.dragging or tempo_gesture.swinging):
 		queue_redraw()
 	# Putt meter doesn't need metronome ticks — pad marker is the guide.
@@ -85,8 +90,13 @@ func _process(delta: float) -> void:
 		_guide_phase += delta
 		if not tempo_gesture.had_top and _guide_phase >= _next_tick_at:
 			AudioBus.play_tick(0.45 * _guide_alpha)
-			var target := TempoGrade.target_ratio(shot_type)
-			_next_tick_at = _guide_phase + (0.75 / maxf(target / 3.0, 0.5))
+			# Match TempoGesture ghost backswing — chip was 1.125s ticks vs 0.50s disc.
+			var back := (
+				TempoGesture.GUIDE_BACK_SHORT
+				if TempoGrade.target_ratio(shot_type) < 2.5
+				else TempoGesture.GUIDE_BACK_FULL
+			)
+			_next_tick_at = _guide_phase + back
 
 
 func _draw() -> void:
@@ -97,19 +107,14 @@ func _draw() -> void:
 
 
 func _draw_putt_amplitude() -> void:
-	## Live = neutral strip (no answer). Verdict = target-vs-actual reveal.
-	var area := Rect2(Vector2.ZERO, size)
-	var revealing := not _verdict.is_empty()
-	var target := putt_target_frac
-	if revealing:
-		target = float(_verdict.get("target_frac", target))
-	var band := PuttStroke.BAND_HALF
+	## Live: draw nothing (hint owns the instruction). Verdict: target-vs-actual reveal.
+	if _verdict.is_empty():
+		return
 
-	var title := "Stroke length%s" % ["  PRACTICE" if practice_mode else ""]
-	if revealing:
-		title = str(_verdict.get("note", title))
-	elif not practice_mode:
-		title = "Stroke — feel your pace"
+	var area := Rect2(Vector2.ZERO, size)
+	var target := float(_verdict.get("target_frac", putt_target_frac))
+	var band := PuttStroke.BAND_HALF
+	var title := str(_verdict.get("note", "Stroke"))
 	draw_string(
 		ThemeDB.fallback_font,
 		area.position + Vector2(12.0, 28.0),
@@ -123,15 +128,6 @@ func _draw_putt_amplitude() -> void:
 	var strip := Rect2(area.position + Vector2(24.0, 40.0), Vector2(area.size.x - 48.0, 28.0))
 	draw_rect(strip, Color(0.08, 0.14, 0.18, 0.95), true)
 	draw_rect(strip, Color(0.25, 0.45, 0.55, 0.9), false, 2.0)
-
-	if not revealing:
-		# Neutral live strip — no band, no target tick, no length needle.
-		var lab_y := strip.position.y + strip.size.y + 22.0
-		draw_string(
-			ThemeDB.fallback_font, Vector2(strip.position.x + strip.size.x * 0.5 - 40, lab_y),
-			"blind stroke", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.7, 0.75, 0.55)
-		)
-		return
 
 	var f_min := 0.0
 	var f_max := 1.0
@@ -154,20 +150,6 @@ func _draw_putt_amplitude() -> void:
 		if abs_n > PuttStroke.BAND_PERFECT:
 			needle_c = Color(0.95, 0.85, 0.35) if abs_n <= PuttStroke.BAND_GOOD else Color(0.95, 0.4, 0.35)
 		draw_circle(Vector2(x_n, strip.position.y + strip.size.y * 0.5), 10.0, needle_c)
-
-	var lab_y2 := strip.position.y + strip.size.y + 22.0
-	draw_string(
-		ThemeDB.fallback_font, Vector2(strip.position.x, lab_y2),
-		"short", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.7, 0.75, 0.7)
-	)
-	draw_string(
-		ThemeDB.fallback_font, Vector2(x_ideal - 22, lab_y2),
-		"pace", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.75, 0.95, 1.0, 0.85)
-	)
-	draw_string(
-		ThemeDB.fallback_font, Vector2(strip.end.x - 50, lab_y2),
-		"long", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.7, 0.75, 0.7)
-	)
 
 
 func _draw_tempo_ratio() -> void:
@@ -237,17 +219,3 @@ func _draw_tempo_ratio() -> void:
 			UiScale.CAPTION,
 			needle_c,
 		)
-
-	var lab_y := strip.position.y + strip.size.y + 22.0
-	draw_string(
-		ThemeDB.fallback_font, Vector2(strip.position.x, lab_y),
-		"rushed", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.7, 0.75, 0.7, 0.7)
-	)
-	draw_string(
-		ThemeDB.fallback_font, Vector2(x_ideal - 18, lab_y),
-		"ideal", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.9, 0.95, 0.85, 0.85)
-	)
-	draw_string(
-		ThemeDB.fallback_font, Vector2(strip.end.x - 90, lab_y),
-		"too quick", HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.7, 0.75, 0.7, 0.7)
-	)

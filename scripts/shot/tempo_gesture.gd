@@ -16,7 +16,9 @@ static var EMA_ALPHA: float = 0.35
 
 const DEADZONE_FRAC := 0.10
 const VEL_TOP_EPS := 40.0
-const IMPACT_CROSS_FRAC := 0.12
+## Early-side half-width at address — impact at the ball, not 12% short of it.
+const IMPACT_CROSS_FRAC := 0.02
+const IMPACT_CROSS_FLOOR_PX := 6.0
 const MIN_BACKSWING_FRAC := 0.14
 ## ponytail: ~4% L/R edge margin — calibrate on-device with gesture nav on
 const EDGE_DEADZONE_FRAC := 0.04
@@ -24,6 +26,8 @@ const EDGE_DEADZONE_MIN_PX := 24.0
 ## Ideal Tour-Tempo-ish pacing for the pad ghost (seconds).
 const GUIDE_BACK_FULL := 0.75
 const GUIDE_BACK_SHORT := 0.50
+const BALL_TEX := preload("res://assets/ball/ball.png")
+const BALL_POP_MS := 120.0
 
 var active: bool = false
 var dragging: bool = false
@@ -35,7 +39,6 @@ var putt_target_frac: float = 0.5
 ## Practice only — scored strokes stay blind on length (no PACE tick / band).
 var putt_show_marker: bool = false
 var peak_pos: Vector2 = Vector2.ZERO
-var status: String = ""  ## PULL | TOP | THROUGH | ""
 
 var _touch_index: int = -1
 var _address: Vector2 = Vector2.ZERO
@@ -63,44 +66,43 @@ var _last_pos: Vector2 = Vector2.ZERO
 ## Signed pad-normalized peak lateral (perp to stroke axis). + = right of lane.
 var _max_lateral: float = 0.0
 var _marker_crossed: bool = false
-
-@onready var label: Label = $Label
+## msec when axis locked — brief ball pop-in scale.
+var _ball_pop_at: int = 0
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	set_process(false)
 	set_process_input(false)
-	if label:
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_refresh_label(_idle_prompt())
 
 
 func _is_putt() -> bool:
 	return shot_type == "putt"
 
 
-func _idle_prompt() -> String:
-	if not _is_putt():
-		return "Press gold · pull UP · through"
-	if putt_show_marker:
-		return "Press · pull to marker · through"
-	return "Press · pull to your pace · through"
-
-
 func address_hint() -> Vector2:
-	## Putt pad: shorter, more local lane (still bottom-screen).
-	var y := 0.72 if _is_putt() else 0.78
+	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
+	## Putt sits lower so soft follow-through fits on-pad (not past the top edge).
+	var y := 0.36 if _is_putt() else 0.18
 	return Vector2(size.x * 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
-	var y := 0.28 if _is_putt() else 0.18
+	## Backswing peak toward player (lower on pad).
+	var y := 0.80 if _is_putt() else 0.78
 	return Vector2(size.x * 0.5, size.y * y)
 
 
 func _lane_len() -> float:
 	return maxf(address_hint().distance_to(top_hint()), 1.0)
+
+
+func _lane_through_dir() -> Vector2:
+	## Past address, away from top (up toward target on camera).
+	var d := address_hint() - top_hint()
+	if d.length_squared() < 1.0:
+		return Vector2(0, -1)
+	return d.normalized()
 
 
 func live_backswing_frac() -> float:
@@ -171,14 +173,13 @@ func reset() -> void:
 	_t_impact = -1.0
 	had_top = false
 	_top_flash_until = 0
-	status = ""
 	_max_accel = 0.0
 	_max_jerk = 0.0
 	_prev_seg_dir = Vector2.ZERO
 	_follow_through = 0.0
 	_max_lateral = 0.0
 	_marker_crossed = false
-	_refresh_label(_idle_prompt())
+	_ball_pop_at = 0
 	queue_redraw()
 	trail_updated.emit(trail)
 	live_changed.emit()
@@ -223,10 +224,25 @@ func _guide_down_sec() -> float:
 	return back / maxf(TempoGrade.target_ratio(shot_type), 1.0)
 
 
+func _impact_cross() -> float:
+	## Small early band at address — ghost through ends at the ball.
+	return maxf(size.y * IMPACT_CROSS_FRAC, IMPACT_CROSS_FLOOR_PX)
+
+
+func _ghost_impact_pos(start: Vector2, top: Vector2) -> Vector2:
+	var lane := top - start
+	var lane_len := lane.length()
+	if lane_len < 1.0:
+		return start
+	return start + lane * (minf(_impact_cross(), lane_len * 0.45) / lane_len)
+
+
 func _ideal_ghost_pos(elapsed: float) -> Dictionary:
 	## Returns {pos, phase} phase: pull|top|through|done
+	## Through ends at impact cross (≈ address) so tracing the ghost matches the grader.
 	var start := _address if (dragging and _t_takeaway >= 0.0) else address_hint()
 	var top := top_hint()
+	var impact_end := _ghost_impact_pos(start, top)
 	var back := _guide_back_sec()
 	var down := _guide_down_sec()
 	if elapsed < 0.0:
@@ -237,8 +253,8 @@ func _ideal_ghost_pos(elapsed: float) -> Dictionary:
 		return {"pos": start.lerp(top, u), "phase": phase}
 	if elapsed <= back + down:
 		var u2 := (elapsed - back) / down
-		return {"pos": top.lerp(start, u2), "phase": "through"}
-	return {"pos": start, "phase": "done"}
+		return {"pos": top.lerp(impact_end, u2), "phase": "through"}
+	return {"pos": impact_end, "phase": "done"}
 
 
 func _accept_mouse() -> bool:
@@ -330,11 +346,9 @@ func _begin(pos: Vector2, index: int) -> void:
 	_last_pos = pos
 	_prev_t = Time.get_ticks_msec() / 1000.0
 	_t_takeaway = _prev_t
-	status = "PULL"
 	trail.append(pos)
 	set_process(true)
 	moment.emit("takeaway")
-	_refresh_label("")
 	live_changed.emit()
 	queue_redraw()
 
@@ -352,7 +366,7 @@ func _update(pos: Vector2) -> void:
 			_axis = delta.normalized()
 			_axis_locked = true
 			swinging = true
-			status = "PULL"
+			_ball_pop_at = Time.get_ticks_msec()
 		else:
 			_prev_t = now
 			_last_pos = _smoothed
@@ -365,7 +379,7 @@ func _update(pos: Vector2) -> void:
 	var accel := (_vel - _prev_vel) / dt
 	_max_accel = maxf(_max_accel, absf(accel) / maxf(size.y, 1.0))
 
-	# Lateral (perp to stroke axis) — putt line grade. Axis points toward top of pad.
+	# Lateral (perp to stroke axis) — putt line grade. Axis = first pull direction.
 	var perp := Vector2(-_axis.y, _axis.x)
 	var lat := delta.dot(perp) / maxf(size.y, 1.0)
 	if absf(lat) > absf(_max_lateral):
@@ -401,15 +415,12 @@ func _update(pos: Vector2) -> void:
 		if reversing or peaked:
 			had_top = true
 			_t_top = now
-			status = "TOP"
 			_top_flash_until = Time.get_ticks_msec() + 320
 			moment.emit("top")
 			live_changed.emit()
 
 	if had_top and _t_impact < 0.0:
-		status = "THROUGH"
-		var cross := maxf(size.y * IMPACT_CROSS_FRAC, _deadzone() * 0.5)
-		if _disp <= cross and _vel < 0.0:
+		if _disp <= _impact_cross() and _vel < 0.0:
 			_finish_impact(now, false)
 			return
 		if _disp < 0.0:
@@ -478,22 +489,14 @@ func _finish_impact(now: float, incomplete: bool) -> void:
 		"max_lateral": _max_lateral,
 		"incomplete": incomplete,
 	}
-	status = "THROUGH"
 	moment.emit("impact")
 	dragging = false
 	swinging = false
 	_touch_index = -1
 	set_process(true)  # keep idle landmarks after commit until disabled
-	_refresh_label("")
 	committed.emit(sample)
 	live_changed.emit()
 	queue_redraw()
-
-
-func _refresh_label(text: String) -> void:
-	if label:
-		label.text = text
-		label.modulate.a = 0.0 if dragging or swinging or had_top or text.is_empty() else 0.95
 
 
 func _draw() -> void:
@@ -511,11 +514,10 @@ func _draw() -> void:
 		_draw_trail()
 		if dragging:
 			draw_circle(_smoothed, 11.0, Color(0.95, 0.9, 0.35, 0.9))
-		_draw_status_chip()
 
 
 func _draw_putt() -> void:
-	## Cool palette, narrower lane. Affordance only live; PACE/band practice-only.
+	## Cool palette. Golf shape: address → pace feel → through the ball (soft follow on-pad).
 	var r := Rect2(Vector2.ZERO, size).grow(-8.0)
 	draw_rect(r, Color(0.06, 0.12, 0.16, 0.78), true)
 	draw_rect(r, Color(0.35, 0.7, 0.85, 0.75), false, 3.0)
@@ -523,22 +525,19 @@ func _draw_putt() -> void:
 	var start := address_hint()
 	var top := top_hint()
 	var lane := _lane_len()
-	var through_dir := Vector2(0, 1)
-	var through_end := start + through_dir * (lane * 0.45)
+	var addr := _address if dragging or _t_takeaway >= 0.0 else start
 
 	# Arc-width lane: edge grows with distance (line affordance, no length answer).
 	_draw_putt_arc_lane(start, top, Color(0.15, 0.28, 0.35, 0.95), Color(0.3, 0.55, 0.7, 0.55))
-	draw_line(start, through_end, Color(0.15, 0.28, 0.35, 0.45), 10.0, true)
+	# Soft follow past address — room to finish, clamped on-pad (not a stop target).
+	_draw_putt_follow_cue(addr)
 
 	if putt_show_marker:
-		_draw_putt_practice_marker(start, top, through_dir)
+		_draw_putt_practice_marker(start, top)
 
-	# Address disc
+	# Address: cyan idle → course ball once stroke commits (stays through follow).
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
-	if not dragging and _t_impact < 0.0:
-		draw_circle(start, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
-	draw_circle(start, 11.0, Color(0.55, 0.9, 1.0, 0.9))
-	draw_arc(start, 16.0, 0.0, TAU, 24, Color(0.55, 0.9, 1.0, 0.65 * pulse), 2.5, true)
+	_draw_putt_address(addr, pulse)
 
 	# Live pull fill (color = smoothness, not length)
 	if dragging and _axis_locked:
@@ -549,8 +548,30 @@ func _draw_putt() -> void:
 	_draw_trail()
 	if dragging:
 		draw_circle(_smoothed, 10.0, Color(0.7, 0.95, 1.0, 0.9))
-	if status != "":
-		_draw_status_chip()
+
+
+func _putt_follow_len(addr: Vector2) -> float:
+	## Soft stub past address; never past the pad's top margin.
+	var room := maxf(addr.y - 20.0, 8.0)
+	return minf(size.y * 0.12, room)
+
+
+func _draw_putt_follow_cue(addr: Vector2) -> void:
+	var through := _lane_through_dir()
+	var tip := addr + through * _putt_follow_len(addr)
+	var a := 0.7 if had_top else 0.45
+	draw_line(addr, tip, Color(0.4, 0.7, 0.85, 0.35 * a), 6.0, true)
+	draw_arc(tip, 10.0, 0.0, TAU, 20, Color(0.5, 0.8, 0.95, 0.55 * a), 2.0, true)
+
+
+func _draw_putt_address(p: Vector2, pulse: float) -> void:
+	if _axis_locked or _t_impact >= 0.0:
+		_draw_pad_ball(p, _ball_pop_scale())
+		return
+	if not dragging and _t_impact < 0.0:
+		draw_circle(p, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
+	draw_circle(p, 11.0, Color(0.55, 0.9, 1.0, 0.9))
+	draw_arc(p, 16.0, 0.0, TAU, 24, Color(0.55, 0.9, 1.0, 0.65 * pulse), 2.5, true)
 
 
 func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Color) -> void:
@@ -569,29 +590,17 @@ func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Co
 		draw_line(p0 - perp * a0, p1 - perp * a1, edge_c, 2.0, true)
 
 
-func _draw_putt_practice_marker(start: Vector2, top: Vector2, through_dir: Vector2) -> void:
-	## Practice-only answer: PACE/THRU ticks + tolerance band.
+func _draw_putt_practice_marker(start: Vector2, top: Vector2) -> void:
+	## Practice-only: PACE tick on the backswing (the length answer). No THRU destination —
+	## through is the soft follow cue; mirroring pace past address flies off-pad on long putts.
 	var tgt := clampf(putt_target_frac, PuttStroke.MARKER_MIN_FRAC, PuttStroke.MARKER_MAX_FRAC)
 	var band := PuttStroke.BAND_HALF
 	var mark: Vector2 = start.lerp(top, tgt)
 	var band_lo: Vector2 = start.lerp(top, clampf(tgt - band, 0.0, 1.0))
 	var band_hi: Vector2 = start.lerp(top, clampf(tgt + band, 0.0, 1.0))
-	var through_mark := start + through_dir * (start.distance_to(mark))
-	var through_lo := start + through_dir * (start.distance_to(band_lo))
-	var through_hi := start + through_dir * (start.distance_to(band_hi))
 	draw_line(band_lo, band_hi, Color(0.35, 0.75, 0.9, 0.35), 22.0, true)
-	draw_line(through_lo, through_hi, Color(0.35, 0.75, 0.9, 0.22), 18.0, true)
 	var tick_c := Color(0.55, 0.95, 1.0, 0.95)
 	draw_line(mark + Vector2(-20, 0), mark + Vector2(20, 0), tick_c, 3.5, true)
-	draw_string(
-		ThemeDB.fallback_font, mark + Vector2(24, 6), "PACE",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, tick_c
-	)
-	draw_line(through_mark + Vector2(-16, 0), through_mark + Vector2(16, 0), Color(0.55, 0.85, 0.95, 0.7), 2.5, true)
-	draw_string(
-		ThemeDB.fallback_font, through_mark + Vector2(20, 6), "THRU",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.85, 0.95, 0.7)
-	)
 
 
 func _draw_tempo_ghost(looping: bool) -> void:
@@ -623,20 +632,9 @@ func _draw_tempo_ghost(looping: bool) -> void:
 	draw_circle(pos, 18.0, Color(col.r, col.g, col.b, col.a * 0.35))
 	draw_arc(pos, 20.0, 0.0, TAU, 28, col, 3.0, true)
 	draw_circle(pos, 7.0, col)
-	if looping and phase != "done":
-		draw_string(
-			ThemeDB.fallback_font, pos + Vector2(24, 6), "GUIDE",
-			HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, col
-		)
-	# Beat labels while looping so the 3:1 is obvious
+	# Beat pips while looping so the 3:1 spacing is visible
 	if looping:
 		var start := address_hint()
-		var tip := "follow the blue · ~%.0f:1" % TempoGrade.target_ratio(shot_type)
-		draw_string(
-			ThemeDB.fallback_font, Vector2(size.x * 0.5 - 120.0, size.y - 28.0), tip,
-			HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.6, 0.9, 1.0, a * 0.85)
-		)
-		# Tiny beat pips on the lane
 		var top := top_hint()
 		draw_circle(start.lerp(top, 0.33), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
 		draw_circle(start.lerp(top, 0.66), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
@@ -665,32 +663,15 @@ func _pull_lane_ends() -> PackedVector2Array:
 	return PackedVector2Array([address_hint(), top_hint()])
 
 
-func _min_pull_point() -> Vector2:
-	## Where a reversal first counts as TOP (MIN_BACKSWING_FRAC along START→TOP).
-	var ends := _pull_lane_ends()
-	return ends[0].lerp(ends[1], clampf(MIN_BACKSWING_FRAC / 0.60, 0.15, 0.45))
-
-
 func _draw_pull_lane(show_progress: bool) -> void:
 	var ends := _pull_lane_ends()
 	var start: Vector2 = ends[0]
 	var top: Vector2 = ends[1]
-	var min_p := _min_pull_point()
-	# Wide track = the full legal pull length
+	# Wide track = the swing path (no engine MIN tick — that's miss feedback only)
 	draw_line(start, top, Color(0.2, 0.32, 0.24, 0.95), 22.0, true)
 	draw_line(start, top, Color(0.35, 0.55, 0.4, 0.7), 14.0, true)
-	# Min tick — below this, release won't count as a real top
-	draw_line(min_p + Vector2(-18, 0), min_p + Vector2(18, 0), Color(0.95, 0.75, 0.3, 0.9), 3.0, true)
-	draw_string(
-		ThemeDB.fallback_font, min_p + Vector2(22, 8), "MIN",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.95, 0.8, 0.4, 0.9)
-	)
-	# Full / TOP end cap
+	# Soft top end-cap — shape cue, not a hard target
 	draw_line(top + Vector2(-22, 0), top + Vector2(22, 0), Color(0.5, 0.95, 0.55, 0.95), 4.0, true)
-	draw_string(
-		ThemeDB.fallback_font, top + Vector2(24, 8), "FULL",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.95, 0.6, 0.95)
-	)
 	if show_progress and dragging and _axis_locked:
 		var lane_len := start.distance_to(top)
 		var prog := clampf(_peak_disp / maxf(lane_len, 1.0), 0.0, 1.0)
@@ -698,63 +679,87 @@ func _draw_pull_lane(show_progress: bool) -> void:
 		draw_line(start, tip, Color(0.45, 0.95, 0.55, 0.85), 10.0, true)
 
 
+func _follow_cue_end(addr: Vector2) -> Vector2:
+	## Soft room past address — "keep going," not a stop target.
+	return addr + _lane_through_dir() * (size.y * 0.14)
+
+
+func _draw_follow_cue(addr: Vector2, a: float = 0.45) -> void:
+	var tip := _follow_cue_end(addr)
+	draw_line(addr, tip, Color(0.45, 0.7, 0.85, 0.35 * a), 6.0, true)
+	# Open ring — space, not a bullseye
+	draw_arc(tip, 10.0, 0.0, TAU, 20, Color(0.5, 0.75, 0.9, 0.55 * a), 2.0, true)
+
+
+func _ball_pop_scale() -> float:
+	if _ball_pop_at <= 0:
+		return 1.0
+	var u := clampf(float(Time.get_ticks_msec() - _ball_pop_at) / BALL_POP_MS, 0.0, 1.0)
+	return lerpf(0.7, 1.0, u)
+
+
+func _draw_pad_ball(p: Vector2, scale_mul: float = 1.0) -> void:
+	## Same sprite as the course ball — pad stands in for the real shot.
+	var r := 16.0 * scale_mul
+	var tex_size := BALL_TEX.get_size()
+	var s := (r * 2.0) / maxf(tex_size.x, 1.0)
+	draw_set_transform(p, 0.0, Vector2(s, s))
+	draw_texture(BALL_TEX, -tex_size * 0.5)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+
+
+func _draw_address_mark(p: Vector2, pulse: float) -> void:
+	## Gold idle touch-target → course ball once the stroke commits (stays through follow).
+	if _axis_locked or _t_impact >= 0.0:
+		_draw_pad_ball(p, _ball_pop_scale())
+		return
+	draw_circle(p, 22.0 + pulse * 6.0, Color(1.0, 0.85, 0.25, 0.2 + 0.2 * pulse))
+	draw_circle(p, 14.0, Color(1.0, 0.88, 0.3, 0.9))
+	draw_arc(p, 20.0, 0.0, TAU, 28, Color(1.0, 0.9, 0.4, 0.75 * pulse), 3.0, true)
+
+
 func _draw_idle_coach() -> void:
 	var start := address_hint()
 	var top := top_hint()
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
-	var follow := start + Vector2(0, size.y * 0.12)
+	var through := _lane_through_dir()
+	# Chevrons at top point toward address (along backswing return).
+	var to_addr := -through
+	var chev_a := to_addr.rotated(-0.55) * 22.0
+	var chev_b := to_addr.rotated(0.55) * 22.0
 	_draw_pull_lane(false)
+	_draw_follow_cue(start, 0.7)
 	# Return path ghost
 	draw_line(top, start + Vector2(8, 0), Color(0.95, 0.8, 0.35, 0.45), 4.0, true)
-	draw_line(start, follow, Color(0.5, 0.65, 0.7, 0.35), 3.0, true)
-	draw_line(top, top + Vector2(-14, 18), Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
-	draw_line(top, top + Vector2(14, 18), Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
-	_draw_landmark(top, "TOP", Color(0.55, 0.9, 0.55, 0.85), 10.0)
-	_draw_landmark(follow, "FOLLOW", Color(0.55, 0.7, 0.8, 0.55), 8.0)
-	# Gold START
-	draw_circle(start, 22.0 + pulse * 6.0, Color(1.0, 0.85, 0.25, 0.2 + 0.2 * pulse))
-	draw_circle(start, 14.0, Color(1.0, 0.88, 0.3, 0.9))
-	draw_arc(start, 20.0, 0.0, TAU, 28, Color(1.0, 0.9, 0.4, 0.75 * pulse), 3.0, true)
-	draw_string(
-		ThemeDB.fallback_font, start + Vector2(-40, 38), "START",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(1.0, 0.92, 0.55, 0.95)
-	)
+	draw_line(top, top + chev_a, Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
+	draw_line(top, top + chev_b, Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
+	_draw_landmark(top, Color(0.55, 0.9, 0.55, 0.85), 10.0)
+	_draw_address_mark(start, pulse)
+	# Down chevron under gold — pull toward top
+	var down := -through
+	var dchev_a := down.rotated(-0.5) * 18.0
+	var dchev_b := down.rotated(0.5) * 18.0
+	var dbase := start + down * 28.0
+	draw_line(dbase, dbase + dchev_a, Color(1.0, 0.9, 0.4, 0.7 * pulse), 3.0, true)
+	draw_line(dbase, dbase + dchev_b, Color(1.0, 0.9, 0.4, 0.7 * pulse), 3.0, true)
 
 
 func _draw_active_landmarks() -> void:
 	var addr := _address if dragging or _t_takeaway >= 0.0 else address_hint()
 	var top_p := peak_pos if _peak_disp > 1.0 else top_hint()
-	# Follow zone past address (along −axis if known, else down)
-	var follow_dir := -_axis if _axis_locked else Vector2(0, 1)
-	var follow := addr + follow_dir * (size.y * 0.14)
+	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.008)
 
-	var through_label := "THROUGH" if had_top else "START"
-	var through_c := Color(1.0, 0.88, 0.3, 0.95) if had_top else Color(1.0, 0.88, 0.3, 0.75)
-	draw_circle(addr, 16.0 if had_top else 12.0, through_c)
-	draw_arc(addr, 22.0, 0.0, TAU, 28, through_c, 2.5, true)
-	draw_string(
-		ThemeDB.fallback_font, addr + Vector2(-48, 36), through_label,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, through_c
-	)
+	_draw_follow_cue(addr, 0.55 if had_top else 0.35)
+	_draw_address_mark(addr, pulse)
 
 	var top_c := Color(0.35, 0.95, 0.5, 1.0) if Time.get_ticks_msec() < _top_flash_until else Color(0.55, 0.9, 0.55, 0.85)
 	var top_r := 16.0 if had_top else 10.0
-	_draw_landmark(top_p, "TOP", top_c, top_r)
-
-	draw_circle(follow, 7.0, Color(0.5, 0.7, 0.8, 0.4))
-	draw_string(
-		ThemeDB.fallback_font, follow + Vector2(-36, 22), "FOLLOW",
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.55, 0.75, 0.85, 0.55)
-	)
+	_draw_landmark(top_p, top_c, top_r)
 
 
-func _draw_landmark(p: Vector2, text: String, c: Color, radius: float) -> void:
+func _draw_landmark(p: Vector2, c: Color, radius: float) -> void:
 	draw_circle(p, radius, c)
 	draw_arc(p, radius + 5.0, 0.0, TAU, 20, c, 2.0, true)
-	draw_string(
-		ThemeDB.fallback_font, p + Vector2(-28, -radius - 8), text,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, c
-	)
 
 
 func _draw_trail() -> void:
@@ -764,20 +769,3 @@ func _draw_trail() -> void:
 	for i in range(1, trail.size()):
 		var a := float(i) / float(trail.size())
 		draw_line(trail[i - 1], trail[i], Color(c.r, c.g, c.b, 0.25 + 0.6 * a), 4.0, true)
-
-
-func _draw_status_chip() -> void:
-	if status.is_empty():
-		return
-	var chip_c := Color(0.25, 0.45, 0.3, 0.85)
-	match status:
-		"TOP":
-			chip_c = Color(0.2, 0.55, 0.3, 0.9)
-		"THROUGH":
-			chip_c = Color(0.45, 0.4, 0.15, 0.9)
-	var chip := Rect2(size.x * 0.5 - 70.0, 8.0, 140.0, 44.0)
-	draw_rect(chip, chip_c, true)
-	draw_string(
-		ThemeDB.fallback_font, chip.position + Vector2(28, 32), status,
-		HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.BODY, Color(0.95, 0.98, 0.9, 1.0)
-	)

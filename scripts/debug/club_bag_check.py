@@ -23,6 +23,8 @@ def shot_need(remaining: float, lie: str) -> float:
 
 
 def clubs_for_lie(lie: str):
+    if lie == "Green":
+        return []
     if lie == "Sand":
         return [c for c in BAG if "Wedge" in c[0]]
     if lie != "Tee":
@@ -42,6 +44,18 @@ def pick_club(remaining: float, lie: str):
         if need <= mx:
             return (name, mx)
     return available[0]
+
+
+def suggest_clubs(remaining: float, lie: str, count: int = 3):
+    available = clubs_for_lie(lie)
+    if not available or count <= 0:
+        return []
+    picked = pick_club(remaining, lie)
+    idx = next(i for i, c in enumerate(available) if c[0] == picked[0])
+    window = min(count, len(available))
+    half = window >> 1
+    start = max(0, min(idx - half, len(available) - window))
+    return available[start : start + window]
 
 
 def force_factor(power: float, club_max: float = 0.0, lie: str = "") -> float:
@@ -80,6 +94,13 @@ def main() -> None:
     assert pick_club(190, "Fairway") == ("Hybrid", 210.0)
     assert pick_club(200, "Fairway") == ("3-Wood", 235.0)
     assert pick_club(40, "Sand") == ("Gap/Sand Wedge", 85.0)
+
+    # Compact trio: neighbors of pick, clamped at ends. Fairway has no Driver.
+    assert [n for n, _ in suggest_clubs(150, "Fairway")] == ["5-Iron", "6-Iron", "7-Iron"]
+    assert [n for n, _ in suggest_clubs(200, "Fairway")] == ["3-Wood", "Hybrid", "5-Iron"]
+    assert [n for n, _ in suggest_clubs(200, "Tee")] == ["Driver", "3-Wood", "Hybrid"]
+    assert [n for n, _ in suggest_clubs(40, "Sand")] == ["Pitching Wedge", "Gap/Sand Wedge"]
+    assert suggest_clubs(10, "Green") == []
 
     assert force_factor(0.75) == 0.0
     assert force_factor(0.92) == 0.0

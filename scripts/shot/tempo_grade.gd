@@ -145,6 +145,10 @@ static func grade(
 	if bal < 0.35:
 		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
 
+	var short_game := shot_type == "putt" or shot_type == "chip"
+	var bs_floor := 0.10 if short_game else 0.18
+	var short_bs := clampf((bs_floor - float(sample.get("backswing_len", 0.0))) / bs_floor, 0.0, 1.0)
+
 	return {
 		"ratio": r,
 		"target": target,
@@ -153,26 +157,39 @@ static func grade(
 		"contact": contact,
 		"power_mul": power_mul,
 		"path_error": path,
-		"note": tempo_note(r, target, bal, int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0), int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0)),
+		"note": tempo_note(
+			r, target, bal,
+			int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0),
+			int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0),
+			short_bs
+		),
 		"backswing_ms": int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0),
 		"downswing_ms": int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0),
 	}
 
 
-static func tempo_note(r: float, target: float, bal: float, back_ms: int = 0, down_ms: int = 0) -> String:
+static func tempo_note(
+	r: float, target: float, bal: float, back_ms: int = 0, down_ms: int = 0, short_bs: float = 0.0
+) -> String:
 	var err := r - target
 	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
+	# Short takeaway is a golf miss — surface it over tempo jargon when it's the story.
+	if short_bs >= 0.45:
+		var timing := ""
+		if back_ms > 0 and down_ms > 0:
+			timing = " (%dms back / %dms thru)" % [back_ms, down_ms]
+		return "Tempo %.1f:1%s — backswing too short · take it to the top · %s" % [r, timing, bal_word]
 	var tempo_word: String
 	if absf(err) <= target * 0.08:
 		tempo_word = "on tempo"
 	elif err < 0.0:
-		tempo_word = "rushed to through — brief pause at TOP"
+		tempo_word = "rushed to through — brief pause at top"
 	elif back_ms > 0 and down_ms > 0 and float(down_ms) < float(back_ms) / target * 0.92:
 		# High ratio from a fast through (not a long pause at top).
-		tempo_word = "through too quick — match the ghost down"
+		tempo_word = "through too quick — finish through the ball"
 	else:
-		tempo_word = "pull/pause too long vs through — don't linger at TOP"
-	var timing := ""
+		tempo_word = "pull/pause too long vs through — don't linger at top"
+	var timing2 := ""
 	if back_ms > 0 and down_ms > 0:
-		timing = " (%dms↑ / %dms↓)" % [back_ms, down_ms]
-	return "Tempo %.1f:1%s — %s · %s" % [r, timing, tempo_word, bal_word]
+		timing2 = " (%dms back / %dms thru)" % [back_ms, down_ms]
+	return "Tempo %.1f:1%s — %s · %s" % [r, timing2, tempo_word, bal_word]

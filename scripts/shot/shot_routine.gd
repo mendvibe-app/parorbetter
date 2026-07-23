@@ -78,9 +78,9 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
-	# Pin yd is the rangefinder number; putts stay blind (no live yardage during stroke).
+	# Club icon carries putt identity; no yardage / bare "Putt" redundancy during stroke.
 	if lie == "Green":
-		info_label.text = "Putt"
+		info_label.text = ""
 	elif absf(aim_distance_yd - pin_distance_yd) < 1.5:
 		info_label.text = "%d yd" % int(pin_distance_yd)
 	else:
@@ -109,17 +109,18 @@ func begin_shot(p_practice: bool = false) -> void:
 		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
 		if shot_type == "putt":
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
+	# One live instruction — golf moments, not engine marks.
 	if practice_mode:
 		if shot_type == "putt":
-			hint_label.text = "PRACTICE PUTT — pull to the marker · match it back through."
+			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		else:
-			hint_label.text = "PRACTICE — follow the blue GUIDE ghost (~%.0f:1)." % TempoGrade.target_ratio(shot_type)
+			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
-		hint_label.text = "PUTT — pull to your pace · match it back through."
+		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
-		hint_label.text = "CHIP ~2:1 — follow blue ghost · don't linger at TOP."
+		hint_label.text = "CHIP ~2:1 — address · to the top · through the ball."
 	else:
-		hint_label.text = "SWING ~3:1 — follow blue GUIDE (~¾s up, ~¼s through)."
+		hint_label.text = "SWING ~3:1 — address · to the top · through the ball."
 	phase_changed.emit("active")
 	set_active(true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
