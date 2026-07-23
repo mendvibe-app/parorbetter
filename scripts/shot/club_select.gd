@@ -102,6 +102,8 @@ func present(lie: String, pin_yd: float, wind: Vector2) -> void:
 		var is_suggested := name == suggested_name
 		var btn := Button.new()
 		btn.toggle_mode = true
+		btn.icon = HudIcons.club_texture(name)
+		btn.expand_icon = true
 		btn.text = "%s%s  —  %d max  —  %d%% today" % [
 			"★ " if is_suggested else "",
 			name,

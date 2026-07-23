@@ -37,12 +37,6 @@ const TREE_TEXTURES := [
 	preload("res://assets/background/tree_pine.png"),
 	preload("res://assets/background/tree_cluster.png"),
 ]
-const WIND_TEXTURES := {
-	"light": preload("res://assets/wind/wind_light.png"),
-	"medium": preload("res://assets/wind/wind_medium.png"),
-	"strong": preload("res://assets/wind/wind_strong.png"),
-}
-
 var hole: HoleData
 var strokes: int = 0
 var ball_in_flight: bool = false
@@ -68,7 +62,8 @@ var _aim_cone: Polygon2D
 var _aim_cone_edge: Line2D
 var _pin_ref_line: Line2D
 var _aim_circle: Line2D
-var _wind_sprite: Sprite2D
+var _wind_bias: Line2D
+var _wind_flag: WindFlag
 var _last_report: ShotReport
 var _club_select: ClubSelect
 
@@ -110,8 +105,10 @@ func _ready() -> void:
 
 func _apply_safe_area() -> void:
 	UiScale.apply_hole_safe_area(
-		hud, feedback, wind_banner, shot_routine, confirm_aim_btn, shot_result_panel
+		hud, feedback, _wind_flag, shot_routine, confirm_aim_btn, shot_result_panel
 	)
+	if wind_banner:
+		wind_banner.visible = false
 
 
 func _setup_club_select() -> void:
@@ -151,10 +148,27 @@ func _setup_aim_visuals() -> void:
 	_aim_circle.visible = false
 	add_child(_aim_circle)
 
-	_wind_sprite = Sprite2D.new()
-	_wind_sprite.z_index = 7
-	_wind_sprite.visible = false
-	add_child(_wind_sprite)
+	_wind_bias = Line2D.new()
+	_wind_bias.width = 4.0
+	_wind_bias.default_color = Color(0.55, 0.85, 1.0, 0.9)
+	_wind_bias.z_index = 6
+	_wind_bias.visible = false
+	add_child(_wind_bias)
+
+	_wind_flag = WindFlag.new()
+	_wind_flag.name = "WindFlag"
+	_wind_flag.visible = false
+	_wind_flag.set_anchors_preset(Control.PRESET_CENTER_TOP)
+	_wind_flag.anchor_left = 0.5
+	_wind_flag.anchor_right = 0.5
+	_wind_flag.offset_left = -48.0
+	_wind_flag.offset_right = 48.0
+	_wind_flag.offset_top = UiScale.WIND_TOP
+	_wind_flag.offset_bottom = UiScale.WIND_TOP + 128.0
+	ui_layer.add_child(_wind_flag)
+	if wind_banner:
+		wind_banner.visible = false
+		wind_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 
 
 func load_hole(hole_index: int) -> void:
@@ -573,8 +587,8 @@ func _sync_screen_line_widths() -> void:
 		_pin_ref_line.width = pin_w
 	if _aim_circle:
 		_aim_circle.width = 3.2 / z
-	if _wind_sprite and _wind_sprite.visible and _wind_sprite.texture:
-		_wind_sprite.scale = Vector2.ONE * (110.0 / z / float(_wind_sprite.texture.get_width()))
+	if _wind_bias and _wind_bias.visible:
+		_wind_bias.width = 3.2 / z
 	if _green_book:
 		for c in _green_book.get_children():
 			if c is Line2D:
@@ -673,7 +687,7 @@ func _begin_club_select() -> void:
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	feedback.text = "RANGE — pick a club" if GameState.range_mode else "%d yd — pick a club" % int(pin_yd)
 	feedback.modulate = Color(0.95, 0.92, 0.7)
-	_show_wind_banner(wind)
+	_show_wind_flag(wind)
 	_club_select.present(lie, pin_yd, wind)
 
 
@@ -699,8 +713,6 @@ func _begin_range_swing() -> void:
 		_practice_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
-	if wind_banner:
-		wind_banner.visible = false
 	var lie := "Tee"
 	var club_max := float(_chosen_club.get("max_yards", 180.0))
 	var wind: Vector2 = course_root.get_meta("wind", Vector2.ZERO)
@@ -737,22 +749,20 @@ func _begin_aim_phase() -> void:
 	_aim_target = AimControl.clamp_aim(_aim_target)
 	# Lock radial distance during aim — player picks line/shape, not yardage yet.
 	_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
-	_refresh_aim_visuals()
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
 	_set_green_book_visible(show_book)
-	# Putts: no wind. Approaches: keep wind even with book open.
-	_refresh_wind_indicator(not is_putt)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = true
 	if _practice_btn:
 		_practice_btn.visible = true
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
+	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
-		if wind_banner:
-			wind_banner.visible = false
+		_refresh_wind_indicator(false)
 	else:
-		_show_wind_banner(wind, "Green book — read the break" if show_book else "")
+		_show_wind_flag(wind, "Green book — read the break" if show_book else "")
+	_refresh_aim_visuals()
 	var club_bit := String(_chosen_club.get("name", ""))
 	if is_putt:
 		_refresh_putt_pace_feedback()
@@ -782,8 +792,6 @@ func _end_aim_phase() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
-	if wind_banner:
-		wind_banner.visible = false
 
 
 func _setup_practice_btn() -> void:
@@ -829,8 +837,6 @@ func _confirm_aim() -> void:
 		_practice_btn.visible = false
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
-	if wind_banner:
-		wind_banner.visible = false
 	AudioBus.play_ui()
 	_start_power_swing(false)
 
@@ -906,13 +912,11 @@ func _on_practice_result(verdict: Dictionary) -> void:
 		_practice_btn.visible = true
 	_refresh_aim_visuals()
 	var is_putt := ball.get_lie() == "Green"
-	_refresh_wind_indicator(not is_putt)
 	if is_putt:
-		if wind_banner:
-			wind_banner.visible = false
+		_refresh_wind_indicator(false)
 	else:
 		var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
-		_show_wind_banner(wind)
+		_show_wind_flag(wind)
 
 
 func _set_aim_visuals_visible(on: bool) -> void:
@@ -924,43 +928,55 @@ func _set_aim_visuals_visible(on: bool) -> void:
 		_pin_ref_line.visible = on
 	if _aim_circle:
 		_aim_circle.visible = on
+	if not on and _wind_bias:
+		_wind_bias.visible = false
 
 
-func _show_wind_banner(wind: Vector2, extra: String = "") -> void:
-	## Short wind token only — advice sentences wait for the flag-tap epic.
-	if wind_banner == null:
+func _show_wind_flag(wind: Vector2, extra: String = "") -> void:
+	if _wind_flag == null:
 		return
-	if wind.length() < 4.0:
-		wind_banner.visible = false
-		return
-	wind_banner.visible = true
-	var line := AimControl.wind_label(wind)
-	wind_banner.text = "%s\n%s" % [line, extra] if not extra.is_empty() else line
+	_wind_flag.show_wind(wind, extra)
+	_refresh_wind_bias_arrow()
 
 
 func _refresh_wind_indicator(on: bool) -> void:
-	if _wind_sprite == null:
+	if _wind_flag == null:
 		return
 	if not on:
-		_wind_sprite.visible = false
+		_wind_flag.hide_wind()
+		if _wind_bias:
+			_wind_bias.visible = false
+		return
+	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
+	if _wind_flag.visible:
+		_wind_flag.set_wind_vector(wind)
+	else:
+		_wind_flag.show_wind(wind)
+	_refresh_wind_bias_arrow()
+
+
+func _refresh_wind_bias_arrow() -> void:
+	## Small rim arrow on the aim circle — bias opposite wind push.
+	if _wind_bias == null or _aim_circle == null or not _aim_circle.visible:
+		if _wind_bias:
+			_wind_bias.visible = false
+		return
+	if ball != null and ball.get_lie() == "Green":
+		_wind_bias.visible = false
 		return
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
 	if wind.length() < 4.0:
-		_wind_sprite.visible = false
+		_wind_bias.visible = false
 		return
-	# Place near ball, arrow points the way the ball will be pushed
-	var strength := wind.length()
-	var tex: Texture2D = WIND_TEXTURES["light"]
-	if strength >= 34.0:
-		tex = WIND_TEXTURES["strong"]
-	elif strength >= 16.0:
-		tex = WIND_TEXTURES["medium"]
-	_wind_sprite.texture = tex
-	_wind_sprite.global_position = ball.global_position + Vector2(90, -60)
-	_wind_sprite.rotation = wind.angle()
-	var inv_z := 1.0 / maxf(camera.zoom.x, 0.35)
-	_wind_sprite.scale = Vector2.ONE * (110.0 * inv_z / float(tex.get_width()))
-	_wind_sprite.visible = true
+	var to := _aim_target
+	var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
+	var bias := -wind.normalized()
+	var tip := to + bias * radius_px
+	var base := to + bias * maxf(radius_px - 36.0, radius_px * 0.55)
+	var perp := Vector2(-bias.y, bias.x) * 10.0
+	_wind_bias.points = PackedVector2Array([base + perp, tip, base - perp, base + perp])
+	_wind_bias.width = 3.2 / maxf(camera.zoom.x, 0.35)
+	_wind_bias.visible = true
 
 
 func _aim_shape_bend() -> float:
@@ -1006,6 +1022,8 @@ func _refresh_aim_visuals() -> void:
 		var is_putt := ball.get_lie() == "Green"
 		_set_green_book_visible(_should_show_green_book())
 		_refresh_wind_indicator(not is_putt)
+	elif _wind_bias:
+		_wind_bias.visible = false
 
 
 func _world_mouse() -> Vector2:
@@ -1102,8 +1120,6 @@ func _on_shot_ready(result: ShotResult) -> void:
 	_power_previewing = false
 	_set_aim_visuals_visible(false)
 	_refresh_wind_indicator(false)
-	if wind_banner:
-		wind_banner.visible = false
 	var lie_at_strike := ball.get_lie()
 	_set_green_book_visible(false)
 	if lie_at_strike == "Green":
