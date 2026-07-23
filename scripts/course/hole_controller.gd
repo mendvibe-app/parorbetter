@@ -671,11 +671,9 @@ func _begin_club_select() -> void:
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
-	feedback.text = "CLUB  ·  RANGE  ·  pick from the bag" if GameState.range_mode else "CLUB  ·  %d yd to pin  ·  pick from the bag" % int(pin_yd)
+	feedback.text = "RANGE — pick a club" if GameState.range_mode else "%d yd — pick a club" % int(pin_yd)
 	feedback.modulate = Color(0.95, 0.92, 0.7)
-	if wind_banner:
-		wind_banner.visible = true
-		wind_banner.text = "%s\n%s" % [AimControl.wind_label(wind), AimControl.wind_aim_hint(wind)]
+	_show_wind_banner(wind)
 	_club_select.present(lie, pin_yd, wind)
 
 
@@ -750,28 +748,18 @@ func _begin_aim_phase() -> void:
 	if _practice_btn:
 		_practice_btn.visible = true
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
-	if wind_banner:
-		if is_putt:
+	if is_putt:
+		if wind_banner:
 			wind_banner.visible = false
-		else:
-			wind_banner.visible = true
-			var wind_txt := AimControl.wind_label(wind)
-			var wind_advice := AimControl.wind_aim_hint(wind)
-			if show_book:
-				wind_banner.text = "%s\n%s\nGreen book open — read the break" % [wind_txt, wind_advice]
-			else:
-				wind_banner.text = "%s\n%s" % [wind_txt, wind_advice]
+	else:
+		_show_wind_banner(wind, "Green book — read the break" if show_book else "")
 	var club_bit := String(_chosen_club.get("name", ""))
 	if is_putt:
 		_refresh_putt_pace_feedback()
 	elif show_book:
-		feedback.text = "%s  ·  AIM + GREEN READ  ○%d yd — drag line/shape, Confirm" % [
-			club_bit, int(_aim_radius_yd)
-		]
+		feedback.text = "%s · AIM + GREEN READ — drag, Confirm" % club_bit
 	else:
-		feedback.text = "%s  ·  AIM line/shape  ○%d yd (%s) — drag, then Confirm" % [
-			club_bit, int(_aim_radius_yd), GameState.form_label()
-		]
+		feedback.text = "%s · AIM — drag, Confirm" % club_bit
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 	# Snap camera so putt/approach book is immediately readable (no smoothing lag)
 	camera.position_smoothing_enabled = false
@@ -876,24 +864,20 @@ func _start_power_swing(p_practice: bool = false) -> void:
 		shot_routine.practice_result.connect(_on_practice_result)
 	_set_green_book_visible(false)
 	if p_practice:
-		feedback.text = "Practice — find your tempo. Confirm Aim when ready."
+		feedback.text = "Practice — find your tempo"
 	elif lie == "Green":
 		var pace_yd := BallPhysics.estimate_carry_yards(
 			shot_routine.committed_power, club_max, lie
 		)
-		feedback.text = "Putter · pace %d yd (%d%%) · nail the tempo" % [
-			int(pace_yd), int(shot_routine.committed_power * 100.0)
-		]
+		feedback.text = "Putter · pace %d yd" % int(pace_yd)
 	else:
-		feedback.text = "%s · committed %d%% · nail the tempo" % [
-			club_name, int(shot_routine.committed_power * 100.0)
-		]
+		feedback.text = "%s · nail the tempo" % club_name
 
 
 func _refresh_putt_pace_feedback() -> void:
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var pace_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
-	feedback.text = "READ THE GREEN  ·  pin %d yd  ·  pace %d yd" % [int(pin_yd), int(pace_yd)]
+	feedback.text = "Pin %d yd · pace %d" % [int(pin_yd), int(pace_yd)]
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 
 
@@ -923,8 +907,12 @@ func _on_practice_result(verdict: Dictionary) -> void:
 	_refresh_aim_visuals()
 	var is_putt := ball.get_lie() == "Green"
 	_refresh_wind_indicator(not is_putt)
-	if wind_banner:
-		wind_banner.visible = not is_putt
+	if is_putt:
+		if wind_banner:
+			wind_banner.visible = false
+	else:
+		var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
+		_show_wind_banner(wind)
 
 
 func _set_aim_visuals_visible(on: bool) -> void:
@@ -936,6 +924,18 @@ func _set_aim_visuals_visible(on: bool) -> void:
 		_pin_ref_line.visible = on
 	if _aim_circle:
 		_aim_circle.visible = on
+
+
+func _show_wind_banner(wind: Vector2, extra: String = "") -> void:
+	## Short wind token only — advice sentences wait for the flag-tap epic.
+	if wind_banner == null:
+		return
+	if wind.length() < 4.0:
+		wind_banner.visible = false
+		return
+	wind_banner.visible = true
+	var line := AimControl.wind_label(wind)
+	wind_banner.text = "%s\n%s" % [line, extra] if not extra.is_empty() else line
 
 
 func _refresh_wind_indicator(on: bool) -> void:

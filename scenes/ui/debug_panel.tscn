@@ -18,9 +18,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -160.0
-offset_top = 170.0
+offset_top = 208.0
 offset_right = -24.0
-offset_bottom = 230.0
+offset_bottom = 268.0
 theme_override_font_sizes/font_size = 22
 text = "Debug"
 
@@ -31,7 +31,7 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -520.0
-offset_top = 240.0
+offset_top = 276.0
 offset_right = -16.0
 offset_bottom = 1080.0
 

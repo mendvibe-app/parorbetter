@@ -25,6 +25,7 @@ signal exit_range
 func _ready() -> void:
 	visible = true
 	panel.visible = false
+	_park_below_hud()
 	hole_spin.min_value = 1
 	hole_spin.max_value = GameState.HOLE_COUNT
 	hole_spin.value = 1
@@ -71,6 +72,16 @@ func _ready() -> void:
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
+
+
+func _park_below_hud() -> void:
+	## Sit under the HUD strip (incl. safe-area top) so Debug never shares AdaptLabel's band.
+	var btn := $DebugButton as Control
+	var top := UiScale.viewport_safe_margins(get_viewport()).y
+	var y0 := UiScale.HUD_HEIGHT + top + 8.0
+	btn.offset_top = y0
+	btn.offset_bottom = y0 + 60.0
+	panel.offset_top = y0 + 68.0
 
 
 func _unhandled_input(event: InputEvent) -> void:

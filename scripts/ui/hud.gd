@@ -13,12 +13,12 @@ var _strokes: int = 0
 
 func _ready() -> void:
 	GameState.lives_changed.connect(_on_lives)
-	GameState.adaptation_changed.connect(_on_adapt)
-	GameState.form_changed.connect(_on_form)
 	GameState.pure_strikes_changed.connect(_on_pure_strikes)
+	# Form/bias live in the aim circle + F1 — AdaptLabel is retired (HUD cleanup).
+	if adapt_label:
+		adapt_label.visible = false
+		adapt_label.text = ""
 	_on_lives(GameState.lives)
-	_on_adapt(GameState.get_adaptation_bias())
-	_on_form(GameState.get_form())
 	_on_pure_strikes(GameState.pure_strikes)
 
 
@@ -26,25 +26,25 @@ func refresh(hole: HoleData, strokes: int) -> void:
 	if hole == null:
 		return
 	_strokes = strokes
-	hole_label.text = "HOLE %d/%d  ·  %s" % [hole.hole_number, GameState.HOLE_COUNT, hole.name_label]
-	_refresh_score(hole.par)
-	_on_form(GameState.get_form())
+	hole_label.text = "HOLE %d · PAR %d · %d YDS" % [
+		hole.hole_number, hole.par, int(hole.yardage)
+	]
+	_refresh_score()
 	lives_row.visible = true
 
 
 func refresh_range(swings: int) -> void:
 	_strokes = swings
 	hole_label.text = "DRIVING RANGE"
-	score_label.text = "Swings %d  ·  no lives  ·  F1 Exit Range" % swings
+	score_label.text = "Swings %d · F1 Exit" % swings
 	lives_row.visible = false
-	_on_form(GameState.get_form())
 
 
-func _refresh_score(par: int) -> void:
+func _refresh_score() -> void:
 	var pure_bit := ""
 	if GameState.pure_strikes > 0:
-		pure_bit = "   ·  %d pure" % GameState.pure_strikes
-	score_label.text = "Par %d   Strokes %d%s" % [par, _strokes, pure_bit]
+		pure_bit = " · %d pure" % GameState.pure_strikes
+	score_label.text = "Strokes %d%s" % [_strokes, pure_bit]
 
 
 func _on_lives(lives: int) -> void:
@@ -62,23 +62,7 @@ func _on_lives(lives: int) -> void:
 		lives_row.add_child(icon)
 
 
-func _on_adapt(_bias: float) -> void:
-	_refresh_adapt_form()
-
-
-func _on_form(_form: float) -> void:
-	_refresh_adapt_form()
-
-
 func _on_pure_strikes(_count: int) -> void:
-	var hole := GameState.get_hole(GameState.current_hole)
-	if hole:
-		_refresh_score(hole.par)
-
-
-func _refresh_adapt_form() -> void:
-	adapt_label.text = "%s · ○%dyd %s" % [
-		GameState.bias_label(),
-		int(GameState.get_aim_radius_yards(false)),
-		GameState.form_label(),
-	]
+	if GameState.range_mode:
+		return
+	_refresh_score()
