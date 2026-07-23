@@ -529,6 +529,8 @@ func _draw_putt() -> void:
 
 	# Arc-width lane: edge grows with distance (line affordance, no length answer).
 	_draw_putt_arc_lane(start, top, Color(0.15, 0.28, 0.35, 0.95), Color(0.3, 0.55, 0.7, 0.55))
+	# Soft feet scale — known short putts labeled; farther = feel (not an answer tick).
+	_draw_putt_soft_scale(start, top)
 	# Soft follow past address — room to finish, clamped on-pad (not a stop target).
 	_draw_putt_follow_cue(addr)
 
@@ -588,6 +590,33 @@ func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Co
 		var p1: Vector2 = start.lerp(top, u1)
 		draw_line(p0 + perp * a0, p1 + perp * a1, edge_c, 2.0, true)
 		draw_line(p0 - perp * a0, p1 - perp * a1, edge_c, 2.0, true)
+
+
+func _draw_putt_soft_scale(start: Vector2, top: Vector2) -> void:
+	## Ruler in feet via the same map grade uses. Dense/clear ≤15 ft; softer 20–30; blank past.
+	var max_yd := BallPhysics.PUTTER_MAX_YD
+	for ft in PuttStroke.SCALE_LABELED_FT:
+		_draw_putt_scale_tick(start, top, int(ft), max_yd, true)
+	for ft in PuttStroke.SCALE_TICK_FT:
+		_draw_putt_scale_tick(start, top, int(ft), max_yd, false)
+
+
+func _draw_putt_scale_tick(
+	start: Vector2, top: Vector2, ft: int, club_max_yd: float, labeled: bool
+) -> void:
+	var frac := PuttStroke.frac_for_ft(float(ft), club_max_yd)
+	if frac < PuttStroke.MARKER_MIN_FRAC or frac > PuttStroke.MARKER_MAX_FRAC:
+		return
+	var mark: Vector2 = start.lerp(top, frac)
+	var half := 14.0 if labeled else 10.0
+	var a := 0.7 if labeled else 0.4
+	var c := Color(0.55, 0.85, 0.95, a)
+	draw_line(mark + Vector2(-half, 0), mark + Vector2(half, 0), c, 2.0 if labeled else 1.5, true)
+	if labeled:
+		draw_string(
+			ThemeDB.fallback_font, mark + Vector2(half + 6.0, 6.0), str(ft),
+			HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.6, 0.88, 0.95, 0.65)
+		)
 
 
 func _draw_putt_practice_marker(start: Vector2, top: Vector2) -> void:

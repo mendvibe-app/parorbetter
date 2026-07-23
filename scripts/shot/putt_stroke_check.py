@@ -93,8 +93,17 @@ def main() -> int:
     assert "func _draw_putt_follow_cue" in GESTURE
     assert "func _draw_putt_address" in GESTURE
     assert "func _draw_pad_ball" in GESTURE
+    assert "func _draw_putt_soft_scale" in GESTURE
+    assert "_draw_putt_soft_scale" in GESTURE.split("func _draw_putt")[1].split("func _putt_follow_len")[0]
     assert "_putt_follow_len" in GESTURE
     assert "addr.y - 20.0" in GESTURE or "addr.y - 20" in GESTURE
+    # Feet display helpers + soft scale brackets
+    assert "FT_PER_YD := 3.0" in PUTT
+    assert "func yd_to_ft" in PUTT
+    assert "func ft_to_yd" in PUTT
+    assert "func frac_for_ft" in PUTT
+    assert "SCALE_LABELED_FT" in PUTT
+    assert "SCALE_TICK_FT" in PUTT
     # Putt draw path must not pull in the full-swing tempo ghost
     putt_draw = GESTURE.split("func _draw_putt")[1].split("func _putt_follow_len")[0]
     assert "_draw_tempo_ghost" not in putt_draw
@@ -105,11 +114,16 @@ def main() -> int:
     trail_fn = GESTURE.split("func _putt_trail_color")[1].split("func ")[0]
     assert "putt_target_frac" not in trail_fn
     assert "_max_accel" in trail_fn or "_max_jerk" in trail_fn
-    # Miss copy: yardage + finish-through when that's the story
-    assert "Target %.0f yd → %.1f" in PUTT or 'Target %.0f yd' in PUTT
+    # Miss copy + glance in feet (not yards)
+    assert "Target %d ft → %d" in PUTT
+    assert "Target %.0f yd" not in PUTT
     assert "didn't finish through the ball" in PUTT
     assert "decelerated into impact" not in PUTT
     assert "target_yd" in PUTT and "rolled_yd" in PUTT
+    assert 'info_label.text = "%d ft"' in ROUTINE or "yd_to_ft(aim_distance_yd)" in ROUTINE
+    assert 'info_label.text = ""' not in ROUTINE or "Green" in ROUTINE  # green no longer blank
+    green_glance = ROUTINE.split('if lie == "Green":')[1].split("elif")[0]
+    assert "ft" in green_glance and 'info_label.text = ""' not in green_glance
     # Meter: hidden live; reveal after verdict; no short/pace/long words
     assert 'visible = p_type != "putt"' in METER or "visible = p_type != \"putt\"" in METER
     assert "if _verdict.is_empty():" in METER
@@ -121,6 +135,13 @@ def main() -> int:
     assert "Address · feel your pace · through the ball." in ROUTINE
     assert 'info_label.text = "Putt"' not in ROUTINE
     assert 'feedback.text = "Putter"' not in HOLE
+
+    # Soft scale map: 15 ft sits inside marker range; drawn uses same marker_frac
+    PUTTER_MAX = 35.0
+    f15 = marker_frac(min(max((15.0 / 3.0) / PUTTER_MAX, POWER_FLOOR), 1.0))
+    assert MARKER_MIN <= f15 <= MARKER_MAX, f15
+    f30 = marker_frac(min(max((30.0 / 3.0) / PUTTER_MAX, POWER_FLOOR), 1.0))
+    assert f30 > f15, (f15, f30)
 
     # Marker floor — tap-in still legible / above MIN_BACKSWING
     m_short = marker_frac(POWER_FLOOR)

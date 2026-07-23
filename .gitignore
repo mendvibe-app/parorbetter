@@ -6,6 +6,9 @@ export_presets.cfg
 .import/
 *.tmp
 
+# Local APK output — GBs of binaries, never in history
+builds/
+
 # OS / editor
 .DS_Store
 Thumbs.db

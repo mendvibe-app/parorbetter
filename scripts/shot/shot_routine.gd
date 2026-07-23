@@ -78,9 +78,9 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
-	# Club icon carries putt identity; no yardage / bare "Putt" redundancy during stroke.
+	# Green: feet (how golfers read putts). Full/chip stay yards.
 	if lie == "Green":
-		info_label.text = ""
+		info_label.text = "%d ft" % int(round(PuttStroke.yd_to_ft(aim_distance_yd)))
 	elif absf(aim_distance_yd - pin_distance_yd) < 1.5:
 		info_label.text = "%d yd" % int(pin_distance_yd)
 	else:

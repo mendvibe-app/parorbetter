@@ -4,7 +4,8 @@ extends Control
 
 signal dismissed
 
-@onready var body: Label = $Panel/Margin/Body
+@onready var body: Label = $Panel/Margin/VBox/Body
+@onready var strike_map: StrikeMap = $Panel/Margin/VBox/StrikeMap
 @onready var hint: Label = $Hint
 
 var _waiting: bool = false
@@ -23,6 +24,7 @@ func show_launch(report: ShotReport) -> void:
 	_waiting = false
 	set_process_input(false)
 	body.text = report.glance_text() + "\n\nBall in motion…"
+	strike_map.show_strike(report)
 	if hint:
 		hint.text = ""
 	visible = true
@@ -32,6 +34,7 @@ func show_launch(report: ShotReport) -> void:
 
 func show_final(report: ShotReport) -> void:
 	body.text = report.glance_text()
+	strike_map.show_strike(report)
 	if hint:
 		hint.text = "Tap to continue"
 	visible = true

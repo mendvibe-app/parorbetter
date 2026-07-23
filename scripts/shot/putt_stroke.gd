@@ -23,6 +23,19 @@ const MATCH_TOL := 0.18
 ## Tempo distance bias when smoothness is bad (± playtest knob).
 const TEMPO_BIAS_MAX := 0.08
 const PURE_BALANCE := 0.72
+## Display only — physics stays yards; golfers read putts in feet.
+const FT_PER_YD := 3.0
+## Soft pad scale: known zone labeled, mid ticks only, farther = feel.
+const SCALE_LABELED_FT := [3, 6, 10, 15]
+const SCALE_TICK_FT := [20, 30]
+
+
+static func yd_to_ft(yd: float) -> float:
+	return yd * FT_PER_YD
+
+
+static func ft_to_yd(ft: float) -> float:
+	return ft / FT_PER_YD
 
 
 static func marker_frac(committed_power: float) -> float:
@@ -36,6 +49,13 @@ static func power_from_frac(frac: float) -> float:
 	var span := MARKER_MAX_FRAC - MARKER_MIN_FRAC
 	var t := clampf((frac - MARKER_MIN_FRAC) / maxf(span, 0.001), 0.0, 1.0)
 	return _u_to_power(t * t)
+
+
+static func frac_for_ft(ft: float, club_max_yd: float = 35.0) -> float:
+	## Pad fraction for a putt length — same map grade uses (drawn = graded).
+	var yd := ft_to_yd(ft)
+	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, 1.0)
+	return marker_frac(power)
 
 
 static func band_half(_committed_power: float = 0.0) -> float:
@@ -144,30 +164,32 @@ static func putt_note(
 	elif absf(path) > 0.18:
 		line_word = " · a bit right" if path > 0.0 else " · a bit left"
 
-	var delta := rolled_yd - target_yd
-	var yd_core := "Target %.0f yd → %.1f" % [target_yd, rolled_yd]
-	if absf(delta) < 0.35:
-		yd_core += " — on pace"
-	elif delta < 0.0:
-		yd_core += " — %.1f short" % absf(delta)
+	var delta_ft := yd_to_ft(rolled_yd - target_yd)
+	var target_ft := int(round(yd_to_ft(target_yd)))
+	var rolled_ft := int(round(yd_to_ft(rolled_yd)))
+	var ft_core := "Target %d ft → %d" % [target_ft, rolled_ft]
+	if absf(delta_ft) < 1.0:
+		ft_core += " — on pace"
+	elif delta_ft < 0.0:
+		ft_core += " — %d ft short" % int(round(absf(delta_ft)))
 	else:
-		yd_core += " — %.1f long" % delta
+		ft_core += " — %d ft long" % int(round(delta_ft))
 
 	# Short leave + unfinished through — same story as the old off-pad THRU cue.
 	var short_through := (
 		actual_frac > 0.05 and follow_frac >= 0.0 and follow_frac < actual_frac * 0.65
 	)
-	if delta < -0.35 and short_through:
-		return "%s · didn't finish through the ball (%s)%s" % [yd_core, bal_word, line_word]
+	if delta_ft < -1.0 and short_through:
+		return "%s · didn't finish through the ball (%s)%s" % [ft_core, bal_word, line_word]
 
 	# Amplitude was in band but tempo spoiled it — lead with the golf why.
 	if abs_n <= BAND_GOOD and absf(tempo_bias) > 0.02:
 		var why := "jabbed through" if tempo_bias > 0.0 else "didn't finish through the ball"
-		return "%s · %s (%s)%s" % [yd_core, why, bal_word, line_word]
+		return "%s · %s (%s)%s" % [ft_core, why, bal_word, line_word]
 
 	if contact == ShotResult.ContactQuality.PERFECT or abs_n <= BAND_PERFECT:
-		return "%s · %s%s" % [yd_core, bal_word, line_word]
-	return "%s · %s%s" % [yd_core, bal_word, line_word]
+		return "%s · %s%s" % [ft_core, bal_word, line_word]
+	return "%s · %s%s" % [ft_core, bal_word, line_word]
 
 
 static func _power_to_u(committed_power: float) -> float:

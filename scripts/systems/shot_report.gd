@@ -164,27 +164,17 @@ func summary_line() -> String:
 
 
 func glance_text() -> String:
-	## One glance: putt → distance/line hero; full → tempo diagnosis.
+	## One glance: hero diagnosis + distance. Contact/path/balance live on the
+	## strike-map dot now — no prose duplicate.
 	var hero := tempo_note
 	if hero.is_empty() and not GameState.last_tempo_metrics.is_empty():
 		hero = str(GameState.last_tempo_metrics.get("note", ""))
 	if hero.is_empty():
 		hero = "Putt —" if lie == "Green" else "Tempo —"
-	var bal_word := "steady" if stance >= TempoGrade.PURE_BALANCE else ("shaky" if stance >= 0.4 else "lurch")
-	var sub: String
-	if lie == "Green":
-		var line := "on line"
-		if absf(path_error) > 0.35:
-			line = "pushed right" if path_error > 0.0 else "pulled left"
-		elif absf(path_error) > 0.18:
-			line = "a bit right" if path_error > 0.0 else "a bit left"
-		sub = "%s · %s" % [contact.to_upper(), line]
-	else:
-		sub = "Contact %s · Balance %s" % [contact.to_upper(), bal_word]
 	var yards := ""
 	if actual_yards >= 0.0:
 		yards = "\n→ %d yd" % int(actual_yards)
-	return "%s\n%s%s" % [hero, sub, yards]
+	return "%s%s" % [hero, yards]
 
 
 func full_text() -> String:
