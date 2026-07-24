@@ -59,3 +59,13 @@ Scenes under `scenes/`; art under `assets/`.
 ## Entry
 
 `scenes/main.tscn` → `main.gd` loads hole 1, wires next-hole / game-over / debug.
+
+## Cursor Cloud specific instructions
+
+Engine: **Godot 4.7.x** at `/usr/local/bin/godot` (installed by the update script). Matches `project.godot` `config/features` ("4.7"). GDScript only — no C#/Mono build.
+
+- **Tests / "lint":** there is no GDScript linter or CI. The test suite is the Python contract checks (`scripts/**/*_check.py`) — each parses the sibling `.gd` and asserts gameplay constants/logic haven't drifted. Run all: `for f in scripts/*/*_check.py; do python3 "$f" || break; done` (Python 3 is preinstalled). Add one check alongside non-trivial gameplay logic (ponytail rule).
+- **Headless sanity check:** `godot --headless --import` (imports assets, generates `.godot/`), then `godot --headless --quit-after 120` runs `main.tscn` for 120 frames and surfaces any GDScript parse/runtime errors. Both exit 0 when clean.
+- **Run the game (GUI):** `DISPLAY=:1 godot --path /workspace`. The VM has no GPU/audio, so Godot logs (harmless, expected) `VK_KHR_surface not found` → falls back to OpenGL/`llvmpipe` software rendering, and ALSA errors → dummy audio driver. The game still renders and plays fine. Use the F1 debug panel + Driving Range for isolated shot testing.
+- Shot loop for manual testing: Club select (pick ★ club → Confirm) → Aim (Space / Confirm Aim) → Tempo swing (LMB drag DOWN then UP through the ball on the pad) → dismiss result with Space.
+- Godot 4.4+ writes `*.gd.uid` files next to scripts; they are committed. Importing may generate a missing one (e.g. for a script added without its `.uid`) — harmless.
