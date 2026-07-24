@@ -10,7 +10,7 @@ PHYS = DIR.joinpath("ball_physics.gd").read_text(encoding="utf-8")
 GRADE = DIR.joinpath("../shot/tempo_grade.gd").read_text(encoding="utf-8")
 HOLE = DIR.joinpath("../course/hole_controller.gd").read_text(encoding="utf-8")
 
-PUTTER_MAX_YD = 35.0
+PUTTER_MAX_YD = 40.0
 
 
 def recommended_power(remaining_yd: float, club_max: float) -> float:
@@ -30,7 +30,7 @@ def putt_roll_yards(committed_power: float, tempo_power_mul: float, contact: str
 
 
 def main() -> int:
-    assert "PUTTER_MAX_YD := 35.0" in PHYS
+    assert "PUTTER_MAX_YD := 40.0" in PHYS
     assert "remaining_yd * 1.6" not in PHYS
     assert "max_yards\": PUTTER_MAX_YD" in PHYS or "PUTTER_MAX_YD" in PHYS
 
@@ -75,6 +75,18 @@ def main() -> int:
     assert 'feedback.text = "Putter"' not in HOLE
     # Internal pace still computed for grading (aim distance → committed_power)
     assert "aim_yd" in HOLE or "distance_to(_aim_target)" in HOLE
+
+    # Long lag reachable: 95 ft under putter max with pad room above the marker
+    assert PUTTER_MAX_YD * 3.0 >= 95.0
+    p95 = recommended_power(95.0 / 3.0, PUTTER_MAX_YD)
+    assert p95 < 0.95, p95  # headroom past the hole
+    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT or "45, 60, 90" in PUTT
+
+    # Greens large enough that a 95 ft putt isn't edge-to-edge on a medium green
+    GEN = DIR.joinpath("../course/hole_generator.gd").read_text(encoding="utf-8")
+    assert "lerpf(42.0, 78.0, green_size)" in GEN
+    # Putt camera leaves margin so long lags read as travel
+    assert "view_min * 0.40" in HOLE or "view_min * 0.4" in HOLE
 
     print("putt_pace_check: ok")
     return 0

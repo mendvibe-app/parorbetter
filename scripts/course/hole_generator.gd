@@ -621,7 +621,9 @@ static func _green_radii(
 	green_size: float,
 	rng: RandomNumberGenerator
 ) -> Vector2:
-	var base := lerpf(28.0, 58.0, green_size)
+	# World px radii (~19–35 yd → ~112–208 ft diameter). Old 28–58 made a 95 ft
+	# lag look like a full-green dart when the putt camera filled the phone.
+	var base := lerpf(42.0, 78.0, green_size)
 	var rx := base
 	var ry := base
 	match shape:

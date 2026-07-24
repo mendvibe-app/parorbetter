@@ -25,9 +25,9 @@ const TEMPO_BIAS_MAX := 0.08
 const PURE_BALANCE := 0.72
 ## Display only — physics stays yards; golfers read putts in feet.
 const FT_PER_YD := 3.0
-## Soft pad scale: known zone labeled, mid ticks only, farther = feel.
-const SCALE_LABELED_FT := [3, 6, 10, 15]
-const SCALE_TICK_FT := [20, 30]
+## Soft pad scale: scoring zone labeled; lag ticks so 60–90 ft isn't blank guesswork.
+const SCALE_LABELED_FT := [3, 6, 10, 15, 30]
+const SCALE_TICK_FT := [45, 60, 90]
 
 
 static func yd_to_ft(yd: float) -> float:
@@ -51,7 +51,7 @@ static func power_from_frac(frac: float) -> float:
 	return _u_to_power(t * t)
 
 
-static func frac_for_ft(ft: float, club_max_yd: float = 35.0) -> float:
+static func frac_for_ft(ft: float, club_max_yd: float = 40.0) -> float:
 	## Pad fraction for a putt length — same map grade uses (drawn = graded).
 	var yd := ft_to_yd(ft)
 	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, 1.0)
@@ -73,7 +73,7 @@ static func grade(
 	committed_power: float,
 	tol_scale: float = 1.0,
 	balance_tighten: float = 1.0,
-	club_max_yd: float = 35.0
+	club_max_yd: float = 40.0
 ) -> Dictionary:
 	var target := marker_frac(committed_power)
 	var band := BAND_HALF * maxf(tol_scale, 0.15)

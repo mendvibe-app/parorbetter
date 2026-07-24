@@ -10,4 +10,5 @@ Log of gameplay-affecting decisions, added as they happen.
 - ~~Concurrent shot input~~ (retired): power/stance + swing timing dual pads resolved on impact tap.
 - ~~Early-release soft crush~~ (retired with dual-pad): lifting finger 1 crushed stability; replaced by balance-from-gesture.
 - **HUD cleanup:** scorecard header `HOLE n · PAR p · YDS`; AdaptLabel form/○radius/bias text retired (circle + F1 carry form). Wind is a tappable flagstick (lean/wave; advice on tap) plus rim bias arrow on the aim circle — not banner sentences. Lie/club are silhouette icons beside pin yardage; club bag buttons reuse the same club icons.
+- **Putting distance realism:** greens ~112–208 ft diameter (was ~75–155); putt camera fills less of the phone so long lags read as travel; putter max 40 yd / 120 ft; soft pad scale labels 30 ft and ticks 45/60/90 so a 95 ft lag isn't blank guesswork past a 30 ft ceiling.
 

@@ -136,12 +136,18 @@ def main() -> int:
     assert 'info_label.text = "Putt"' not in ROUTINE
     assert 'feedback.text = "Putter"' not in HOLE
 
-    # Soft scale map: 15 ft sits inside marker range; drawn uses same marker_frac
-    PUTTER_MAX = 35.0
+    # Soft scale map: 15 + 30 ft labeled; lag ticks past mid-pad; 95 ft under max
+    PUTTER_MAX = 40.0
     f15 = marker_frac(min(max((15.0 / 3.0) / PUTTER_MAX, POWER_FLOOR), 1.0))
     assert MARKER_MIN <= f15 <= MARKER_MAX, f15
     f30 = marker_frac(min(max((30.0 / 3.0) / PUTTER_MAX, POWER_FLOOR), 1.0))
     assert f30 > f15, (f15, f30)
+    f90 = marker_frac(min(max((90.0 / 3.0) / PUTTER_MAX, POWER_FLOOR), 1.0))
+    assert f90 > f30, (f30, f90)
+    assert f90 < MARKER_MAX - 0.02, f90  # room above a long lag
+    assert "SCALE_LABELED_FT := [3, 6, 10, 15, 30]" in PUTT
+    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT
+    assert "PUTTER_MAX_YD := 40.0" in Path(DIR.parent / "ball/ball_physics.gd").read_text(encoding="utf-8")
 
     # Marker floor — tap-in still legible / above MIN_BACKSWING
     m_short = marker_frac(POWER_FLOOR)

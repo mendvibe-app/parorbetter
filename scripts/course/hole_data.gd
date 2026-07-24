@@ -13,8 +13,8 @@ enum CourseTheme { PARKLAND, LINKS, DESERT }
 @export var par: int = 4
 @export var yardage: float = 400.0  ## tee→green yards (drives layout length)
 @export var fairway_width: float = 140.0
-@export var green_radius_x: float = 48.0
-@export var green_radius_y: float = 48.0
+@export var green_radius_x: float = 60.0
+@export var green_radius_y: float = 60.0
 @export var pin_offset: Vector2 = Vector2.ZERO  ## from green center
 @export var tee_offset_x: float = 0.0
 @export var fairway_bend: float = 0.0  ## lateral dogleg at mid fairway (px)
