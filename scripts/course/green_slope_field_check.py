@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Mirrors HoleData.green_height_at / green_slope_at — fails if field logic drifts."""
+"""Mirrors HoleData green slope profiles — fails if field logic drifts."""
 from __future__ import annotations
 
 import math
 import sys
+from pathlib import Path
+
+DIR = Path(__file__).parent
+DATA = DIR.joinpath("hole_data.gd").read_text(encoding="utf-8")
+GEN = DIR.joinpath("hole_generator.gd").read_text(encoding="utf-8")
 
 
-def influences(slope, rx, ry, pin):
+def influences_side_slope(slope, rx, ry, pin):
     base_len = math.hypot(slope[0], slope[1])
     if base_len < 0.02:
         return []
@@ -49,6 +54,29 @@ def influences(slope, rx, ry, pin):
     return out
 
 
+def influences_bowl(slope, rx, ry, pin):
+    base_len = math.hypot(*slope)
+    rmin = min(max(rx, 20.0), max(ry, 20.0))
+    return [{"pos": (pin[0] * 0.35, pin[1] * 0.35), "amp": -base_len * rmin * 0.85, "sigma": rmin * 0.55}]
+
+
+def influences_false_front(slope, rx, ry, pin):
+    base_len = math.hypot(*slope)
+    rmin = min(max(rx, 20.0), max(ry, 20.0))
+    return [
+        {
+            "pos": (0.0, ry * 0.42),
+            "amp": base_len * rmin * 0.8,
+            "sigma": rmin * 0.38,
+        },
+        {
+            "pos": (pin[0] * 0.9, pin[1] * 0.9 - ry * 0.08),
+            "amp": -base_len * rmin * 0.4,
+            "sigma": rmin * 0.32,
+        },
+    ]
+
+
 def height_at(local, slope, infs):
     h = -(slope[0] * local[0] + slope[1] * local[1])
     for inf in infs:
@@ -73,23 +101,20 @@ def slope_at(local, slope, infs):
 
 
 def main() -> int:
-    from pathlib import Path
-
-    gen = Path(__file__).parent.joinpath("hole_generator.gd").read_text(encoding="utf-8")
-    # Slope must not ramp with round-progression t — per-hole roll instead.
-    assert "lerpf(0.04, 0.42, t)" not in gen
-    assert "lerpf(0.04, 0.42, rng.randf())" in gen
+    assert "ContourProfile" in DATA
+    assert "_pick_contour" in GEN
+    assert "lerpf(0.04, 0.42, t)" not in GEN
+    assert "lerpf(0.04, 0.42, rng.randf())" in GEN
 
     slope = (0.3, 0.1)
     rx, ry = 50.0, 40.0
     pin = (20.0, -10.0)
-    infs = influences(slope, rx, ry, pin)
-    assert len(infs) >= 2, "expected crown + pin influences"
+    infs = influences_side_slope(slope, rx, ry, pin)
+    assert len(infs) >= 2
 
     a = slope_at((-20.0, 10.0), slope, infs)
     b = slope_at((20.0, -10.0), slope, infs)
-    dist = math.hypot(a[0] - b[0], a[1] - b[1])
-    assert dist > 0.02, f"slope must vary by position, got {dist}"
+    assert math.hypot(a[0] - b[0], a[1] - b[1]) > 0.02
 
     eps = 0.5
     p = (8.0, -6.0)
@@ -104,9 +129,20 @@ def main() -> int:
     err = math.hypot(num[0] - ana[0], num[1] - ana[1])
     assert err < 0.02, f"slope must be -∇height, err={err}"
 
-    flat_infs = influences((0.0, 0.0), rx, ry, pin)
-    assert flat_infs == []
-    assert slope_at((10.0, 10.0), (0.0, 0.0), flat_infs) == (0.0, 0.0)
+    assert influences_side_slope((0.0, 0.0), rx, ry, pin) == []
+
+    # Bowl: depression at center (amp negative) vs rim — plane held flat for the probe.
+    bowl = influences_bowl((0.3, 0.0), rx, ry, (0.0, 0.0))
+    flat = (0.0, 0.0)
+    h_c = height_at((0.0, 0.0), flat, bowl)
+    h_r = height_at((28.0, 0.0), flat, bowl)
+    assert h_c < h_r, f"bowl center should be low, {h_c} vs {h_r}"
+
+    # False front: high face short of pin (positive Y).
+    ff = influences_false_front((0.3, 0.0), rx, ry, pin)
+    h_front = height_at((0.0, ry * 0.42), flat, ff)
+    h_back = height_at((0.0, -ry * 0.2), flat, ff)
+    assert h_front > h_back, f"false front face should be high, {h_front} vs {h_back}"
 
     print("green_slope_field_check: ok")
     return 0

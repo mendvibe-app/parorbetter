@@ -79,8 +79,13 @@ static func make_aim_cone(
 ) -> Dictionary:
 	var along := to - from
 	var length := along.length()
-	if length < 8.0:
+	# Short putts still need a readable cone — pad length, never replace bearing.
+	# (Old floor forced Vector2(0,-1); ~5 ft putts then aimed straight up, not at the cup.)
+	if length < 0.001:
 		along = Vector2(0, -1)
+		length = 8.0
+	elif length < 8.0:
+		along = along * (8.0 / length)
 		length = 8.0
 	var dir := along.normalized()
 	var right := Vector2(-dir.y, dir.x)

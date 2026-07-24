@@ -27,7 +27,36 @@ const EDGE_DEADZONE_MIN_PX := 24.0
 const GUIDE_BACK_FULL := 0.75
 const GUIDE_BACK_SHORT := 0.50
 const BALL_TEX := preload("res://assets/ball/ball.png")
+const TEX_START := preload("res://assets/ui/ui_tempo_landmark_start.png")
+const TEX_TOP := preload("res://assets/ui/ui_tempo_landmark_top.png")
+const TEX_THROUGH := preload("res://assets/ui/ui_tempo_landmark_through.png")
+const TEX_LANE := preload("res://assets/ui/ui_tempo_lane.png")
+const TEX_COACH := preload("res://assets/ui/ui_tempo_coach_idle.png")
+const TEX_PUTT_START := preload("res://assets/ui/ui_putt_landmark_start.png")
+const TEX_PUTT_TOP := preload("res://assets/ui/ui_putt_landmark_top.png")
+const TEX_PUTT_THROUGH := preload("res://assets/ui/ui_putt_landmark_through.png")
+const TEX_PUTT_LANE := preload("res://assets/ui/ui_putt_lane.png")
+const TEX_PUTT_COACH := preload("res://assets/ui/ui_putt_coach_idle.png")
+const TEX_GOLFER_ADDRESS := preload("res://assets/ui/ui_golfer_address.png")
+const TEX_GOLFER_MID := preload("res://assets/ui/ui_golfer_mid.png")
+const TEX_GOLFER_TOP := preload("res://assets/ui/ui_golfer_top.png")
+const TEX_GOLFER_IMPACT := preload("res://assets/ui/ui_golfer_impact.png")
+const TEX_GOLFER_FOLLOW := preload("res://assets/ui/ui_golfer_follow.png")
+const TEX_GOLFER_PUTT_ADDRESS := preload("res://assets/ui/ui_golfer_putt_address.png")
+const TEX_GOLFER_PUTT_MID := preload("res://assets/ui/ui_golfer_putt_mid.png")
+const TEX_GOLFER_PUTT_TOP := preload("res://assets/ui/ui_golfer_putt_top.png")
+const TEX_GOLFER_PUTT_IMPACT := preload("res://assets/ui/ui_golfer_putt_impact.png")
+const TEX_GOLFER_PUTT_FOLLOW := preload("res://assets/ui/ui_golfer_putt_follow.png")
 const BALL_POP_MS := 120.0
+const LANDMARK_DIAM := 36.0
+const GOLFER_DRAW_H := 120.0
+const GOLFER_MARGIN := 12.0
+## STYLE sky / grass for the mini stage behind the figure.
+const GOLFER_SKY := Color(0.271, 0.478, 0.612, 1.0)  ## #457A9C
+const GOLFER_SKY_HI := Color(0.525, 0.761, 0.804, 1.0)  ## #86C2CD
+const GOLFER_GRASS := Color(0.329, 0.408, 0.208, 1.0)  ## #546835
+const GOLFER_GRASS_TIP := Color(0.392, 0.494, 0.239, 1.0)  ## #647E3D
+const GOLFER_STAGE_EDGE := Color(0.102, 0.122, 0.102, 1.0)  ## #1A1F1A
 
 var active: bool = false
 var dragging: bool = false
@@ -72,6 +101,7 @@ var _ball_pop_at: int = 0
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
+	texture_filter = TEXTURE_FILTER_NEAREST
 	set_process(false)
 	set_process_input(false)
 
@@ -82,14 +112,14 @@ func _is_putt() -> bool:
 
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
-	## Putt sits lower so soft follow-through fits on-pad (not past the top edge).
-	var y := 0.36 if _is_putt() else 0.18
+	## Putt uses more vertical span so 15 vs 30 ft is finger-resolvable.
+	var y := 0.22 if _is_putt() else 0.18
 	return Vector2(size.x * 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
-	var y := 0.80 if _is_putt() else 0.78
+	var y := 0.92 if _is_putt() else 0.78
 	return Vector2(size.x * 0.5, size.y * y)
 
 
@@ -107,6 +137,24 @@ func _lane_through_dir() -> Vector2:
 
 func live_backswing_frac() -> float:
 	return clampf(_peak_disp / _lane_len(), 0.0, 1.2)
+
+
+func live_stroke_u() -> float:
+	## Spatial swing for golfer pose: -1 idle; 0→1 backswing; 1→0 downswing; <0 follow.
+	if not active or (_t_takeaway < 0.0 and not dragging):
+		return -1.0
+	var lane := _lane_len()
+	if lane < 1.0:
+		return 0.0
+	if _t_impact >= 0.0:
+		var hold := _follow_through * maxf(size.y, 1.0) / lane
+		return -clampf(maxf(hold, 0.2), 0.0, 1.2)
+	if not had_top:
+		return clampf(_disp / lane, 0.0, 1.2)
+	if _disp < 0.0:
+		return clampf(_disp / lane, -1.2, 0.0)
+	var peak := maxf(_peak_disp, 1.0)
+	return clampf(_disp / peak, 0.0, 1.0)
 
 
 func live_ratio() -> float:
@@ -363,7 +411,15 @@ func _update(pos: Vector2) -> void:
 
 	if not _axis_locked:
 		if delta.length() >= _deadzone():
-			_axis = delta.normalized()
+			if _is_putt():
+				## Lane is the target line; stroke may leave it (push/pull → path_error).
+				_address = address_hint()
+				_axis = (top_hint() - address_hint()).normalized()
+				if _axis.length_squared() < 0.5:
+					_axis = Vector2(0, 1)
+				delta = _smoothed - _address
+			else:
+				_axis = delta.normalized()
 			_axis_locked = true
 			swinging = true
 			_ball_pop_at = Time.get_ticks_msec()
@@ -379,7 +435,7 @@ func _update(pos: Vector2) -> void:
 	var accel := (_vel - _prev_vel) / dt
 	_max_accel = maxf(_max_accel, absf(accel) / maxf(size.y, 1.0))
 
-	# Lateral (perp to stroke axis) — putt line grade. Axis = first pull direction.
+	# Lateral (perp to stroke axis) — putt line grade. Putt axis = lane.
 	var perp := Vector2(-_axis.y, _axis.x)
 	var lat := delta.dot(perp) / maxf(size.y, 1.0)
 	if absf(lat) > absf(_max_lateral):
@@ -486,6 +542,7 @@ func _finish_impact(now: float, incomplete: bool) -> void:
 		"follow_through_len": _follow_through,
 		"backswing_frac": _peak_disp / lane,
 		"follow_frac": _follow_through * pad / lane,
+		"follow_cap_frac": _putt_follow_cap_frac() if _is_putt() else 1.0,
 		"max_lateral": _max_lateral,
 		"incomplete": incomplete,
 	}
@@ -502,6 +559,7 @@ func _finish_impact(now: float, incomplete: bool) -> void:
 func _draw() -> void:
 	if _is_putt():
 		_draw_putt()
+		_draw_golfer()
 		return
 	_draw_pad_bounds()
 	if active and not dragging and _t_impact < 0.0:
@@ -514,10 +572,95 @@ func _draw() -> void:
 		_draw_trail()
 		if dragging:
 			draw_circle(_smoothed, 11.0, Color(0.95, 0.9, 0.35, 0.9))
+	_draw_golfer()
+
+
+func _draw_golfer() -> void:
+	## Pose tracks live_stroke_u — top-left stage, does not replace coach.
+	if not active and _t_impact < 0.0:
+		return
+	var pair: Array = _golfer_pose_pair()
+	var a: Texture2D = pair[0]
+	var b: Texture2D = pair[1]
+	var t: float = float(pair[2])
+	var tex_h := float(a.get_height())
+	var scale := GOLFER_DRAW_H / maxf(tex_h, 1.0)
+	var tw := float(a.get_width()) * scale
+	var th := GOLFER_DRAW_H
+	var origin := Vector2(GOLFER_MARGIN, GOLFER_MARGIN)
+	var pad := 6.0
+	var stage := Rect2(origin - Vector2(pad, pad), Vector2(tw + pad * 2.0, th + pad * 2.0))
+	_draw_golfer_stage(stage)
+	var col_a := Color(1, 1, 1, 1.0 - t * 0.85)
+	var col_b := Color(1, 1, 1, t)
+	draw_texture_rect(a, Rect2(origin, Vector2(tw, th)), false, col_a)
+	if t > 0.02:
+		draw_texture_rect(b, Rect2(origin, Vector2(tw, th)), false, col_b)
+
+
+func _draw_golfer_stage(stage: Rect2) -> void:
+	## Mini sky + grass window so the figure reads grounded.
+	var grass_h := stage.size.y * 0.30
+	var sky_h := stage.size.y - grass_h
+	var sky := Rect2(stage.position, Vector2(stage.size.x, sky_h))
+	var grass := Rect2(Vector2(stage.position.x, stage.position.y + sky_h), Vector2(stage.size.x, grass_h))
+	draw_rect(sky, GOLFER_SKY, true)
+	## Sparse sky dither (crunchy, not AA).
+	var step := 4.0
+	var x := sky.position.x
+	while x < sky.end.x:
+		var y := sky.position.y
+		while y < sky.end.y:
+			if int(x + y) % 8 == 0:
+				draw_rect(Rect2(x, y, 2.0, 2.0), GOLFER_SKY_HI, true)
+			y += step
+		x += step
+	draw_rect(grass, GOLFER_GRASS, true)
+	## Horizon tufts.
+	var tx := grass.position.x + 2.0
+	while tx < grass.end.x - 2.0:
+		draw_rect(Rect2(tx, grass.position.y, 2.0, 3.0), GOLFER_GRASS_TIP, true)
+		tx += 5.0
+	draw_rect(stage, GOLFER_STAGE_EDGE, false, 2.0)
+
+
+func _golfer_pose_pair() -> Array:
+	## Returns [tex_a, tex_b, blend 0..1]. Putt uses short-stroke frames.
+	var addr: Texture2D
+	var mid: Texture2D
+	var top: Texture2D
+	var impact: Texture2D
+	var follow: Texture2D
+	if _is_putt():
+		addr = TEX_GOLFER_PUTT_ADDRESS
+		mid = TEX_GOLFER_PUTT_MID
+		top = TEX_GOLFER_PUTT_TOP
+		impact = TEX_GOLFER_PUTT_IMPACT
+		follow = TEX_GOLFER_PUTT_FOLLOW
+	else:
+		addr = TEX_GOLFER_ADDRESS
+		mid = TEX_GOLFER_MID
+		top = TEX_GOLFER_TOP
+		impact = TEX_GOLFER_IMPACT
+		follow = TEX_GOLFER_FOLLOW
+	var u := live_stroke_u()
+	## Idle sentinel -1 (no takeaway yet) → address. Post-top negatives → follow.
+	if u < 0.0:
+		if had_top or _t_impact >= 0.0:
+			var f := clampf(-u, 0.0, 1.0)
+			return [impact, follow, f]
+		return [addr, addr, 0.0]
+	if not had_top:
+		## Backswing 0→1: address → mid → top.
+		if u <= 0.5:
+			return [addr, mid, clampf(u * 2.0, 0.0, 1.0)]
+		return [mid, top, clampf((u - 0.5) * 2.0, 0.0, 1.0)]
+	## Downswing 1→0: top → impact.
+	return [top, impact, clampf(1.0 - u, 0.0, 1.0)]
 
 
 func _draw_putt() -> void:
-	## Cool palette. Golf shape: address → pace feel → through the ball (soft follow on-pad).
+	## Cool water-palette skin; same landmark roles as full swing.
 	var r := Rect2(Vector2.ZERO, size).grow(-8.0)
 	draw_rect(r, Color(0.06, 0.12, 0.16, 0.78), true)
 	draw_rect(r, Color(0.35, 0.7, 0.85, 0.75), false, 3.0)
@@ -525,23 +668,28 @@ func _draw_putt() -> void:
 	var start := address_hint()
 	var top := top_hint()
 	var lane := _lane_len()
-	var addr := _address if dragging or _t_takeaway >= 0.0 else start
+	## After lock, address is snapped to the rail — keep marks on-lane.
+	var addr := start if _axis_locked or not dragging else (
+		_address if dragging or _t_takeaway >= 0.0 else start
+	)
+	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
 
-	# Arc-width lane: edge grows with distance (line affordance, no length answer).
-	_draw_putt_arc_lane(start, top, Color(0.15, 0.28, 0.35, 0.95), Color(0.3, 0.55, 0.7, 0.55))
-	# Soft feet scale — scoring zone labeled; lag ticks so long putts aren't blank.
+	_draw_putt_lane_tex(start, top)
+	# Widening edge guides stay procedural (line affordance).
+	_draw_putt_arc_edges(start, top, Color(0.3, 0.55, 0.7, 0.55))
 	_draw_putt_soft_scale(start, top)
-	# Soft follow past address — room to finish, clamped on-pad (not a stop target).
 	_draw_putt_follow_cue(addr)
 
 	if putt_show_marker:
 		_draw_putt_practice_marker(start, top)
 
-	# Address: cyan idle → course ball once stroke commits (stays through follow).
-	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
+	_draw_landmark_tex(TEX_PUTT_TOP, top if _peak_disp <= 1.0 else peak_pos, LANDMARK_DIAM)
 	_draw_putt_address(addr, pulse)
 
-	# Live pull fill (color = smoothness, not length)
+	if active and not dragging and _t_impact < 0.0:
+		var coach_p := start.lerp(top, 0.28)
+		_draw_landmark_tex(TEX_PUTT_COACH, coach_p, 44.0, Color(1, 1, 1, 0.55 + 0.35 * pulse))
+
 	if dragging and _axis_locked:
 		var prog := clampf(_peak_disp / lane, 0.0, 1.0)
 		var tip: Vector2 = start.lerp(top, prog)
@@ -552,33 +700,19 @@ func _draw_putt() -> void:
 		draw_circle(_smoothed, 10.0, Color(0.7, 0.95, 1.0, 0.9))
 
 
-func _putt_follow_len(addr: Vector2) -> float:
-	## Soft stub past address; never past the pad's top margin.
-	var room := maxf(addr.y - 20.0, 8.0)
-	return minf(size.y * 0.12, room)
+func _draw_putt_lane_tex(start: Vector2, top: Vector2) -> void:
+	var mid := (start + top) * 0.5
+	var dist := start.distance_to(top)
+	var tex_size := TEX_PUTT_LANE.get_size()
+	# Match mid-stroke arc width (~2 × arc_allowance(0.5) × pad) so the strip isn't thinner than the grade.
+	var sx := 56.0 / maxf(tex_size.x, 1.0)
+	var sy := dist / maxf(tex_size.y, 1.0)
+	draw_set_transform(mid, (top - start).angle() - PI * 0.5, Vector2(sx, sy))
+	draw_texture(TEX_PUTT_LANE, -tex_size * 0.5)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _draw_putt_follow_cue(addr: Vector2) -> void:
-	var through := _lane_through_dir()
-	var tip := addr + through * _putt_follow_len(addr)
-	var a := 0.7 if had_top else 0.45
-	draw_line(addr, tip, Color(0.4, 0.7, 0.85, 0.35 * a), 6.0, true)
-	draw_arc(tip, 10.0, 0.0, TAU, 20, Color(0.5, 0.8, 0.95, 0.55 * a), 2.0, true)
-
-
-func _draw_putt_address(p: Vector2, pulse: float) -> void:
-	if _axis_locked or _t_impact >= 0.0:
-		_draw_pad_ball(p, _ball_pop_scale())
-		return
-	if not dragging and _t_impact < 0.0:
-		draw_circle(p, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
-	draw_circle(p, 11.0, Color(0.55, 0.9, 1.0, 0.9))
-	draw_arc(p, 16.0, 0.0, TAU, 24, Color(0.55, 0.9, 1.0, 0.65 * pulse), 2.5, true)
-
-
-func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Color) -> void:
-	## Center line + widening edges from arc_allowance — teaches path, not pace.
-	draw_line(start, top, fill_c, 14.0, true)
+func _draw_putt_arc_edges(start: Vector2, top: Vector2, edge_c: Color) -> void:
 	var steps := 8
 	var perp := Vector2(-(top - start).y, (top - start).x).normalized()
 	for i in range(steps):
@@ -592,30 +726,84 @@ func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Co
 		draw_line(p0 - perp * a0, p1 - perp * a1, edge_c, 2.0, true)
 
 
+func _putt_follow_room(addr: Vector2) -> float:
+	## Pixels past address before the pad's top margin.
+	return maxf(addr.y - 20.0, 8.0)
+
+
+func _putt_follow_target_frac() -> float:
+	## Lane-fraction finish to match — live backswing after top, else committed pace.
+	if had_top and _peak_disp > 1.0:
+		return clampf(_peak_disp / _lane_len(), 0.0, 1.2)
+	return clampf(putt_target_frac, PuttStroke.MARKER_MIN_FRAC, PuttStroke.MARKER_MAX_FRAC)
+
+
+func _putt_follow_cap_frac() -> float:
+	## Max follow_frac the pad can show — grade uses the same cap (drawn = graded).
+	var lane := _lane_len()
+	return clampf(_putt_follow_room(address_hint()) / maxf(lane, 1.0), 0.05, 1.2)
+
+
+func _putt_follow_len(addr: Vector2) -> float:
+	## Finish cue grows with pace/backswing; clamped to pad (not a fixed 12% stub).
+	var want := _putt_follow_target_frac() * _lane_len()
+	return minf(want, _putt_follow_room(addr))
+
+
+func _draw_putt_follow_cue(addr: Vector2) -> void:
+	## Soft finish past address — open ring (no slash landmark).
+	var through := _lane_through_dir()
+	var tip := addr + through * _putt_follow_len(addr)
+	var a := 0.7 if had_top else 0.45
+	draw_line(addr, tip, Color(0.45, 0.75, 0.9, 0.28 * a), 5.0, true)
+	draw_arc(tip, 11.0, 0.0, TAU, 24, Color(0.55, 0.85, 1.0, 0.5 * a), 2.5, true)
+
+
+func _draw_putt_address(p: Vector2, pulse: float) -> void:
+	if _axis_locked or _t_impact >= 0.0:
+		_draw_pad_ball(p, _ball_pop_scale())
+		return
+	if not dragging and _t_impact < 0.0:
+		draw_circle(p, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
+	var tex: Texture2D = TEX_PUTT_THROUGH if had_top else TEX_PUTT_START
+	_draw_landmark_tex(tex, p, LANDMARK_DIAM * (1.0 + 0.08 * pulse))
+
+
+func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Color) -> void:
+	## Kept for callers/tests; putt draw uses lane tex + _draw_putt_arc_edges.
+	draw_line(start, top, fill_c, 14.0, true)
+	_draw_putt_arc_edges(start, top, edge_c)
+
+
 func _draw_putt_soft_scale(start: Vector2, top: Vector2) -> void:
-	## Ruler in feet via the same map grade uses. Dense ≤15 ft; 30 labeled; lag ticks 45–90.
-	var max_yd := BallPhysics.PUTTER_MAX_YD
+	## Absolute soft ruler — hairlines to cone edge; labels outside so thumb doesn't cover.
 	for ft in PuttStroke.SCALE_LABELED_FT:
-		_draw_putt_scale_tick(start, top, int(ft), max_yd, true)
+		_draw_putt_scale_tick(start, top, int(ft), true)
 	for ft in PuttStroke.SCALE_TICK_FT:
-		_draw_putt_scale_tick(start, top, int(ft), max_yd, false)
+		_draw_putt_scale_tick(start, top, int(ft), false)
 
 
-func _draw_putt_scale_tick(
-	start: Vector2, top: Vector2, ft: int, club_max_yd: float, labeled: bool
-) -> void:
-	var frac := PuttStroke.frac_for_ft(float(ft), club_max_yd)
+func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool) -> void:
+	var frac := PuttStroke.frac_for_ft(float(ft))
 	if frac < PuttStroke.MARKER_MIN_FRAC or frac > PuttStroke.MARKER_MAX_FRAC:
 		return
 	var mark: Vector2 = start.lerp(top, frac)
-	var half := 14.0 if labeled else 10.0
+	var along := top - start
+	if along.length_squared() < 1.0:
+		return
+	## Same +perp as arc edges — screen-right of the backswing lane.
+	var perp := Vector2(-along.y, along.x).normalized()
+	var edge: Vector2 = mark + perp * (PuttStroke.arc_allowance(frac) * size.y)
+	var thick := 2.0 if labeled else 1.5
 	var a := 0.7 if labeled else 0.4
 	var c := Color(0.55, 0.85, 0.95, a)
-	draw_line(mark + Vector2(-half, 0), mark + Vector2(half, 0), c, 2.0 if labeled else 1.5, true)
+	draw_line(mark, edge, c, thick, true)
 	if labeled:
 		draw_string(
-			ThemeDB.fallback_font, mark + Vector2(half + 6.0, 6.0), str(ft),
-			HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION, Color(0.6, 0.88, 0.95, 0.65)
+			UiScale.FONT, edge + perp * 8.0 + Vector2(0.0, 6.0), str(ft),
+			HORIZONTAL_ALIGNMENT_LEFT, -1,
+			UiScale.CAPTION,
+			Color(0.6, 0.88, 0.95, 0.75)
 		)
 
 
@@ -696,11 +884,14 @@ func _draw_pull_lane(show_progress: bool) -> void:
 	var ends := _pull_lane_ends()
 	var start: Vector2 = ends[0]
 	var top: Vector2 = ends[1]
-	# Wide track = the swing path (no engine MIN tick — that's miss feedback only)
-	draw_line(start, top, Color(0.2, 0.32, 0.24, 0.95), 22.0, true)
-	draw_line(start, top, Color(0.35, 0.55, 0.4, 0.7), 14.0, true)
-	# Soft top end-cap — shape cue, not a hard target
-	draw_line(top + Vector2(-22, 0), top + Vector2(22, 0), Color(0.5, 0.95, 0.55, 0.95), 4.0, true)
+	var mid := (start + top) * 0.5
+	var dist := start.distance_to(top)
+	var tex_size := TEX_LANE.get_size()
+	var sx := 28.0 / maxf(tex_size.x, 1.0)
+	var sy := dist / maxf(tex_size.y, 1.0)
+	draw_set_transform(mid, (top - start).angle() - PI * 0.5, Vector2(sx, sy))
+	draw_texture(TEX_LANE, -tex_size * 0.5)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if show_progress and dragging and _axis_locked:
 		var lane_len := start.distance_to(top)
 		var prog := clampf(_peak_disp / maxf(lane_len, 1.0), 0.0, 1.0)
@@ -714,10 +905,10 @@ func _follow_cue_end(addr: Vector2) -> Vector2:
 
 
 func _draw_follow_cue(addr: Vector2, a: float = 0.45) -> void:
+	## Soft "keep going" past address — open ring, not a hard target landmark.
 	var tip := _follow_cue_end(addr)
-	draw_line(addr, tip, Color(0.45, 0.7, 0.85, 0.35 * a), 6.0, true)
-	# Open ring — space, not a bullseye
-	draw_arc(tip, 10.0, 0.0, TAU, 20, Color(0.5, 0.75, 0.9, 0.55 * a), 2.0, true)
+	draw_line(addr, tip, Color(0.55, 0.85, 0.55, 0.28 * a), 5.0, true)
+	draw_arc(tip, 11.0, 0.0, TAU, 24, Color(0.6, 0.9, 0.55, 0.5 * a), 2.5, true)
 
 
 func _ball_pop_scale() -> float:
@@ -738,39 +929,26 @@ func _draw_pad_ball(p: Vector2, scale_mul: float = 1.0) -> void:
 
 
 func _draw_address_mark(p: Vector2, pulse: float) -> void:
-	## Gold idle touch-target → course ball once the stroke commits (stays through follow).
+	## START → THROUGH after top → course ball once the stroke commits.
 	if _axis_locked or _t_impact >= 0.0:
 		_draw_pad_ball(p, _ball_pop_scale())
 		return
-	draw_circle(p, 22.0 + pulse * 6.0, Color(1.0, 0.85, 0.25, 0.2 + 0.2 * pulse))
-	draw_circle(p, 14.0, Color(1.0, 0.88, 0.3, 0.9))
-	draw_arc(p, 20.0, 0.0, TAU, 28, Color(1.0, 0.9, 0.4, 0.75 * pulse), 3.0, true)
+	draw_circle(p, 22.0 + pulse * 6.0, Color(1.0, 0.85, 0.25, 0.15 + 0.15 * pulse))
+	var tex: Texture2D = TEX_THROUGH if had_top else TEX_START
+	_draw_landmark_tex(tex, p, LANDMARK_DIAM * (1.0 + 0.08 * pulse))
 
 
 func _draw_idle_coach() -> void:
 	var start := address_hint()
 	var top := top_hint()
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
-	var through := _lane_through_dir()
-	# Chevrons at top point toward address (along backswing return).
-	var to_addr := -through
-	var chev_a := to_addr.rotated(-0.55) * 22.0
-	var chev_b := to_addr.rotated(0.55) * 22.0
 	_draw_pull_lane(false)
 	_draw_follow_cue(start, 0.7)
-	# Return path ghost
-	draw_line(top, start + Vector2(8, 0), Color(0.95, 0.8, 0.35, 0.45), 4.0, true)
-	draw_line(top, top + chev_a, Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
-	draw_line(top, top + chev_b, Color(0.6, 0.9, 0.55, 0.75 * pulse), 3.0, true)
-	_draw_landmark(top, Color(0.55, 0.9, 0.55, 0.85), 10.0)
+	_draw_landmark_tex(TEX_TOP, top, LANDMARK_DIAM)
 	_draw_address_mark(start, pulse)
-	# Down chevron under gold — pull toward top
-	var down := -through
-	var dchev_a := down.rotated(-0.5) * 18.0
-	var dchev_b := down.rotated(0.5) * 18.0
-	var dbase := start + down * 28.0
-	draw_line(dbase, dbase + dchev_a, Color(1.0, 0.9, 0.4, 0.7 * pulse), 3.0, true)
-	draw_line(dbase, dbase + dchev_b, Color(1.0, 0.9, 0.4, 0.7 * pulse), 3.0, true)
+	# Takeaway cue between address and top
+	var coach_p := start.lerp(top, 0.28)
+	_draw_landmark_tex(TEX_COACH, coach_p, 44.0, Color(1, 1, 1, 0.55 + 0.35 * pulse))
 
 
 func _draw_active_landmarks() -> void:
@@ -781,14 +959,18 @@ func _draw_active_landmarks() -> void:
 	_draw_follow_cue(addr, 0.55 if had_top else 0.35)
 	_draw_address_mark(addr, pulse)
 
-	var top_c := Color(0.35, 0.95, 0.5, 1.0) if Time.get_ticks_msec() < _top_flash_until else Color(0.55, 0.9, 0.55, 0.85)
-	var top_r := 16.0 if had_top else 10.0
-	_draw_landmark(top_p, top_c, top_r)
+	var flash := Time.get_ticks_msec() < _top_flash_until
+	var top_mod := Color(1.2, 1.2, 1.2, 1.0) if flash else Color(1, 1, 1, 0.9)
+	var top_d := LANDMARK_DIAM * (1.25 if had_top else 1.0)
+	_draw_landmark_tex(TEX_TOP, top_p, top_d, top_mod)
 
 
-func _draw_landmark(p: Vector2, c: Color, radius: float) -> void:
-	draw_circle(p, radius, c)
-	draw_arc(p, radius + 5.0, 0.0, TAU, 20, c, 2.0, true)
+func _draw_landmark_tex(tex: Texture2D, p: Vector2, diam: float, modulate: Color = Color.WHITE) -> void:
+	var tex_size := tex.get_size()
+	var s := diam / maxf(tex_size.x, 1.0)
+	draw_set_transform(p, 0.0, Vector2(s, s))
+	draw_texture(tex, -tex_size * 0.5, modulate)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_trail() -> void:

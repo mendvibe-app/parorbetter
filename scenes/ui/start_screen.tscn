@@ -1,0 +1,235 @@
+[gd_scene load_steps=8 format=3 uid="uid://bbaym4xccpdie"]
+
+[ext_resource type="Script" path="res://scripts/ui/start_screen.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/background/title_dusk.png" id="2"]
+[ext_resource type="Texture2D" path="res://assets/ball/ball.png" id="3"]
+[ext_resource type="Texture2D" path="res://assets/greens/pin_flag.png" id="4"]
+
+[sub_resource type="StyleBoxFlat" id="menu_btn_normal"]
+bg_color = Color(0.18, 0.26, 0.14, 0.96)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.42, 0.55, 0.28, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.05, 0.08, 0.04, 0.7)
+shadow_size = 2
+shadow_offset = Vector2(0, 5)
+anti_aliasing = false
+content_margin_left = 20.0
+content_margin_top = 18.0
+content_margin_right = 20.0
+content_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxFlat" id="menu_btn_hover"]
+bg_color = Color(0.26, 0.36, 0.18, 0.98)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.55, 0.68, 0.35, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0.05, 0.08, 0.04, 0.65)
+shadow_size = 2
+shadow_offset = Vector2(0, 5)
+anti_aliasing = false
+content_margin_left = 20.0
+content_margin_top = 18.0
+content_margin_right = 20.0
+content_margin_bottom = 16.0
+
+[sub_resource type="StyleBoxFlat" id="menu_btn_pressed"]
+bg_color = Color(0.12, 0.18, 0.09, 1)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.22, 0.3, 0.14, 1)
+corner_radius_top_left = 18
+corner_radius_top_right = 18
+corner_radius_bottom_right = 18
+corner_radius_bottom_left = 18
+shadow_color = Color(0, 0, 0, 0.4)
+shadow_size = 1
+shadow_offset = Vector2(0, 2)
+anti_aliasing = false
+content_margin_left = 20.0
+content_margin_top = 20.0
+content_margin_right = 20.0
+content_margin_bottom = 14.0
+
+[sub_resource type="StyleBoxFlat" id="record_panel"]
+bg_color = Color(0.04, 0.05, 0.04, 0.92)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.28, 0.32, 0.26, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+content_margin_left = 28.0
+content_margin_top = 14.0
+content_margin_right = 28.0
+content_margin_bottom = 14.0
+
+[node name="StartScreen" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1")
+
+[node name="Sky" type="TextureRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("2")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+color = Color(0.02, 0.04, 0.03, 0.45)
+
+[node name="Panel" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 48.0
+offset_top = 120.0
+offset_right = -48.0
+offset_bottom = -100.0
+theme_override_constants/separation = 28
+alignment = 1
+
+[node name="Title" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = -20
+
+[node name="Line1" type="Label" parent="Panel/Title"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 128
+text = "PAR OR"
+horizontal_alignment = 1
+
+[node name="Line2" type="Label" parent="Panel/Title"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 128
+text = "BETTER"
+horizontal_alignment = 1
+
+[node name="RecordBox" type="PanelContainer" parent="Panel"]
+custom_minimum_size = Vector2(260, 0)
+layout_mode = 2
+size_flags_horizontal = 4
+theme_override_styles/panel = SubResource("record_panel")
+
+[node name="Inner" type="VBoxContainer" parent="Panel/RecordBox"]
+layout_mode = 2
+theme_override_constants/separation = 4
+alignment = 1
+
+[node name="ScoreRow" type="HBoxContainer" parent="Panel/RecordBox/Inner"]
+layout_mode = 2
+theme_override_constants/separation = 14
+alignment = 1
+
+[node name="RecordCol" type="VBoxContainer" parent="Panel/RecordBox/Inner/ScoreRow"]
+layout_mode = 2
+theme_override_constants/separation = 2
+alignment = 1
+
+[node name="RecordLabel" type="Label" parent="Panel/RecordBox/Inner/ScoreRow/RecordCol"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Record"
+horizontal_alignment = 1
+
+[node name="ScoreLabel" type="Label" parent="Panel/RecordBox/Inner/ScoreRow/RecordCol"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 52
+text = "—"
+horizontal_alignment = 1
+
+[node name="FlagIcon" type="TextureRect" parent="Panel/RecordBox/Inner/ScoreRow"]
+custom_minimum_size = Vector2(44, 56)
+layout_mode = 2
+size_flags_vertical = 4
+texture = ExtResource("4")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="DeepestLabel" type="Label" parent="Panel/RecordBox/Inner"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+theme_override_colors/font_color = Color(0.75, 0.8, 0.7, 1)
+text = "Hole —"
+horizontal_alignment = 1
+
+[node name="Buttons" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="StartButton" type="Button" parent="Panel/Buttons"]
+custom_minimum_size = Vector2(320, 110)
+layout_mode = 2
+theme_override_styles/normal = SubResource("menu_btn_normal")
+theme_override_styles/hover = SubResource("menu_btn_hover")
+theme_override_styles/pressed = SubResource("menu_btn_pressed")
+theme_override_styles/focus = SubResource("menu_btn_hover")
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 36
+text = "Start Round"
+icon = ExtResource("3")
+icon_alignment = 1
+vertical_icon_alignment = 0
+expand_icon = false
+
+[node name="GreenButton" type="Button" parent="Panel/Buttons"]
+custom_minimum_size = Vector2(320, 110)
+layout_mode = 2
+theme_override_styles/normal = SubResource("menu_btn_normal")
+theme_override_styles/hover = SubResource("menu_btn_hover")
+theme_override_styles/pressed = SubResource("menu_btn_pressed")
+theme_override_styles/focus = SubResource("menu_btn_hover")
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 32
+text = "Practice Green"
+icon = ExtResource("4")
+icon_alignment = 1
+vertical_icon_alignment = 0
+expand_icon = false
+
+[node name="RangeButton" type="Button" parent="Panel/Buttons"]
+custom_minimum_size = Vector2(320, 110)
+layout_mode = 2
+theme_override_styles/normal = SubResource("menu_btn_normal")
+theme_override_styles/hover = SubResource("menu_btn_hover")
+theme_override_styles/pressed = SubResource("menu_btn_pressed")
+theme_override_styles/focus = SubResource("menu_btn_hover")
+theme_override_constants/icon_max_width = 40
+theme_override_font_sizes/font_size = 32
+text = "Practice Range"
+icon = ExtResource("4")
+icon_alignment = 1
+vertical_icon_alignment = 0
+expand_icon = false

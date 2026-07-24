@@ -42,6 +42,12 @@ def main() -> int:
     assert _const("TITLE") == 48
     assert _const("TOUCH_MIN") == 120
     assert "TEXT_SECONDARY" in SRC
+    assert 'preload("res://assets/fonts/PixelifySans-Variable.ttf")' in SRC
+    assert (Path(__file__).resolve().parents[2] / "assets" / "fonts" / "PixelifySans-Variable.ttf").is_file()
+    assert (Path(__file__).resolve().parents[2] / "assets" / "fonts" / "OFL.txt").is_file()
+    assert (Path(__file__).resolve().parents[2] / "assets" / "ui" / "game_theme.tres").is_file()
+    project = (Path(__file__).resolve().parents[2] / "project.godot").read_text(encoding="utf-8")
+    assert 'theme/custom="res://assets/ui/game_theme.tres"' in project
     assert "func screen_insets_to_viewport" in SRC
     assert "func apply_hole_safe_area" in SRC
 

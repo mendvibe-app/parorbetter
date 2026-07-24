@@ -1,9 +1,10 @@
-[gd_scene load_steps=5 format=3 uid="uid://main001"]
+[gd_scene load_steps=6 format=3 uid="uid://main001"]
 
 [ext_resource type="Script" path="res://scripts/main.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://hole001" path="res://scenes/hole.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://gameover001" path="res://scenes/ui/game_over.tscn" id="3"]
 [ext_resource type="PackedScene" uid="uid://debug001" path="res://scenes/ui/debug_panel.tscn" id="4"]
+[ext_resource type="PackedScene" uid="uid://startscreen001" path="res://scenes/ui/start_screen.tscn" id="5"]
 
 [node name="Main" type="Node"]
 script = ExtResource("1")
@@ -12,6 +13,9 @@ script = ExtResource("1")
 
 [node name="UIOverlay" type="CanvasLayer" parent="."]
 layer = 20
+
+[node name="StartScreen" parent="UIOverlay" instance=ExtResource("5")]
+visible = false
 
 [node name="GameOver" parent="UIOverlay" instance=ExtResource("3")]
 visible = false

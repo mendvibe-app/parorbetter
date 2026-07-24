@@ -60,9 +60,21 @@ var tap_in_yd: float = 4.0
 var tap_in_break: float = 0.12
 ## Driving range — infinite tee practice, no lives / hole advance.
 var range_mode: bool = false
+## Practice green — infinite putt practice, no lives / hole advance.
+var green_mode: bool = false
+
+## In-run score vs par (sum of strokes − par per hole).
+var score_to_par: int = 0
+## Persisted records (`user://records.cfg`).
+var best_score_to_par: int = 0
+var best_deepest_hole: int = 0
+var has_finished_course: bool = false
+
+const RECORDS_PATH := "user://records.cfg"
 
 
 func _ready() -> void:
+	_load_records()
 	reset_run()
 
 
@@ -72,6 +84,7 @@ func reset_run() -> void:
 	deepest_hole = 1
 	strokes_this_hole = 0
 	total_strokes = 0
+	score_to_par = 0
 	pure_strikes = 0
 	path_miss_history.clear()
 	form_history.clear()
@@ -87,6 +100,7 @@ func reset_run() -> void:
 	force_mishit = false
 	tempo_guide_forced = false
 	range_mode = false
+	green_mode = false
 	course_seed = randi()
 	_regenerate_course()
 	lives_changed.emit(lives)
@@ -171,6 +185,10 @@ func bias_label() -> String:
 func begin_hole(hole_index: int) -> void:
 	current_hole = clampi(hole_index, 1, HOLE_COUNT)
 	deepest_hole = maxi(deepest_hole, current_hole)
+	# Persist deepest as you go — survives quit before game-over end_run.
+	if deepest_hole > best_deepest_hole:
+		best_deepest_hole = deepest_hole
+		_save_records()
 	strokes_this_hole = 0
 	hole_changed.emit(current_hole)
 
@@ -259,17 +277,76 @@ func end_run(reason: String) -> void:
 	if not run_active:
 		return
 	run_active = false
+	_update_records_on_end(reason)
 	run_ended.emit(deepest_hole, reason)
+
+
+func add_score_to_par(diff: int) -> void:
+	if in_practice():
+		return
+	score_to_par += diff
+
+
+static func format_score_to_par(score: int) -> String:
+	if score == 0:
+		return "E"
+	return "%+d" % score
+
+
+func _update_records_on_end(reason: String) -> void:
+	var changed := false
+	if deepest_hole > best_deepest_hole:
+		best_deepest_hole = deepest_hole
+		changed = true
+	if reason == "course_complete":
+		if not has_finished_course or score_to_par < best_score_to_par:
+			best_score_to_par = score_to_par
+			has_finished_course = true
+			changed = true
+	if changed:
+		_save_records()
+
+
+func _load_records() -> void:
+	var cfg := ConfigFile.new()
+	if cfg.load(RECORDS_PATH) != OK:
+		return
+	best_score_to_par = int(cfg.get_value("records", "best_score_to_par", 0))
+	best_deepest_hole = int(cfg.get_value("records", "best_deepest_hole", 0))
+	has_finished_course = bool(cfg.get_value("records", "has_finished_course", false))
+
+
+func _save_records() -> void:
+	var cfg := ConfigFile.new()
+	cfg.set_value("records", "best_score_to_par", best_score_to_par)
+	cfg.set_value("records", "best_deepest_hole", best_deepest_hole)
+	cfg.set_value("records", "has_finished_course", has_finished_course)
+	cfg.save(RECORDS_PATH)
 
 
 func jump_to_hole(hole_index: int) -> void:
 	begin_hole(hole_index)
 
 
+func in_practice() -> bool:
+	return range_mode or green_mode
+
+
 func enter_range_mode() -> void:
+	green_mode = false
 	range_mode = true
 	run_active = true
 
 
 func exit_range_mode() -> void:
 	range_mode = false
+
+
+func enter_green_mode() -> void:
+	range_mode = false
+	green_mode = true
+	run_active = true
+
+
+func exit_green_mode() -> void:
+	green_mode = false

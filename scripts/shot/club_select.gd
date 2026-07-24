@@ -9,6 +9,7 @@ const OPEN_LOCK_SEC := 0.45
 const SWITCH_LOCK_SEC := 0.28
 
 var _panel: PanelContainer
+var _center: CenterContainer
 var _list: VBoxContainer
 var _scroll: ScrollContainer
 var _title: Label
@@ -21,6 +22,12 @@ var _lie: String = ""
 var _pin_yd: float = 0.0
 var _wind: Vector2 = Vector2.ZERO
 var _full_bag: bool = false
+## Scroll at row press — if it moved past deadzone, release is a drag not a tap.
+var _press_scroll: int = 0
+var _drag_origin_y: float = 0.0
+var _drag_origin_scroll: int = 0
+var _drag_scrolling: bool = false
+const DRAG_DEADZONE := 12
 
 
 func _ready() -> void:
@@ -34,10 +41,14 @@ func _ready() -> void:
 	dim.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(dim)
 
+	_center = CenterContainer.new()
+	_center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_center)
+
 	_panel = PanelContainer.new()
-	_panel.set_anchors_preset(Control.PRESET_CENTER)
 	_set_panel_compact(true)
-	add_child(_panel)
+	_center.add_child(_panel)
 
 	var margin := MarginContainer.new()
 	margin.add_theme_constant_override("margin_left", 20)
@@ -48,6 +59,7 @@ func _ready() -> void:
 
 	var root := VBoxContainer.new()
 	root.add_theme_constant_override("separation", 10)
+	root.custom_minimum_size = Vector2(640, 0)
 	margin.add_child(root)
 
 	_title = Label.new()
@@ -65,13 +77,19 @@ func _ready() -> void:
 
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	# SHOW_ALWAYS: desktop scrollbar. We own drag ourselves (deadzone below is unused).
 	_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_SHOW_ALWAYS
-	_scroll.custom_minimum_size = Vector2(0, 280)
+	# ponytail: huge deadzone disables built-in touch-drag so it can't double with ours.
+	_scroll.scroll_deadzone = 1_000_000
+	_scroll.custom_minimum_size = Vector2(0, 320)
+	_scroll.gui_input.connect(_on_scroll_gui_input)
 	root.add_child(_scroll)
 
 	_list = VBoxContainer.new()
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_list.mouse_filter = Control.MOUSE_FILTER_PASS
 	_list.add_theme_constant_override("separation", 12)
 	_scroll.add_child(_list)
 
@@ -125,11 +143,41 @@ func _toggle_bag() -> void:
 
 
 func _set_panel_compact(compact: bool) -> void:
-	var half_h := 300.0 if compact else 420.0
-	_panel.offset_left = -320.0
-	_panel.offset_top = -half_h
-	_panel.offset_right = 320.0
-	_panel.offset_bottom = half_h
+	## Size the panel; CenterContainer keeps it viewport-centered.
+	## Cap to viewport so the list must scroll instead of growing off-screen.
+	var view_h := get_viewport_rect().size.y
+	var want := 620.0 if compact else 900.0
+	var h := minf(want, maxf(420.0, view_h - 48.0))
+	_panel.custom_minimum_size = Vector2(680, h)
+
+
+func _on_scroll_gui_input(event: InputEvent) -> void:
+	## Drag-to-scroll (rows PASS events here; built-in SC drag is disabled).
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		if event.pressed:
+			_drag_origin_y = event.global_position.y
+			_drag_origin_scroll = _scroll.scroll_vertical
+			_drag_scrolling = false
+			_press_scroll = _scroll.scroll_vertical
+		else:
+			_drag_scrolling = false
+	elif event is InputEventMouseMotion and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) != 0:
+		var motion := event as InputEventMouseMotion
+		var dy: float = motion.global_position.y - _drag_origin_y
+		if _drag_scrolling or absf(dy) >= float(DRAG_DEADZONE):
+			_drag_scrolling = true
+			_scroll.scroll_vertical = _drag_origin_scroll - int(dy)
+			accept_event()
+
+
+func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
+	## Swing % = recommended_power for this pin (how hard you'd hit it).
+	## Omit when it's a full swing — "100% today" read as a mystery score.
+	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind)
+	var star := "★ " if is_suggested else ""
+	if pct >= 0.95:
+		return "%s%s  —  %d yd" % [star, name, int(max_yd)]
+	return "%s%s  —  %d yd · %d%% swing" % [star, name, int(max_yd), int(pct * 100.0)]
 
 
 func _rebuild_list(prefer_name: String = "") -> void:
@@ -143,7 +191,10 @@ func _rebuild_list(prefer_name: String = "") -> void:
 	)
 	_bag_toggle.text = "Suggested" if _full_bag else "Full bag"
 	_set_panel_compact(not _full_bag)
-	_scroll.custom_minimum_size.y = 480.0 if _full_bag else 280.0
+	# Leave room for title/hint/toggle/confirm; rest is the scroll viewport.
+	var chrome := 260.0
+	_scroll.custom_minimum_size.y = maxf(180.0, _panel.custom_minimum_size.y - chrome)
+	_scroll.scroll_vertical = 0
 	_hint.text = "Tap a club, then Confirm"
 
 	var select_name := prefer_name if not prefer_name.is_empty() else suggested_name
@@ -164,25 +215,24 @@ func _rebuild_list(prefer_name: String = "") -> void:
 	for club in clubs:
 		var name := String(club["name"])
 		var max_yd := float(club["max_yards"])
-		var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind)
 		var is_suggested := name == suggested_name
 		var btn := Button.new()
 		btn.toggle_mode = true
+		btn.action_mode = BaseButton.ACTION_MODE_BUTTON_RELEASE
+		# PASS: drag reaches ScrollContainer (STOP ate the gesture — bag felt stuck).
+		btn.mouse_filter = Control.MOUSE_FILTER_PASS
 		btn.icon = HudIcons.club_texture(name)
 		btn.expand_icon = true
-		btn.text = "%s%s  —  %d max  —  %d%% today" % [
-			"★ " if is_suggested else "",
-			name,
-			int(max_yd),
-			int(pct * 100.0),
-		]
+		btn.text = _club_row_text(name, max_yd, is_suggested)
 		btn.custom_minimum_size = Vector2(0, UiScale.TOUCH_MIN)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", UiScale.BODY)
+		btn.set_meta("club_name", name)
 		if is_suggested:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1))
 		var chosen: Dictionary = club
-		btn.pressed.connect(func() -> void: _select(chosen, btn))
+		btn.button_down.connect(_on_row_button_down)
+		btn.pressed.connect(func() -> void: _on_row_pressed(chosen, btn))
 		_list.add_child(btn)
 		if name == selected_name:
 			btn.button_pressed = true
@@ -192,11 +242,29 @@ func _rebuild_list(prefer_name: String = "") -> void:
 	)
 
 
+func _on_row_button_down() -> void:
+	_press_scroll = _scroll.scroll_vertical
+
+
+func _on_row_pressed(club: Dictionary, btn: Button) -> void:
+	# Drag past deadzone → scroll, not club change.
+	if _drag_scrolling or absi(_scroll.scroll_vertical - _press_scroll) > DRAG_DEADZONE:
+		_sync_row_pressed()
+		return
+	_select(club, btn)
+
+
+func _sync_row_pressed() -> void:
+	var sel := String(_selected.get("name", ""))
+	for child in _list.get_children():
+		if child is Button:
+			var b := child as Button
+			b.set_pressed_no_signal(String(b.get_meta("club_name", "")) == sel)
+
+
 func _select(club: Dictionary, btn: Button) -> void:
 	_selected = club
-	for child in _list.get_children():
-		if child is Button and child != btn:
-			(child as Button).button_pressed = false
+	_sync_row_pressed()
 	btn.button_pressed = true
 	_confirm.text = "Confirm %s" % String(club["name"])
 	# Switching clubs re-locks confirm briefly — no endless dither-commit.

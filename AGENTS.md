@@ -4,6 +4,8 @@ Godot 4 mobile golf prototype. One run = generated 18-hole course, lives, form-d
 
 Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before changing code. Shortest correct diff; reuse existing helpers; no new deps/abstractions unless asked. Non-trivial logic leaves one lightweight self-check (assert/demo/`*_check.py`).
 
+**Art**: Locked direction in `art/STYLE.md` (**Crunchy Pixel**) + `art/references/` for course surfaces. Briefs under `art/prompts/`. Raw → `art/generated/`; finals → `assets/`. UI typeface: **Pixelify Sans** (OFL) via `assets/ui/game_theme.tres` / `UiScale.FONT`.
+
 ## Shot loop (end to end)
 
 Orchestrated by `HoleController` + `ShotRoutine`.
@@ -19,17 +21,19 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 |------|--------|
 | Full-swing tempo target | `TempoGrade.TARGET_FULL` (3.0); tol half-width `TOL_FULL` (1.1 → accept ~1.9–4.1 at full balance; 14-hcp miss model) |
 | Chip tempo target | `TempoGrade.TARGET_SHORT` (2.0); `TOL_SHORT` (0.85) |
-| Putt stroke (amplitude) | `PuttStroke.marker_frac` (sqrt map); `BAND_HALF` (0.06 pad frac); line via `arc_allowance` |
+| Putt stroke (amplitude) | `PuttStroke` absolute linear pad (`marker_frac` / `power_from_frac`); soft ticks `SCALE_LABELED_FT` / `SCALE_TICK_FT`; line via `arc_allowance` |
 | Putter max | `BallPhysics.PUTTER_MAX_YD` (40.0 → 120 ft); soft scale labels/ticks in `PuttStroke.SCALE_*_FT` |
 | Tap-in fast path | `GameState.tap_in_yd` (4.0) + `tap_in_break` (0.12) |
 | Pure balance gate | `TempoGrade.PURE_BALANCE` / `PuttStroke.PURE_BALANCE` / `ShotRoutine.PURE_BALANCE` (0.72) |
 | Dispersion circle (full shot) | `GameState.AIM_RADIUS_WEAK_YD/MID/PRO` (40 / 22 / 10 yd); `get_aim_radius_yards()` |
 | Dispersion circle (putt) | `GameState.PUTT_RADIUS_WEAK_YD/PRO` (2.7 / 1.0 yd) |
 | Form history window | `GameState.FORM_HISTORY_MAX` (8) |
-| Cup catch radius | `HoleController.CUP_RADIUS` (12.0 px); ball `BALL_R` (5.0) — cup ≈ 2.4× ball |
+| Cup catch radius | `HoleController.CUP_RADIUS` (3.0 px); green ball `BALL_R_PUTT` (1.25), flight `BALL_R` (3.5) — cup ≈ 2.4× putt ball |
+| Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |
-| Green slope field | `HoleData.green_slope` + `green_height_at` / `green_slope_at` (shared by putt physics + green book) |
+| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at` (shared by putt physics + green book) |
+| Hazards | `HoleData.hazards` role specs (`greenside` / `landing` / `carry` / `edge` / `island_ring`); placed by `HoleController._place_hazards` |
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
 | Lives | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |
 | Pure strikes (round) | `GameState.pure_strikes` / `record_pure_strike()` |

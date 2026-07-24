@@ -23,7 +23,7 @@ func _ready() -> void:
 func show_launch(report: ShotReport) -> void:
 	_waiting = false
 	set_process_input(false)
-	body.text = report.glance_text() + "\n\nBall in motion…"
+	body.text = report.glance_text()
 	strike_map.show_strike(report)
 	if hint:
 		hint.text = ""

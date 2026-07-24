@@ -8,6 +8,14 @@ enum SuggestedShape { STRAIGHT, DRAW, FADE }
 enum LayoutStyle { STANDARD, DOGLEG_LEFT, DOGLEG_RIGHT, ISLAND, CHUTE, BI_TIER }
 enum GreenShape { OVAL, KIDNEY, TIERED, L_SHAPED, PENINSULA, COMPLEX }
 enum CourseTheme { PARKLAND, LINKS, DESERT }
+enum ContourProfile { FLAT, SIDE_SLOPE, BOWL, RIDGE, FALSE_FRONT, BI_TIER }
+
+## Hazard role strings used in `hazards` specs.
+const ROLE_GREENSIDE := "greenside"
+const ROLE_LANDING := "landing"
+const ROLE_CARRY := "carry"
+const ROLE_EDGE := "edge"
+const ROLE_ISLAND_RING := "island_ring"
 
 @export var hole_number: int = 1
 @export var par: int = 4
@@ -29,10 +37,25 @@ enum CourseTheme { PARKLAND, LINKS, DESERT }
 ## Generator / course-design fields
 @export var green_shape: GreenShape = GreenShape.OVAL
 @export var green_size: float = 0.7  ## 0 = tiny target, 1 = generous
-@export var has_bunker: bool = false
-@export var has_water: bool = false
+@export var contour_profile: ContourProfile = ContourProfile.SIDE_SLOPE
+## Specs: {kind, role, side, along, size, art}. kind=sand|water; role=greenside|landing|carry|edge|island_ring
+@export var hazards: Array = []
 @export var complexity: float = 0.0  ## 0–1 difficulty composite
 @export var archetype: String = ""  ## generator identity (e.g. short_sharp)
+
+
+func has_bunker() -> bool:
+	for h in hazards:
+		if str(h.get("kind", "")) == "sand":
+			return true
+	return false
+
+
+func has_water() -> bool:
+	for h in hazards:
+		if str(h.get("kind", "")) == "water":
+			return true
+	return false
 
 
 ## Elevation at local pos (world − green_center). Book heat samples this.
@@ -57,32 +80,44 @@ func green_slope_at(local: Vector2) -> Vector2:
 	return s
 
 
-# ponytail: 2–4 procedural bumps from pin/radii; authored mesh if greens get a designer
+# ponytail: profiled Gaussian bumps; authored mesh if greens get a designer
 func _green_slope_influences() -> Array:
 	var base_len := green_slope.length()
-	if base_len < 0.02:
+	if contour_profile == ContourProfile.FLAT or base_len < 0.02:
 		return []
 	var rx := maxf(green_radius_x, 20.0)
 	var ry := maxf(green_radius_y, 20.0)
 	var rmin := minf(rx, ry)
 	var down := green_slope / base_len
 	var across := Vector2(-down.y, down.x)
+	match contour_profile:
+		ContourProfile.BOWL:
+			return _influences_bowl(base_len, rmin)
+		ContourProfile.RIDGE:
+			return _influences_ridge(base_len, rmin, across)
+		ContourProfile.FALSE_FRONT:
+			return _influences_false_front(base_len, rx, ry, down, across)
+		ContourProfile.BI_TIER:
+			return _influences_bi_tier(base_len, rx, ry, down, across)
+		_:
+			return _influences_side_slope(base_len, rx, ry, down, across)
+
+
+func _influences_side_slope(base_len: float, rx: float, ry: float, down: Vector2, across: Vector2) -> Array:
+	var rmin := minf(rx, ry)
 	var out: Array = []
-	# Uphill crown — break softens above the hole, steepens below
 	var sigma_crown := rmin * 0.48
 	out.append({
 		"pos": -down * ry * 0.32 + across * clampf(pin_offset.dot(across), -rx * 0.4, rx * 0.4) * 0.2,
 		"amp": base_len * sigma_crown * 0.7,
 		"sigma": sigma_crown,
 	})
-	# Pin-side fall — local break near the cup
 	var sigma_pin := rmin * 0.36
 	out.append({
 		"pos": pin_offset * 0.85,
 		"amp": -base_len * sigma_pin * 0.55,
 		"sigma": sigma_pin,
 	})
-	# Side shelf when pin is offline
 	var side := across * clampf(pin_offset.dot(across), -rx * 0.55, rx * 0.55)
 	if side.length() > 6.0:
 		var sigma_side := rmin * 0.42
@@ -91,4 +126,63 @@ func _green_slope_influences() -> Array:
 			"amp": base_len * sigma_side * 0.45,
 			"sigma": sigma_side,
 		})
+	return out
+
+
+func _influences_bowl(base_len: float, rmin: float) -> Array:
+	return [{
+		"pos": pin_offset * 0.35,
+		"amp": -base_len * rmin * 0.85,
+		"sigma": rmin * 0.55,
+	}]
+
+
+func _influences_ridge(base_len: float, rmin: float, across: Vector2) -> Array:
+	return [{
+		"pos": across * (rmin * 0.15) + pin_offset * 0.2,
+		"amp": base_len * rmin * 0.75,
+		"sigma": rmin * 0.4,
+	}]
+
+
+func _influences_false_front(
+	base_len: float, rx: float, ry: float, _down: Vector2, across: Vector2
+) -> Array:
+	var rmin := minf(rx, ry)
+	var out: Array = []
+	# High face short of the hole (toward tee = +Y local).
+	out.append({
+		"pos": Vector2(0.0, ry * 0.42) + across * clampf(pin_offset.x, -rx * 0.3, rx * 0.3) * 0.3,
+		"amp": base_len * rmin * 0.8,
+		"sigma": rmin * 0.38,
+	})
+	out.append({
+		"pos": pin_offset * 0.9 - Vector2(0.0, ry * 0.08),
+		"amp": -base_len * rmin * 0.4,
+		"sigma": rmin * 0.32,
+	})
+	return out
+
+
+func _influences_bi_tier(
+	base_len: float, rx: float, ry: float, _down: Vector2, across: Vector2
+) -> Array:
+	var rmin := minf(rx, ry)
+	var out: Array = []
+	# Back tier high, front tier low — ridge across mid-green.
+	out.append({
+		"pos": Vector2(0.0, -ry * 0.35) + across * clampf(pin_offset.x, -rx * 0.25, rx * 0.25) * 0.2,
+		"amp": base_len * rmin * 0.65,
+		"sigma": rmin * 0.42,
+	})
+	out.append({
+		"pos": Vector2(0.0, ry * 0.3),
+		"amp": -base_len * rmin * 0.35,
+		"sigma": rmin * 0.4,
+	})
+	out.append({
+		"pos": pin_offset * 0.8,
+		"amp": -base_len * rmin * 0.25,
+		"sigma": rmin * 0.28,
+	})
 	return out

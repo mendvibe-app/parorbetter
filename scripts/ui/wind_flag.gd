@@ -27,8 +27,8 @@ func _ready() -> void:
 	_flag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flag.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	_flag.offset_bottom = -4.0
-	# Pivot near pole base so lean reads as a flagstick, not a spinner.
-	_flag.pivot_offset = Vector2(48, FLAG_H - 8.0)
+	# Pivot near pole base (texture center-x) so lean reads as a flagstick.
+	_flag.pivot_offset = Vector2(custom_minimum_size.x * 0.5, FLAG_H - 8.0)
 	add_child(_flag)
 
 	_tip = Label.new()

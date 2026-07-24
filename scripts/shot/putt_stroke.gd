@@ -2,7 +2,7 @@ class_name PuttStroke
 extends RefCounted
 
 ## Putting stroke grade — amplitude (power) + arc path (line); tempo explains a miss.
-## Deliberately separate from TempoGrade (ratio model is for full swings / chips).
+## Absolute linear pad: soft ticks are landmarks; you guess where THIS putt sits.
 
 ## Pad marker range (fraction of lane). Floor stays above TempoGesture.MIN_BACKSWING_FRAC.
 const MARKER_MIN_FRAC := 0.22
@@ -14,10 +14,9 @@ const BAND_HALF := 0.06
 ## Contact tiers by |frac_err| / BAND_HALF (same shape as TempoGrade bands).
 const BAND_PERFECT := 0.50
 const BAND_GOOD := 1.15
-const BAND_SHORT_LONG := 1.85
 ## Natural-arc tolerance: flat floor + quadratic growth with stroke length (pad frac).
-const ARC_FLOOR := 0.04
-const ARC_SCALE := 0.10
+const ARC_FLOOR := 0.10
+const ARC_SCALE := 0.16
 ## Matched back/through halves — |follow − back| beyond this hurts smoothness.
 const MATCH_TOL := 0.18
 ## Tempo distance bias when smoothness is bad (± playtest knob).
@@ -25,7 +24,7 @@ const TEMPO_BIAS_MAX := 0.08
 const PURE_BALANCE := 0.72
 ## Display only — physics stays yards; golfers read putts in feet.
 const FT_PER_YD := 3.0
-## Soft pad scale: scoring zone labeled; lag ticks so 60–90 ft isn't blank guesswork.
+## Soft pad scale: scoring zone labeled; lag ticks so long putts aren't blank.
 const SCALE_LABELED_FT := [3, 6, 10, 15, 30]
 const SCALE_TICK_FT := [45, 60, 90]
 
@@ -38,17 +37,26 @@ static func ft_to_yd(ft: float) -> float:
 	return ft / FT_PER_YD
 
 
+static func _power_to_u(committed_power: float) -> float:
+	## Linear u in [0,1] from power floor → full.
+	return clampf((committed_power - POWER_FLOOR) / maxf(1.0 - POWER_FLOOR, 0.001), 0.0, 1.0)
+
+
+static func _u_to_power(u: float) -> float:
+	return POWER_FLOOR + (1.0 - POWER_FLOOR) * clampf(u, 0.0, 1.0)
+
+
 static func marker_frac(committed_power: float) -> float:
-	## Sqrt compression: short scoring putts get more pad resolution than lags.
+	## Linear: short putts low on pad, lags high — feel/guess, not mid-lane answer.
 	var u := _power_to_u(committed_power)
-	return MARKER_MIN_FRAC + (MARKER_MAX_FRAC - MARKER_MIN_FRAC) * sqrt(u)
+	return MARKER_MIN_FRAC + (MARKER_MAX_FRAC - MARKER_MIN_FRAC) * u
 
 
 static func power_from_frac(frac: float) -> float:
-	## Inverse of marker_frac — shared by grade + visual so windows never disagree.
+	## Inverse of marker_frac — soft scale / grade share one map.
 	var span := MARKER_MAX_FRAC - MARKER_MIN_FRAC
 	var t := clampf((frac - MARKER_MIN_FRAC) / maxf(span, 0.001), 0.0, 1.0)
-	return _u_to_power(t * t)
+	return _u_to_power(t)
 
 
 static func frac_for_ft(ft: float, club_max_yd: float = 40.0) -> float:
@@ -85,8 +93,11 @@ static func grade(
 	var abs_n := absf(frac_err) / maxf(band, 0.001)
 
 	var bal := TempoGrade.balance(sample, balance_tighten, "putt")
-	# Matched halves (8-4-4) — fold into smoothness.
-	var match_err := absf(follow - actual)
+	# Matched halves — follow should match backswing, but only up to what fits past address on-pad
+	# (drawn cue = this cap). Don't punish a full finish the pad can't show.
+	var follow_cap := float(sample.get("follow_cap_frac", 1.0))
+	var match_target := minf(actual, maxf(follow_cap, 0.05))
+	var match_err := 0.0 if follow >= match_target else (match_target - follow)
 	var match_pen := clampf(match_err / maxf(MATCH_TOL, 0.01), 0.0, 1.0)
 	bal = clampf(bal * (1.0 - 0.35 * match_pen), 0.0, 1.0)
 
@@ -99,24 +110,20 @@ static func grade(
 		contact = ShotResult.ContactQuality.PERFECT
 	elif abs_n <= BAND_GOOD:
 		contact = ShotResult.ContactQuality.GOOD
-	elif abs_n <= BAND_SHORT_LONG:
-		# Short pull → leave it (FAT); long pull → blow past (THIN).
-		contact = ShotResult.ContactQuality.FAT if frac_err < 0.0 else ShotResult.ContactQuality.THIN
 	else:
-		contact = ShotResult.ContactQuality.MISS
+		# Pace error only — short leave / blow past. Hole-out from line+physics, not auto-MISS.
+		contact = ShotResult.ContactQuality.FAT if frac_err < 0.0 else ShotResult.ContactQuality.THIN
 
 	if bal < 0.35 and contact == ShotResult.ContactQuality.PERFECT:
 		contact = ShotResult.ContactQuality.GOOD
 
-	# Amplitude → rolled power via inverse map (may exceed 1 — short commit, long pull).
+	# Absolute amplitude → rolled power (may exceed commit — smash runs long).
 	var rolled := power_from_frac(actual)
 	var power_mul := rolled / maxf(committed_power, POWER_FLOOR)
 
 	# Tempo as modifier: jab → long, decel/chop → short. Smooth = no effect.
 	var tempo_bias := _tempo_bias(sample, bal, match_pen)
 	power_mul *= 1.0 + tempo_bias
-	if contact == ShotResult.ContactQuality.MISS:
-		power_mul = minf(power_mul, 0.50)
 
 	var path := _path_error(sample, actual)
 	if bal < 0.35:
@@ -124,7 +131,7 @@ static func grade(
 
 	var target_yd := committed_power * club_max_yd
 	var rolled_yd := clampf(committed_power * power_mul, 0.05, 1.0) * club_max_yd
-	var note := putt_note(target_yd, rolled_yd, path, bal, tempo_bias, abs_n, contact, actual, follow)
+	var note := putt_note(target_yd, rolled_yd, path, bal, tempo_bias, abs_n, contact, actual, follow, match_target)
 
 	return {
 		"ratio": actual / maxf(target, 0.01),  # F1-friendly stand-in (not a tempo ratio)
@@ -155,7 +162,8 @@ static func putt_note(
 	abs_n: float,
 	contact: ShotResult.ContactQuality,
 	actual_frac: float = -1.0,
-	follow_frac: float = -1.0
+	follow_frac: float = -1.0,
+	follow_need: float = -1.0
 ) -> String:
 	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
 	var line_word := ""
@@ -175,9 +183,10 @@ static func putt_note(
 	else:
 		ft_core += " — %d ft long" % int(round(delta_ft))
 
-	# Short leave + unfinished through — same story as the old off-pad THRU cue.
+	# Short leave + unfinished through — need is pad-capped matched follow (drawn = graded).
+	var need := follow_need if follow_need > 0.0 else actual_frac
 	var short_through := (
-		actual_frac > 0.05 and follow_frac >= 0.0 and follow_frac < actual_frac * 0.65
+		actual_frac > 0.05 and follow_frac >= 0.0 and follow_frac < need * 0.65
 	)
 	if delta_ft < -1.0 and short_through:
 		return "%s · didn't finish through the ball (%s)%s" % [ft_core, bal_word, line_word]
@@ -190,15 +199,6 @@ static func putt_note(
 	if contact == ShotResult.ContactQuality.PERFECT or abs_n <= BAND_PERFECT:
 		return "%s · %s%s" % [ft_core, bal_word, line_word]
 	return "%s · %s%s" % [ft_core, bal_word, line_word]
-
-
-static func _power_to_u(committed_power: float) -> float:
-	var p := clampf(committed_power, POWER_FLOOR, 1.0)
-	return clampf((p - POWER_FLOOR) / (1.0 - POWER_FLOOR), 0.0, 1.0)
-
-
-static func _u_to_power(u: float) -> float:
-	return POWER_FLOOR + clampf(u, 0.0, 1.0) * (1.0 - POWER_FLOOR)
 
 
 static func _tempo_bias(sample: Dictionary, bal: float, match_pen: float) -> float:

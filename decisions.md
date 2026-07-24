@@ -11,4 +11,10 @@ Log of gameplay-affecting decisions, added as they happen.
 - ~~Early-release soft crush~~ (retired with dual-pad): lifting finger 1 crushed stability; replaced by balance-from-gesture.
 - **HUD cleanup:** scorecard header `HOLE n · PAR p · YDS`; AdaptLabel form/○radius/bias text retired (circle + F1 carry form). Wind is a tappable flagstick (lean/wave; advice on tap) plus rim bias arrow on the aim circle — not banner sentences. Lie/club are silhouette icons beside pin yardage; club bag buttons reuse the same club icons.
 - **Putting distance realism:** greens ~112–208 ft diameter (was ~75–155); putt camera fills less of the phone so long lags read as travel; putter max 40 yd / 120 ft; soft pad scale labels 30 ft and ticks 45/60/90 so a 95 ft lag isn't blank guesswork past a 30 ft ceiling.
+- **Putt pace feel:** absolute linear pad; soft ticks are landmarks (labeled 3–30, ticks 45/60/90) — no aim highlight; feel/guess where THIS putt sits. FAT/THIN no longer stack distance — amplitude owns pace, contact owns line.
+- **Putt line lane:** `ARC_FLOOR` 0.10 / `ARC_SCALE` 0.16 + lane tex 56; putt address/top 0.22–0.92 for finger resolution on 15 vs 30.
+- **Putt distance reads long:** camera frames ball→cup only (`view_min * 0.62`, no green-radius floor); green ball 1.25 / cup 3.0; flag 12 px + hidden while putting (pin out).
+- **Putt follow cue:** drawn finish grows with pace/backswing (pad-capped); grade matches `min(backswing, follow_cap)` — only short-of-cue chops distance. Old fixed 12% stub taught a chop on lags.
+- ~~Relative putt pad~~ (retired): mid-lane = on pace made distance trivial; back to absolute soft scale.
+- **Putt free pace:** smash/leave short do not auto-MISS or half-power; amplitude owns distance; hole-out from line + cup physics. MISS reserved for incomplete/stubbed strokes.
 

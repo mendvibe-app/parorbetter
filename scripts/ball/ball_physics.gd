@@ -98,7 +98,8 @@ static func suggest_clubs(remaining_yd: float, lie: String, count: int = 3) -> A
 	return out
 
 
-## Percent of club for this distance (same math as recommended_power).
+## Recommended swing fraction for this distance (same math as recommended_power).
+## UI shows this as "% swing" only when under a full hit — not "100% today".
 static func club_percent_today(
 	remaining_yd: float, club_max_yards: float, lie: String, wind: Vector2 = Vector2.ZERO
 ) -> float:
@@ -228,17 +229,7 @@ static func launch_velocity(
 			_:
 				contact_scale = 1.35
 		var line_miss := clampf(result.path_error, -1.0, 1.0) * 0.14 * contact_scale * (1.25 - result.stance_stability * 0.7)
-		# THIN/FAT still shift pace; MISS distance already paid in tempo power_mul.
-		var dist_err := 1.0
-		match result.contact_quality:
-			ShotResult.ContactQuality.THIN:
-				dist_err = 1.12
-			ShotResult.ContactQuality.FAT:
-				dist_err = 0.78
-			_:
-				dist_err = 1.0
-		total_yards *= dist_err
-		total_px = yards_to_pixels(total_yards)
+		# Amplitude owns pace; contact owns line only (no FAT/THIN distance stack).
 		var putt_right := Vector2(-dir.y, dir.x)
 		var putt_launch := (dir + putt_right * line_miss).normalized()
 		if putt_launch.dot(dir) < 0.35:

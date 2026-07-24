@@ -40,6 +40,13 @@ func refresh_range(swings: int) -> void:
 	lives_row.visible = false
 
 
+func refresh_practice_green(putts: int) -> void:
+	_strokes = putts
+	hole_label.text = "PRACTICE GREEN"
+	score_label.text = "Putts %d · F1 Exit" % putts
+	lives_row.visible = false
+
+
 func _refresh_score() -> void:
 	var pure_bit := ""
 	if GameState.pure_strikes > 0:
@@ -63,6 +70,6 @@ func _on_lives(lives: int) -> void:
 
 
 func _on_pure_strikes(_count: int) -> void:
-	if GameState.range_mode:
+	if GameState.in_practice():
 		return
 	_refresh_score()

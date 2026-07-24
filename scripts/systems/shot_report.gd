@@ -164,17 +164,75 @@ func summary_line() -> String:
 
 
 func glance_text() -> String:
-	## One glance: hero diagnosis + distance. Contact/path/balance live on the
-	## strike-map dot now — no prose duplicate.
-	var hero := tempo_note
-	if hero.is_empty() and not GameState.last_tempo_metrics.is_empty():
-		hero = str(GameState.last_tempo_metrics.get("note", ""))
-	if hero.is_empty():
-		hero = "Putt —" if lie == "Green" else "Tempo —"
-	var yards := ""
+	## Short real-golf call + distance. Face map carries location; F1 keeps tempo dump.
+	var call := _golf_call()
 	if actual_yards >= 0.0:
-		yards = "\n→ %d yd" % int(actual_yards)
-	return "%s%s" % [hero, yards]
+		if lie == "Green":
+			return "%s\n→ %d ft" % [call, int(round(PuttStroke.yd_to_ft(actual_yards)))]
+		return "%s\n→ %d yd" % [call, int(actual_yards)]
+	return call
+
+
+func _golf_call() -> String:
+	## Contact + shape in words golfers already use. Path left/right matches face map.
+	if lie == "Green":
+		return _putt_call()
+	var hit := _contact_call()
+	var shape := _shape_call()
+	if shape == "":
+		return hit
+	return "%s · %s" % [hit, shape]
+
+
+func _contact_call() -> String:
+	var pure := contact == "perfect" and stance >= TempoGrade.PURE_BALANCE
+	match contact:
+		"perfect":
+			return "Pure" if pure else "Solid"
+		"good":
+			return "Clean"
+		"thin":
+			return "Thin"
+		"fat":
+			return "Heavy"
+		"miss":
+			return "Miss"
+		_:
+			return contact.capitalize()
+
+
+func _shape_call() -> String:
+	var a := absf(path_error)
+	if a <= 0.25:
+		return ""
+	if path_error > 0.0:
+		return "slice" if a > 0.55 else "fade"
+	return "hook" if a > 0.55 else "draw"
+
+
+func _putt_call() -> String:
+	var pace := ""
+	match contact:
+		"perfect":
+			pace = "On pace"
+		"good":
+			pace = "Close"
+		"fat":
+			pace = "Short"
+		"thin":
+			pace = "Long"
+		"miss":
+			pace = "Way off"
+		_:
+			pace = "Putt"
+	var line := ""
+	if absf(path_error) > 0.35:
+		line = "pushed" if path_error > 0.0 else "pulled"
+	elif absf(path_error) > 0.18:
+		line = "a bit right" if path_error > 0.0 else "a bit left"
+	if line == "":
+		return pace
+	return "%s · %s" % [pace, line]
 
 
 func full_text() -> String:

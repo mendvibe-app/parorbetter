@@ -1,6 +1,6 @@
 extends Node
 
-## Sample contact/pure/putt + procedural splash/birdie/ui/tick.
+## Sample contact/pure/putt/club_bag/clap/water + looping BGM + procedural splash/birdie/ui/tick.
 
 const _CONTACT := {
 	"perfect": preload("res://assets/sfx/contact_perfect.wav"),
@@ -13,6 +13,10 @@ const _PURE: AudioStream = preload("res://assets/sfx/contact_pure.wav")
 ## Loaded in _ready — avoids parse-time preload race before Godot imports new WAVs.
 var _PUTT: AudioStream
 var _PUTT_DROP: AudioStream
+var _CLUB_BAG: AudioStream
+var _GOLF_CLAP: AudioStream
+var _WATER_HAZARD: AudioStream
+var _MUSIC: AudioStream
 
 var _players: Dictionary = {}
 ## Looping green-roll noise — intensity driven by ball speed on Green.
@@ -21,11 +25,19 @@ var _roll_player: AudioStreamPlayer
 var _roll_playback: AudioStreamGeneratorPlayback
 var _roll_lp_fast: float = 0.0
 var _roll_lp_slow: float = 0.0
+## Dedicated player so SFX never stop() the BGM.
+var _music_player: AudioStreamPlayer
 
 
 func _ready() -> void:
 	_PUTT = load("res://assets/sfx/putt.wav") as AudioStream
 	_PUTT_DROP = load("res://assets/sfx/putt_drop.wav") as AudioStream
+	_CLUB_BAG = load("res://assets/sfx/club_bag.wav") as AudioStream
+	_GOLF_CLAP = load("res://assets/sfx/golf_clap.wav") as AudioStream
+	_WATER_HAZARD = load("res://assets/sfx/water_hazard.mp3") as AudioStream
+	_MUSIC = load("res://assets/sfx/background.mp3") as AudioStream
+	if _MUSIC is AudioStreamMP3:
+		(_MUSIC as AudioStreamMP3).loop = true
 	for sfx_id in ["contact", "perfect", "birdie", "splash", "putt", "ui", "roll"]:
 		var p := AudioStreamPlayer.new()
 		p.name = "SFX_%s" % sfx_id
@@ -33,6 +45,11 @@ func _ready() -> void:
 		add_child(p)
 		_players[sfx_id] = p
 	_roll_player = _players["roll"]
+	_music_player = AudioStreamPlayer.new()
+	_music_player.name = "Music"
+	_music_player.bus = "Master"
+	_music_player.volume_db = -22.0
+	add_child(_music_player)
 	set_process(true)
 
 
@@ -194,19 +211,51 @@ func _push_pitch_sweep(
 
 
 func play_birdie() -> void:
-	play_tone("birdie", 523.25, 0.12, -4.0)
-	await get_tree().create_timer(0.1).timeout
-	play_tone("birdie", 659.25, 0.12, -4.0)
-	await get_tree().create_timer(0.1).timeout
-	play_tone("birdie", 783.99, 0.18, -3.0)
+	play_golf_clap()
+
+
+## Par or better celebration.
+func play_golf_clap() -> void:
+	_play_stream("birdie", _GOLF_CLAP, -6.0)
 
 
 func play_splash() -> void:
 	play_tone("splash", 90.0, 0.22, -8.0)
 
 
+## Game-over sting (sample).
+func play_water_hazard() -> void:
+	_play_stream("splash", _WATER_HAZARD, -6.0)
+
+
+func stop_water_hazard() -> void:
+	var player: AudioStreamPlayer = _players.get("splash")
+	if player and player.playing:
+		player.stop()
+
+
 func play_ui() -> void:
 	play_tone("ui", 660.0, 0.06, -12.0)
+
+
+## Club pulled from bag — club-select confirm.
+func play_club_bag() -> void:
+	_play_stream("ui", _CLUB_BAG, -8.0)
+
+
+## Quiet gameplay loop. Idempotent.
+func start_music() -> void:
+	if _MUSIC == null or _music_player == null:
+		return
+	if _music_player.playing:
+		return
+	_music_player.stream = _MUSIC
+	_music_player.play()
+
+
+func stop_music() -> void:
+	if _music_player and _music_player.playing:
+		_music_player.stop()
 
 
 ## Soft metronome tick for fadeable tempo guide — golf-leaning, not arcade beep.

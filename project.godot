@@ -18,7 +18,7 @@ config/name="Par or Better"
 config/description="Minimal mobile golf prototype — dual-finger shot loop, lives, adaptation."
 run/main_scene="res://scenes/main.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
-config/icon="res://icon.svg"
+config/icon="res://icon.png"
 
 [autoload]
 
@@ -35,6 +35,13 @@ window/size/window_height_override=720
 window/stretch/mode="canvas_items"
 window/stretch/aspect="expand"
 window/handheld/orientation=1
+
+[gui]
+
+theme/default_font_antialiasing=0
+theme/default_font_hinting=0
+theme/default_font_subpixel_positioning=0
+theme/custom="res://assets/ui/game_theme.tres"
 
 [input]
 

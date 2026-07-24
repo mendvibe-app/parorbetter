@@ -294,6 +294,8 @@ def main() -> int:
     assert "_min_pull_point" not in GESTURE
     assert "0.95, 0.75, 0.3" not in pull_lane  # amber MIN tick color gone from lane
     assert "func _draw_follow_cue" in GESTURE
+    assert "draw_arc(tip" in GESTURE.split("func _draw_follow_cue")[1].split("func ")[0]
+    assert "TEX_FOLLOW" not in GESTURE  # slash landmark retired; soft open ring
     assert "func _draw_pad_ball" in GESTURE
     assert "func _draw_address_mark" in GESTURE
     assert 'preload("res://assets/ball/ball.png")' in GESTURE
@@ -354,24 +356,60 @@ def main() -> int:
     assert "FLIP_SWING" not in DEBUG
     assert "func _lane_through_dir" in GESTURE
     assert "_lane_through_dir()" in GESTURE.split("func _draw_putt_follow_cue")[1].split("func ")[0]
-    assert "_lane_through_dir()" in GESTURE.split("func _draw_idle_coach")[1].split("func ")[0]
+    assert "_lane_through_dir()" in GESTURE.split("func _follow_cue_end")[1].split("func ")[0]
+    assert "_draw_follow_cue(start" in GESTURE.split("func _draw_idle_coach")[1].split("func ")[0]
     assert "pull DOWN" in GESTURE
     assert "pull UP" not in GESTURE
     assert "finish through the ball" in GRADE or "through the ball" in GRADE
     assert "match the ghost through" not in GRADE
     assert "ghost down" not in GRADE
     assert "%dms back / %dms thru" in GRADE
-    assert 'y := 0.36 if _is_putt() else 0.18' in GESTURE.split("func address_hint")[1].split("func ")[0]
-    assert 'y := 0.80 if _is_putt() else 0.78' in GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert 'y := 0.22 if _is_putt() else 0.18' in GESTURE.split("func address_hint")[1].split("func ")[0]
+    assert 'y := 0.92 if _is_putt() else 0.78' in GESTURE.split("func top_hint")[1].split("func ")[0]
+    # Putt: lane is target axis; stroke trail/cursor free (push/pull → path_error)
+    assert "func _lane_project" not in GESTURE
+    assert "_address = address_hint()" in GESTURE
+    assert "top_hint() - address_hint()" in GESTURE
+    putt_draw = GESTURE.split("func _draw_putt")[1].split("func _draw_putt_lane_tex")[0]
+    assert "draw_circle(_smoothed" in putt_draw
+
+    for name in (
+        "ui_tempo_landmark_start.png",
+        "ui_tempo_landmark_top.png",
+        "ui_tempo_landmark_through.png",
+        "ui_tempo_landmark_follow.png",
+        "ui_tempo_lane.png",
+        "ui_tempo_coach_idle.png",
+        "ui_tempo_meter_track.png",
+        "ui_tempo_meter_needle.png",
+        "ui_putt_landmark_start.png",
+        "ui_putt_landmark_top.png",
+        "ui_putt_landmark_through.png",
+        "ui_putt_landmark_follow.png",
+        "ui_putt_lane.png",
+        "ui_putt_coach_idle.png",
+    ):
+        assert (DIR.parent.parent / "assets" / "ui" / name).is_file(), name
+    assert 'res://assets/ui/ui_tempo_lane.png' in GESTURE
+    assert 'res://assets/ui/ui_putt_lane.png' in GESTURE
+    assert 'res://assets/ui/ui_putt_landmark_start.png' in GESTURE
+    assert "func _draw_putt_lane_tex" in GESTURE
+    assert "func _draw_putt_arc_edges" in GESTURE
+    assert 'res://assets/ui/ui_tempo_coach_idle.png' in GESTURE
+    assert 'res://assets/ui/ui_tempo_meter_track.png' in METER
+    assert "func _draw_landmark_tex" in GESTURE
+    assert "_draw_landmark(" not in GESTURE  # circles replaced by textures
+    assert (DIR.parent.parent / "assets" / "ball" / "fx_pure_burst.png").is_file()
+    assert (DIR.parent.parent / "art" / "prompts" / "putt_pad.md").is_file()
 
     for putt in (False, True):
-        addr_y = 0.36 if putt else 0.18
-        top_y = 0.80 if putt else 0.78
+        addr_y = 0.22 if putt else 0.18
+        top_y = 0.92 if putt else 0.78
         assert addr_y < top_y, "address above top (toward target)"
         assert (addr_y - top_y) < 0.0  # through = address - top → −Y (up)
         if putt:
-            # Soft follow (≤0.12 of pad) must fit above address
-            assert addr_y - 0.12 > 0.05, "putt through room on-pad"
+            # Address leaves pad room above for a matched follow cue
+            assert addr_y > 0.12, "putt through room on-pad"
 
     # Edge rejection math — 4% floor 24px on a 1080-wide viewport
     EDGE_FRAC = 0.04
@@ -392,6 +430,24 @@ def main() -> int:
     assert screen_x_ok(50.0, 1080.0)
     assert not screen_x_ok(20.0, 400.0)  # inside floor margin
     assert screen_x_ok(30.0, 400.0)
+
+    # Pad golfer: spatial stroke API + full + putt pose frames + top-left stage
+    assert "func live_stroke_u" in GESTURE
+    assert "func _draw_golfer" in GESTURE
+    assert "func _draw_golfer_stage" in GESTURE
+    assert "GOLFER_MARGIN" in GESTURE
+    assert "GOLFER_SKY" in GESTURE and "GOLFER_GRASS" in GESTURE
+    assert "GOLFER_X_FRAC" not in GESTURE
+    golfer_draw = GESTURE.split("func _draw_golfer")[1].split("func ")[0]
+    assert "address_hint()" not in golfer_draw  # top-left, not mid-lane
+    assert "_draw_golfer()" in GESTURE.split("func _draw()")[1].split("func ")[0]
+    assert "_is_putt()" in GESTURE.split("func _golfer_pose_pair")[1].split("func ")[0]
+    root = DIR.parents[1]
+    for pose in ("address", "mid", "top", "impact", "follow"):
+        for prefix in ("ui_golfer_", "ui_golfer_putt_"):
+            name = f"{prefix}{pose}.png"
+            assert f'preload("res://assets/ui/{name}")' in GESTURE, name
+            assert (root / "assets" / "ui" / name).is_file(), name
 
     print("tempo_check: ok")
     return 0

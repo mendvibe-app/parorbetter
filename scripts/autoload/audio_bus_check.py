@@ -62,6 +62,24 @@ def main() -> None:
     assert "func play_putt(" in BUS and "func play_putt_drop(" in BUS
     assert 'load("res://assets/sfx/putt.wav")' in BUS
     assert 'load("res://assets/sfx/putt_drop.wav")' in BUS
+    club_bag = SFX / "club_bag.wav"
+    assert club_bag.is_file() and club_bag.stat().st_size > 1000, "missing/empty club_bag.wav"
+    _wav_pcm16(club_bag)
+    assert 'load("res://assets/sfx/club_bag.wav")' in BUS
+    assert "func play_club_bag(" in BUS
+    golf_clap = SFX / "golf_clap.wav"
+    assert golf_clap.is_file() and golf_clap.stat().st_size > 1000, "missing/empty golf_clap.wav"
+    _wav_pcm16(golf_clap)
+    assert 'load("res://assets/sfx/golf_clap.wav")' in BUS
+    assert "func play_golf_clap(" in BUS
+    bg = SFX / "background.mp3"
+    assert bg.is_file() and bg.stat().st_size > 1000, "missing/empty background.mp3"
+    assert 'load("res://assets/sfx/background.mp3")' in BUS
+    assert "func start_music(" in BUS and "func stop_music(" in BUS
+    water = SFX / "water_hazard.mp3"
+    assert water.is_file() and water.stat().st_size > 1000, "missing/empty water_hazard.mp3"
+    assert 'load("res://assets/sfx/water_hazard.mp3")' in BUS
+    assert "func play_water_hazard(" in BUS
     for name in PARKED:
         path = SFX / name
         assert path.is_file() and path.stat().st_size > 1000, f"parked missing {name}"

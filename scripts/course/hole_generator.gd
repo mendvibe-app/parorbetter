@@ -7,6 +7,11 @@ extends RefCounted
 const DEFAULT_HOLE_COUNT := 18
 const BUNKER_BASE_CHANCE := 0.75
 const WATER_BASE_CHANCE := 0.30
+## USGA-style pin: ≥4 paces (~15 ft / 5 yd) from green edge and greenside trouble.
+const PIN_EDGE_MARGIN_YD := 5.0
+## ~3 ft cup shelf for uniform grade around the hole.
+const PIN_SHELF_YD := 1.0
+const PIN_MAX_LOCAL_SLOPE := 0.18
 
 ## Base green-shape weights (Oval 35%, Kidney 25%, Tiered 15%, L 10%, Peninsula 8%, Complex 7%).
 const GREEN_SHAPE_ITEMS: Array = [
@@ -289,24 +294,23 @@ static func generate_hole(
 	var yardage := _pick_yardage(rng, par, t, arch)
 	var green_shape: HoleData.GreenShape = _pick_green_shape(rng, t, arch)
 	var layout := _layout_for_archetype(arch, green_shape, t, rng)
-	var has_bunker := rng.randf() < _bunker_chance(t, mods, float(arch.get("bunker", 1.0)))
-	var has_water := rng.randf() < _water_chance(t, mods, float(arch.get("water", 1.0)))
+	var want_bunker := rng.randf() < _bunker_chance(t, mods, float(arch.get("bunker", 1.0)))
+	var want_water := rng.randf() < _water_chance(t, mods, float(arch.get("water", 1.0)))
 	if bool(arch.get("force_water", false)):
-		has_water = true
-	# Late holes almost always keep at least one hazard.
-	if t >= 0.55 and not has_bunker and not has_water:
-		has_bunker = true
-	# Island / peninsula layouts need water for identity.
+		want_water = true
+	if t >= 0.55 and not want_bunker and not want_water:
+		want_bunker = true
 	if layout == HoleData.LayoutStyle.ISLAND or green_shape == HoleData.GreenShape.PENINSULA:
-		has_water = true
-	# Was unused hazard_count bump; keep the roll so course seeds stay stable.
-	if t >= 0.75 and has_bunker and has_water:
+		want_water = true
+	# Keep the roll so course seeds stay stable vs older generators.
+	if t >= 0.75 and want_bunker and want_water:
 		rng.randf()
 
 	var size_bias := float(arch.get("green_size_bias", 0.0))
-	var green_size := lerpf(0.92, 0.38, t) + size_bias + rng.randf_range(-0.04, 0.04)
-	green_size = clampf(green_size, 0.28, 1.0)
+	var green_size := lerpf(0.95, 0.22, t) + size_bias + rng.randf_range(-0.04, 0.04)
+	green_size = clampf(green_size, 0.18, 1.0)
 	var radii := _green_radii(green_shape, green_size, rng)
+	var contour := _pick_contour(rng, t, arch, green_shape)
 
 	var fairway_width := (
 		lerpf(165.0, 68.0, t)
@@ -324,13 +328,17 @@ static func generate_hole(
 	wind.x = clampf(wind.x, -60.0, 60.0)
 	wind.y = clampf(wind.y * 0.35, -20.0, 20.0)
 
-	var slope_mag := lerpf(0.04, 0.42, rng.randf()) * float(mods.get("slope_mult", 1.0))
-	var slope := Vector2(
-		rng.randf_range(-1.0, 1.0),
-		rng.randf_range(-1.0, 1.0)
-	).normalized() * slope_mag
-	if slope.length_squared() < 0.0001:
-		slope = Vector2(slope_mag, 0.0)
+	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else (
+		lerpf(0.04, 0.42, rng.randf()) * float(mods.get("slope_mult", 1.0))
+	)
+	var slope := Vector2.ZERO
+	if slope_mag > 0.0:
+		slope = Vector2(
+			rng.randf_range(-1.0, 1.0),
+			rng.randf_range(-1.0, 1.0)
+		).normalized() * slope_mag
+		if slope.length_squared() < 0.0001:
+			slope = Vector2(slope_mag, 0.0)
 
 	var timing := lerpf(1.18, 0.52, t) + rng.randf_range(-0.03, 0.03)
 	timing = clampf(timing, 0.45, 1.25)
@@ -339,16 +347,17 @@ static func generate_hole(
 
 	var hazard_bias := HoleData.HazardBias.NONE
 	var side_p := float(arch.get("hazard_side", 0.5))
-	if has_bunker or has_water:
+	if want_bunker or want_water:
 		if t < 0.2 and rng.randf() < lerpf(0.55, 0.25, side_p):
 			hazard_bias = HoleData.HazardBias.NONE
 		elif rng.randf() < side_p:
 			hazard_bias = HoleData.HazardBias.LEFT if rng.randf() < 0.5 else HoleData.HazardBias.RIGHT
 
+	var hazards := _build_hazards(want_bunker, want_water, layout, t, hazard_bias, rng)
 	var suggested := _suggested_shape(layout, hazard_bias, rng)
 	var bend := _fairway_bend(layout, t, rng) * float(arch.get("bend", 1.0))
 	var tee_x := rng.randf_range(-18.0, 18.0) * lerpf(0.3, 1.0, t)
-	var pin := _pin_offset(green_shape, radii, t, rng)
+	var pin := _pick_pin(radii, contour, slope, hazards, green_shape, rng)
 
 	var d := HoleData.new()
 	d.hole_number = hole_number
@@ -371,8 +380,8 @@ static func generate_hole(
 	)
 	d.green_shape = green_shape
 	d.green_size = green_size
-	d.has_bunker = has_bunker
-	d.has_water = has_water
+	d.contour_profile = contour
+	d.hazards = hazards
 	d.complexity = complexity
 	d.archetype = str(arch.get("id", ""))
 	return d
@@ -520,14 +529,16 @@ static func _pick_green_shape(
 	## Archetype shape table first; t softly unlocks harder shapes.
 	## Peninsula is hard-locked early so non-island arches can't sneak an island green.
 	var arch_g: Array = arch.get("green", [1.0, 1.0, 1.0, 1.0, 1.0, 1.0])
-	var easy_boost := lerpf(1.25, 0.85, t)
+	var easy_boost := lerpf(1.25, 0.7, t)
+	# After warm-up holes, push kidney/tiered/L so greens don't all read as ovals.
+	var mid_shape := lerpf(0.85, 1.35, clampf((t - 0.05) / 0.45, 0.0, 1.0))
 	var hard_boost := lerpf(0.75, 1.25, t)
 	var peninsula_gate := 0.0 if t < 0.22 else hard_boost
 	var weights: Array[float] = [
 		GREEN_SHAPE_WEIGHTS_BASE[0] * float(arch_g[0]) * easy_boost,
-		GREEN_SHAPE_WEIGHTS_BASE[1] * float(arch_g[1]) * easy_boost,
-		GREEN_SHAPE_WEIGHTS_BASE[2] * float(arch_g[2]) * lerpf(0.85, 1.15, t),
-		GREEN_SHAPE_WEIGHTS_BASE[3] * float(arch_g[3]) * hard_boost,
+		GREEN_SHAPE_WEIGHTS_BASE[1] * float(arch_g[1]) * easy_boost * mid_shape,
+		GREEN_SHAPE_WEIGHTS_BASE[2] * float(arch_g[2]) * lerpf(0.85, 1.15, t) * mid_shape,
+		GREEN_SHAPE_WEIGHTS_BASE[3] * float(arch_g[3]) * hard_boost * mid_shape,
 		GREEN_SHAPE_WEIGHTS_BASE[4] * float(arch_g[4]) * peninsula_gate,
 		GREEN_SHAPE_WEIGHTS_BASE[5] * float(arch_g[5]) * hard_boost,
 	]
@@ -621,9 +632,8 @@ static func _green_radii(
 	green_size: float,
 	rng: RandomNumberGenerator
 ) -> Vector2:
-	# World px radii (~19–35 yd → ~112–208 ft diameter). Old 28–58 made a 95 ft
-	# lag look like a full-green dart when the putt camera filled the phone.
-	var base := lerpf(42.0, 78.0, green_size)
+	# World px radii — wide band so tiny targets vs runway greens read before putt zoom.
+	var base := lerpf(34.0, 88.0, green_size)
 	var rx := base
 	var ry := base
 	match shape:
@@ -648,21 +658,275 @@ static func _green_radii(
 	return Vector2(rx, ry)
 
 
-static func _pin_offset(
-	shape: HoleData.GreenShape,
-	radii: Vector2,
+static func _pick_contour(
+	rng: RandomNumberGenerator,
 	t: float,
+	arch: Dictionary,
+	shape: HoleData.GreenShape
+) -> HoleData.ContourProfile:
+	if shape == HoleData.GreenShape.TIERED or shape == HoleData.GreenShape.COMPLEX:
+		if t >= 0.15 or rng.randf() < 0.55:
+			return HoleData.ContourProfile.BI_TIER
+	var items: Array = [
+		HoleData.ContourProfile.FLAT,
+		HoleData.ContourProfile.SIDE_SLOPE,
+		HoleData.ContourProfile.BOWL,
+		HoleData.ContourProfile.RIDGE,
+		HoleData.ContourProfile.FALSE_FRONT,
+		HoleData.ContourProfile.BI_TIER,
+	]
+	# Early: flat/side; late unlock false-front / bi-tier.
+	var weights: Array[float] = [
+		lerpf(0.35, 0.05, t),
+		lerpf(0.45, 0.25, t),
+		lerpf(0.12, 0.2, t),
+		lerpf(0.08, 0.15, t),
+		0.0 if t < 0.2 else lerpf(0.1, 0.2, t),
+		0.0 if t < 0.25 else lerpf(0.08, 0.18, t),
+	]
+	# Target-green archetypes lean false-front / bi-tier when unlocked.
+	if str(arch.get("id", "")) == "target_green" and t >= 0.2:
+		weights[4] *= 1.8
+		weights[5] *= 1.5
+	return pick_weighted(rng, items, weights)
+
+
+static func _build_hazards(
+	want_bunker: bool,
+	want_water: bool,
+	layout: HoleData.LayoutStyle,
+	t: float,
+	bias: HoleData.HazardBias,
+	rng: RandomNumberGenerator
+) -> Array:
+	var side := 1
+	if bias == HoleData.HazardBias.LEFT:
+		side = -1
+	elif bias == HoleData.HazardBias.RIGHT:
+		side = 1
+	elif rng.randf() < 0.5:
+		side = -1
+
+	var out: Array = []
+	var is_island := layout == HoleData.LayoutStyle.ISLAND
+
+	if is_island and want_water:
+		out.append(_haz("water", HoleData.ROLE_ISLAND_RING, 0, 0.05, 70.0, 0))
+
+	if want_bunker:
+		var greenside_p := lerpf(0.55, 0.9, t)
+		var landing_p := 0.35 if layout == HoleData.LayoutStyle.STANDARD else 0.7
+		if layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT:
+			landing_p = 0.85
+			# Inside of dogleg.
+			side = -1 if layout == HoleData.LayoutStyle.DOGLEG_LEFT else 1
+		if layout == HoleData.LayoutStyle.CHUTE:
+			landing_p = 0.4
+			greenside_p = 0.75
+		if is_island:
+			landing_p = 0.35
+			greenside_p = 0.65
+
+		var added_sand := false
+		if rng.randf() < greenside_p:
+			out.append(_haz("sand", HoleData.ROLE_GREENSIDE, side, 0.08, lerpf(32.0, 44.0, t), 1))
+			added_sand = true
+			if t >= 0.55 and rng.randf() < 0.4:
+				out.append(_haz("sand", HoleData.ROLE_GREENSIDE, -side, 0.1, 30.0, 2))
+		if (not added_sand or t >= 0.35) and rng.randf() < landing_p:
+			var along := rng.randf_range(0.42, 0.62)
+			if layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT:
+				along = rng.randf_range(0.45, 0.58)
+			out.append(_haz("sand", HoleData.ROLE_LANDING, side, along, lerpf(38.0, 52.0, t), 0))
+			added_sand = true
+		if not added_sand:
+			out.append(_haz("sand", HoleData.ROLE_LANDING, side, 0.5, 42.0, 0))
+
+	if want_water and not is_island:
+		if layout == HoleData.LayoutStyle.CHUTE:
+			out.append(_haz("water", HoleData.ROLE_EDGE, -1, 0.4, 50.0, 0))
+			out.append(_haz("water", HoleData.ROLE_EDGE, 1, 0.4, 50.0, 0))
+		elif rng.randf() < lerpf(0.45, 0.75, t):
+			out.append(_haz(
+				"water", HoleData.ROLE_CARRY, 0, rng.randf_range(0.28, 0.48), lerpf(22.0, 36.0, t), 0
+			))
+		else:
+			out.append(_haz(
+				"water", HoleData.ROLE_EDGE, side, rng.randf_range(0.25, 0.45), lerpf(40.0, 58.0, t), 0
+			))
+
+	return _cull_hazards(out, 3)
+
+
+static func _haz(kind: String, role: String, side: int, along: float, size: float, art: int) -> Dictionary:
+	return {
+		"kind": kind,
+		"role": role,
+		"side": side,
+		"along": along,
+		"size": size,
+		"art": art,
+	}
+
+
+static func _cull_hazards(items: Array, max_n: int) -> Array:
+	## Drop extras that share nearly the same along+side (generator-side separation).
+	var kept: Array = []
+	for h in items:
+		var ok := true
+		for k in kept:
+			if str(h.get("role", "")) == HoleData.ROLE_ISLAND_RING:
+				break
+			if str(k.get("role", "")) == HoleData.ROLE_ISLAND_RING:
+				continue
+			var da: float = absf(float(h.get("along", 0.0)) - float(k.get("along", 0.0)))
+			var same_side: bool = int(h.get("side", 0)) == int(k.get("side", 0))
+			if da < 0.12 and same_side and str(h.get("kind", "")) == str(k.get("kind", "")):
+				ok = false
+				break
+		if ok:
+			kept.append(h)
+		if kept.size() >= max_n:
+			break
+	return kept
+
+
+static func _pick_pin(
+	radii: Vector2,
+	contour: HoleData.ContourProfile,
+	slope: Vector2,
+	hazards: Array,
+	shape: HoleData.GreenShape,
 	rng: RandomNumberGenerator
 ) -> Vector2:
-	var edge := lerpf(0.15, 0.72, t)
-	var ox := rng.randf_range(-radii.x, radii.x) * edge
-	var oy := rng.randf_range(-radii.y, radii.y) * edge
-	match shape:
-		HoleData.GreenShape.TIERED, HoleData.GreenShape.COMPLEX:
-			oy = -absf(oy) * lerpf(0.5, 1.0, t)  # favor back tier late
-		HoleData.GreenShape.PENINSULA:
-			ox *= 1.1
-	return Vector2(ox, oy)
+	## USGA-inspired: inset from edge, clear of greenside trouble, calm cup shelf, roam zones.
+	var margin := BallPhysics.yards_to_pixels(PIN_EDGE_MARGIN_YD)
+	var shelf := BallPhysics.yards_to_pixels(PIN_SHELF_YD)
+	var ix := maxf(radii.x - margin, radii.x * 0.35)
+	var iy := maxf(radii.y - margin, radii.y * 0.35)
+	var trouble := _greenside_trouble_locals(radii, hazards)
+
+	var probe := HoleData.new()
+	probe.green_radius_x = radii.x
+	probe.green_radius_y = radii.y
+	probe.green_slope = slope
+	probe.contour_profile = contour
+
+	var best := Vector2(0.0, -iy * 0.45)
+	var best_score := INF
+	var accepted: Array[Vector2] = []
+
+	for by in [-1, 0, 1]:
+		if _pin_zone_forbidden(contour, shape, by):
+			continue
+		for bx in [-1, 0, 1]:
+			for _k in 3:
+				var cand := _sample_pin_zone(bx, by, ix, iy, rng)
+				if not _inside_ellipse(cand, ix, iy):
+					continue
+				if not _pin_clears_trouble(cand, trouble, margin):
+					continue
+				if contour == HoleData.ContourProfile.RIDGE and absf(cand.x) < ix * 0.18:
+					continue
+				var score := _pin_shelf_score(probe, cand, shelf)
+				if score < best_score:
+					best_score = score
+					best = cand
+				if score <= PIN_MAX_LOCAL_SLOPE:
+					accepted.append(cand)
+
+	if accepted.size() > 0:
+		return accepted[rng.randi_range(0, accepted.size() - 1)]
+	return best
+
+
+static func _pin_zone_forbidden(
+	contour: HoleData.ContourProfile, shape: HoleData.GreenShape, by: int
+) -> bool:
+	## by: -1 back, 0 mid, +1 front (tee / +Y).
+	var back_only := (
+		contour == HoleData.ContourProfile.FALSE_FRONT
+		or contour == HoleData.ContourProfile.BI_TIER
+		or shape == HoleData.GreenShape.TIERED
+		or shape == HoleData.GreenShape.COMPLEX
+	)
+	if back_only and by > 0:
+		return true
+	if contour == HoleData.ContourProfile.FALSE_FRONT and by >= 0:
+		return true
+	return false
+
+
+static func _sample_pin_zone(
+	bx: int, by: int, ix: float, iy: float, rng: RandomNumberGenerator
+) -> Vector2:
+	var xr := _bucket_range(bx, ix)
+	var yr := _bucket_range(by, iy)
+	return Vector2(rng.randf_range(xr.x, xr.y), rng.randf_range(yr.x, yr.y))
+
+
+static func _bucket_range(b: int, lim: float) -> Vector2:
+	var third := lim / 3.0
+	if b < 0:
+		return Vector2(-lim, -third)
+	if b > 0:
+		return Vector2(third, lim)
+	return Vector2(-third, third)
+
+
+static func _inside_ellipse(p: Vector2, rx: float, ry: float) -> bool:
+	var nx := p.x / maxf(rx, 1.0)
+	var ny := p.y / maxf(ry, 1.0)
+	return nx * nx + ny * ny <= 1.0
+
+
+static func _greenside_trouble_locals(radii: Vector2, hazards: Array) -> Array:
+	## Estimate greenside sand centers in green-local space (mirrors controller ring).
+	var out: Array = []
+	var rx := radii.x + 14.0
+	var ry := radii.y + 14.0
+	for h in hazards:
+		if typeof(h) != TYPE_DICTIONARY:
+			continue
+		var role := str(h.get("role", ""))
+		if role != HoleData.ROLE_GREENSIDE:
+			continue
+		if str(h.get("kind", "")) != "sand":
+			continue
+		var side := int(h.get("side", 1))
+		var size := float(h.get("size", 36.0))
+		var dist := maxf(rx, ry) + 10.0 + size
+		var ang := -PI * 0.5 if side < 0 else PI * 0.5
+		out.append({"c": Vector2(cos(ang), sin(ang)) * dist, "r": size})
+	return out
+
+
+static func _pin_clears_trouble(pin: Vector2, trouble: Array, margin: float) -> bool:
+	for t in trouble:
+		var c: Vector2 = t["c"]
+		var r: float = float(t["r"])
+		if pin.distance_to(c) < margin + r * 0.35:
+			return false
+	return true
+
+
+static func _pin_shelf_score(probe: HoleData, pin: Vector2, shelf: float) -> float:
+	## Lower is better. Soft-reject steep / non-uniform shelves via high score.
+	probe.pin_offset = pin
+	var s0 := probe.green_slope_at(pin).length()
+	var mx := s0
+	var mn := s0
+	for i in 4:
+		var a := TAU * 0.25 * float(i)
+		var s := probe.green_slope_at(pin + Vector2(cos(a), sin(a)) * shelf).length()
+		mx = maxf(mx, s)
+		mn = minf(mn, s)
+	var score := mx
+	if mx > PIN_MAX_LOCAL_SLOPE:
+		score += (mx - PIN_MAX_LOCAL_SLOPE) * 4.0
+	if mx - mn > 0.12:
+		score += (mx - mn) * 2.0
+	return score
 
 
 static func _fairway_bend(

@@ -3,6 +3,9 @@ extends Object
 
 ## Player-facing type + touch floor for the 1080×1920 canvas.
 ## .tscn files use matching literals; code paths reference these consts.
+## Typeface: Pixelify Sans (OFL) — pixel-adjacent UI type for Crunchy Pixel.
+
+const FONT := preload("res://assets/fonts/PixelifySans-Variable.ttf")
 
 const CAPTION := 32
 const BODY := 40
@@ -11,6 +14,7 @@ const TOUCH_MIN := 120
 
 ## Near-white secondary text (hints/adapt) — avoids muted green-on-green.
 const TEXT_SECONDARY := Color(0.92, 0.95, 0.88, 1.0)
+const TEXT_PRIMARY := Color(0.91, 0.94, 0.90, 1.0)
 
 ## Base layout before safe-area insets (viewport px).
 const HUD_HEIGHT := 200.0

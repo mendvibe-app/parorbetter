@@ -5,16 +5,16 @@ signal request_game_over
 signal request_next_hole
 
 const GREEN_Y := -80.0
-## Legacy span used to convert old absolute hazard Y → fraction along tee→green.
-const _LEGACY_SPAN := 940.0
 const AIM_NUDGE_PX := 14.0
-## Catch / draw radius. Cup ≈ 2.4× ball (BALL_R 5) — real hole ≈ 2.5× ball.
-const CUP_RADIUS := 12.0
+## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.25) — real hole ≈ 2.5× ball.
+const CUP_RADIUS := 3.0
 
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
 const TEX_FAIRWAY := preload("res://assets/terrain/fairway_tile_a.png")
 const TEX_WATER := preload("res://assets/terrain/water_tile.png")
+const TEX_WATER_CREEK := preload("res://assets/hazards/water_creek.png")
+const TEX_WATER_POND := preload("res://assets/hazards/water_pond.png")
 const TEX_CUP := preload("res://assets/greens/cup.png")
 const TEX_PIN_FLAG := preload("res://assets/greens/pin_flag.png")
 const TEX_FOG := preload("res://assets/background/fog_overlay.png")
@@ -44,9 +44,13 @@ var hole_complete: bool = false
 var _cup_pos: Vector2 = Vector2.ZERO
 var _green_center: Vector2 = Vector2.ZERO
 var _tee_pos: Vector2 = Vector2(540, 860.0)
+var _practice_green_pos: Vector2 = Vector2.ZERO
 var _fairway_half: float = 70.0
 var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
+var _pin_flag: Sprite2D  ## hidden while putting (pin out — kills scale lie)
+var _green_sprite: Sprite2D
+var _green_img: Image  ## cached for shape-aware Green lie (silhouette alpha)
 
 var _aiming: bool = false
 var _selecting_club: bool = false
@@ -99,6 +103,8 @@ func _ready() -> void:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
 	_setup_practice_btn()
+	# After practice/wind chrome: keep club picker as the topmost UI modal.
+	ui_layer.move_child(_club_select, -1)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -115,17 +121,25 @@ func _setup_club_select() -> void:
 	_club_select = ClubSelect.new()
 	_club_select.name = "ClubSelect"
 	ui_layer.add_child(_club_select)
-	# Below shot panel / result, above feedback
-	ui_layer.move_child(_club_select, confirm_aim_btn.get_index())
+	# Modal: last child = on top of ShotPanel / aim chrome so drags aren't stolen.
 	_club_select.club_chosen.connect(_on_club_chosen)
 
 
 func _setup_aim_visuals() -> void:
 	_pin_ref_line = Line2D.new()
 	_pin_ref_line.width = 2.0
-	_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.22)
+	_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.55)
 	_pin_ref_line.z_index = 4
 	_pin_ref_line.visible = false
+	# Putt reuses this as a fading aim line; full shots use solid cup-ref.
+	var fade := Gradient.new()
+	fade.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+	fade.colors = PackedColorArray([
+		Color(1.0, 1.0, 1.0, 0.55),
+		Color(1.0, 1.0, 1.0, 0.22),
+		Color(1.0, 1.0, 1.0, 0.0),
+	])
+	_pin_ref_line.gradient = fade
 	add_child(_pin_ref_line)
 
 	# Directional wedge (not a laser to an exact landing XY).
@@ -173,6 +187,7 @@ func _setup_aim_visuals() -> void:
 
 func load_hole(hole_index: int) -> void:
 	GameState.exit_range_mode()
+	GameState.exit_green_mode()
 	_end_aim_phase()
 	hole = GameState.get_hole(hole_index)
 	GameState.begin_hole(hole_index)
@@ -209,6 +224,28 @@ func load_range() -> void:
 	_start_shot_ui()
 
 
+func load_practice_green() -> void:
+	## Putting green — aim + putt loop, infinite reset to practice spot.
+	_end_aim_phase()
+	GameState.enter_green_mode()
+	hole = _make_practice_green_hole()
+	strokes = 0
+	hole_complete = false
+	ball_in_flight = false
+	_chosen_club.clear()
+	_build_course()
+	_practice_green_pos = _cup_pos + Vector2(0.0, BallPhysics.yards_to_pixels(18.0))
+	ball.reset_at(_practice_green_pos, "Green")
+	camera.global_position = Vector2(_practice_green_pos.x, _practice_green_pos.y - 40)
+	camera.zoom = Vector2(2.2, 2.2)
+	if not camera.is_current():
+		camera.make_current()
+	_update_hud()
+	feedback.text = "GREEN — aim & putt. Ball resets after each."
+	feedback.modulate = Color(0.85, 0.95, 0.75)
+	_start_shot_ui()
+
+
 func _make_range_hole() -> HoleData:
 	var d := HoleData.new()
 	d.hole_number = 0
@@ -222,19 +259,45 @@ func _make_range_hole() -> HoleData:
 	d.wind_vector = Vector2.ZERO
 	d.green_slope = Vector2.ZERO
 	d.timing_window_scale = 1.0
-	d.has_bunker = false
-	d.has_water = false
+	d.hazards = []
 	d.hazard_bias = HoleData.HazardBias.NONE
 	d.suggested_shape = HoleData.SuggestedShape.STRAIGHT
 	d.name_label = "RANGE"
 	d.archetype = "range"
+	d.contour_profile = HoleData.ContourProfile.FLAT
 	d.yardage = 420.0
+	return d
+
+
+func _make_practice_green_hole() -> HoleData:
+	var d := HoleData.new()
+	d.hole_number = 0
+	d.par = 3
+	d.fairway_width = 160.0
+	d.green_radius_x = 54.0
+	d.green_radius_y = 54.0
+	d.pin_offset = Vector2.ZERO
+	d.tee_offset_x = 0.0
+	d.fairway_bend = 0.0
+	d.wind_vector = Vector2.ZERO
+	d.green_slope = Vector2(0.22, 0.0)
+	d.timing_window_scale = 1.0
+	d.hazards = []
+	d.hazard_bias = HoleData.HazardBias.NONE
+	d.suggested_shape = HoleData.SuggestedShape.STRAIGHT
+	d.name_label = "GREEN"
+	d.archetype = "practice_green"
+	d.contour_profile = HoleData.ContourProfile.SIDE_SLOPE
+	d.yardage = 100.0
 	return d
 
 
 func _build_course() -> void:
 	for c in course_root.get_children():
 		c.queue_free()
+	_pin_flag = null
+	_green_sprite = null
+	_green_img = null
 	if _green_book:
 		_green_book.queue_free()
 		_green_book = null
@@ -280,14 +343,19 @@ func _build_course() -> void:
 	var flag_spr := Sprite2D.new()
 	flag_spr.texture = TEX_PIN_FLAG
 	flag_spr.centered = false
-	# Anchor the pole base (x ≈ 10% into the texture) at the cup
-	flag_spr.offset = Vector2(-float(TEX_PIN_FLAG.get_width()) * 0.101, -float(TEX_PIN_FLAG.get_height()))
-	flag_spr.position = _cup_pos + Vector2(0, -4)
-	flag_spr.scale = Vector2.ONE * (68.0 / float(TEX_PIN_FLAG.get_height()))
+	# Pole is authored at texture center (x = 0.5). Base sits on the cup.
+	var fw := float(TEX_PIN_FLAG.get_width())
+	var fh := float(TEX_PIN_FLAG.get_height())
+	flag_spr.offset = Vector2(-fw * 0.5, -fh)
+	flag_spr.position = _cup_pos
+	# ~12 px ≈ 16 ft equiv — readable, not a 64 ft tower next to short putts.
+	flag_spr.scale = Vector2.ONE * (12.0 / fh)
 	flag_spr.z_index = 3
 	course_root.add_child(flag_spr)
+	_pin_flag = flag_spr
+	_sync_pin_flag_visible()
 
-	_place_layout_hazards(adapt_bias)
+	_place_hazards(adapt_bias)
 
 	_add_rect(course_root, Rect2(-80, GREEN_Y - 140, 70, course_len + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
 	_add_rect(course_root, Rect2(1090, GREEN_Y - 140, 70, course_len + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
@@ -300,9 +368,12 @@ func _build_course() -> void:
 
 func _add_bent_fairway(width: float, bend: float) -> void:
 	## Trapezoid / dogleg strip from tee to green.
+	## Stop at the green apron — old top (GREEN_Y - 20) ran fairway texture
+	## through the putting surface as a rectangular mismatched patch.
 	var half := width * 0.5
 	var tee_y := _tee_pos.y
-	var top := Vector2(540.0 + bend * 0.35, GREEN_Y - 20.0)
+	var top_y := GREEN_Y + maxf(hole.green_radius_y, 36.0) + 6.0
+	var top := Vector2(540.0 + bend * 0.35, top_y)
 	var mid := Vector2(540.0 + bend, tee_y * 0.45 + GREEN_Y * 0.55)
 	var bot := Vector2(_tee_pos.x, tee_y - 20.0)
 	var poly := Polygon2D.new()
@@ -348,6 +419,8 @@ func _add_green(rx: float, ry: float) -> void:
 	)
 	spr.z_index = 1
 	course_root.add_child(spr)
+	_green_sprite = spr
+	_green_img = tex.get_image()
 	var area := Area2D.new()
 	area.position = _green_center
 	area.collision_layer = 2
@@ -368,73 +441,156 @@ func _green_texture_for_hole() -> Texture2D:
 
 
 func _y_at(frac: float) -> float:
-	## 0 = green, 1 = tee. Fracs from legacy absolute Y / _LEGACY_SPAN.
+	## 0 = green, 1 = tee.
 	return lerpf(GREEN_Y, _tee_pos.y, frac)
 
 
-func _place_layout_hazards(adapt_bias: HoleData.HazardBias) -> void:
-	var side := 1.0
-	if adapt_bias == HoleData.HazardBias.LEFT:
-		side = -1.0
-	elif adapt_bias == HoleData.HazardBias.RIGHT:
-		side = 1.0
+func _fairway_center_at(along: float) -> Vector2:
+	## along 0 = green end, 1 = tee. Follows bent fairway mid control point.
+	var y := _y_at(along)
+	var top_x := 540.0 + hole.fairway_bend * 0.35
+	var mid_x := 540.0 + hole.fairway_bend
+	var bot_x := _tee_pos.x
+	var x: float
+	if along < 0.5:
+		x = lerpf(top_x, mid_x, along * 2.0)
+	else:
+		x = lerpf(mid_x, bot_x, (along - 0.5) * 2.0)
+	return Vector2(x, y)
 
-	var place_bunker := hole.has_bunker
-	var place_water := hole.has_water
-	var h_scale := clampf((_tee_pos.y - GREEN_Y) / _LEGACY_SPAN, 0.35, 1.35)
 
+func _clears_green(center: Vector2, radius: float) -> bool:
+	var rx := hole.green_radius_x + 14.0 + radius + 8.0
+	var ry := hole.green_radius_y + 14.0 + radius + 8.0
+	var dx := (center.x - _green_center.x) / maxf(rx, 1.0)
+	var dy := (center.y - _green_center.y) / maxf(ry, 1.0)
+	return dx * dx + dy * dy > 1.0
+
+
+func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
+	for spec in hole.hazards:
+		if typeof(spec) != TYPE_DICTIONARY:
+			continue
+		var role := str(spec.get("role", ""))
+		var kind := str(spec.get("kind", ""))
+		var side := int(spec.get("side", 0))
+		if side != 0:
+			if adapt_bias == HoleData.HazardBias.LEFT:
+				side = -1
+			elif adapt_bias == HoleData.HazardBias.RIGHT:
+				side = 1
+		var along := float(spec.get("along", 0.5))
+		var size := float(spec.get("size", 40.0))
+		var art := int(spec.get("art", 0))
+		match role:
+			HoleData.ROLE_ISLAND_RING:
+				_place_island_ring()
+			HoleData.ROLE_GREENSIDE:
+				var c := _greenside_center(side if side != 0 else 1, size)
+				if kind == "sand" and _clears_green(c, size):
+					_add_bunker(c, size, art if art > 0 else 1)
+			HoleData.ROLE_LANDING:
+				var fc := _fairway_center_at(along)
+				var c2 := Vector2(fc.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.35), fc.y)
+				if kind == "sand" and _clears_green(c2, size):
+					_add_bunker(c2, size, art)
+			HoleData.ROLE_CARRY:
+				if kind == "water":
+					_place_carry_creek(along, size)
+			HoleData.ROLE_EDGE:
+				var fc2 := _fairway_center_at(along)
+				var edge_c := Vector2(
+					fc2.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.55),
+					fc2.y
+				)
+				if kind == "water":
+					_place_edge_pond(edge_c, size)
+				elif kind == "sand" and _clears_green(edge_c, size):
+					_add_bunker(edge_c, size, art)
+
+
+func _greenside_center(side: int, size: float) -> Vector2:
+	var rx := hole.green_radius_x + 14.0
+	var ry := hole.green_radius_y + 14.0
+	var dist := maxf(rx, ry) + 10.0 + size
+	var ang: float
+	if hole.pin_offset.length() > 4.0:
+		ang = hole.pin_offset.angle()
+	else:
+		ang = -PI * 0.5 if side < 0 else PI * 0.5
+	if side != 0:
+		ang = lerpf(ang, float(side) * PI * 0.5, 0.45)
+	# Tee entry is +Y (PI/2) — keep bunkers out of the approach wedge.
+	var entry := PI * 0.5
+	var step := float(side if side != 0 else 1) * deg_to_rad(35.0)
+	for _i in 8:
+		if absf(angle_difference(ang, entry)) > deg_to_rad(40.0):
+			break
+		ang += step
+	# USGA: keep sand clear of the cup (~15 ft / 5 yd).
+	var clear := BallPhysics.yards_to_pixels(HoleGenerator.PIN_EDGE_MARGIN_YD) + size * 0.5
+	for _j in 8:
+		var c := _green_center + Vector2(cos(ang), sin(ang)) * dist
+		if c.distance_to(_cup_pos) >= clear:
+			return c
+		ang += step
+	return _green_center + Vector2(cos(ang), sin(ang)) * dist
+
+
+func _place_island_ring() -> void:
 	var water_tint := Color(1, 1, 1, 0.92)
-	match hole.layout:
-		HoleData.LayoutStyle.DOGLEG_RIGHT:
-			if place_bunker:
-				_add_bunker(Vector2(540 + 110, _y_at(460.0 / _LEGACY_SPAN)), 50.0, 0)
-			if place_water:
-				_add_rect(
-					course_root,
-					Rect2(700, _y_at(280.0 / _LEGACY_SPAN), 90, 180.0 * h_scale),
-					water_tint, "water", TEX_WATER, 260.0
-				)
-		HoleData.LayoutStyle.DOGLEG_LEFT:
-			if place_bunker:
-				_add_bunker(Vector2(540 - 120, _y_at(440.0 / _LEGACY_SPAN)), 55.0, 1)
-			if place_water:
-				_add_rect(
-					course_root,
-					Rect2(200, _y_at(240.0 / _LEGACY_SPAN), 100, 220.0 * h_scale),
-					water_tint, "water", TEX_WATER, 260.0
-				)
-		HoleData.LayoutStyle.CHUTE:
-			if place_water:
-				var chute_y := _y_at(330.0 / _LEGACY_SPAN)
-				var chute_h := 280.0 * h_scale
-				_add_rect(course_root, Rect2(540 - _fairway_half - 70, chute_y, 55, chute_h), water_tint, "water", TEX_WATER, 260.0)
-				_add_rect(course_root, Rect2(540 + _fairway_half + 15, chute_y, 55, chute_h), water_tint, "water", TEX_WATER, 260.0)
-			if place_bunker:
-				_add_bunker(Vector2(540 + 40, _y_at(200.0 / _LEGACY_SPAN)), 36.0, 2)
-		HoleData.LayoutStyle.ISLAND:
-			# Keep water outside green detection + ball Area sensor (10px).
-			# Fixed (540±70) rects used to overlap the putting surface on early/large greens.
-			var clear := maxf(hole.green_radius_x, hole.green_radius_y) + 14.0 + 12.0
-			var side_w := 90.0
-			var side_h := 160.0
-			var side_y := GREEN_Y - 30.0
-			_add_rect(course_root, Rect2(540.0 - clear - side_w, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
-			_add_rect(course_root, Rect2(540.0 + clear, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
-			_add_rect(course_root, Rect2(540.0 - 100.0, GREEN_Y + clear, 200.0, 70.0), water_tint, "water", TEX_WATER, 260.0)
-			if place_bunker:
-				_add_bunker(Vector2(540 + side * 90, _y_at(380.0 / _LEGACY_SPAN)), 40.0, 0)
-		HoleData.LayoutStyle.BI_TIER:
-			if place_bunker:
-				_add_bunker(Vector2(540 + 80, _y_at(280.0 / _LEGACY_SPAN)), 48.0, 1)
-			if place_water:
-				_add_rect(
-					course_root,
-					Rect2(300, _y_at(220.0 / _LEGACY_SPAN), 80, 200.0 * h_scale),
-					water_tint, "water", TEX_WATER, 260.0
-				)
-		_:
-			if place_bunker and hole.hole_number >= 2:
-				_add_bunker(Vector2(540 + side * (_fairway_half + 36), _y_at(400.0 / _LEGACY_SPAN)), 42.0, 2)
+	var clear := maxf(hole.green_radius_x, hole.green_radius_y) + 14.0 + 12.0
+	var side_w := 90.0
+	var side_h := 160.0
+	var side_y := GREEN_Y - 30.0
+	_add_rect(course_root, Rect2(540.0 - clear - side_w, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
+	_add_rect(course_root, Rect2(540.0 + clear, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
+	_add_rect(course_root, Rect2(540.0 - 100.0, GREEN_Y + clear, 200.0, 70.0), water_tint, "water", TEX_WATER, 260.0)
+
+
+func _place_carry_creek(along: float, half_h: float) -> void:
+	var fc := _fairway_center_at(along)
+	var w := _fairway_half * 2.0 + 80.0
+	var h := maxf(half_h, 18.0)
+	var rect := Rect2(fc.x - w * 0.5, fc.y - h * 0.5, w, h)
+	# Soft reject if creek would cover cup — push toward tee.
+	var creek_c := rect.get_center()
+	if not _clears_green(creek_c, maxf(w, h) * 0.35):
+		along = minf(along + 0.12, 0.7)
+		fc = _fairway_center_at(along)
+		rect = Rect2(fc.x - w * 0.5, fc.y - h * 0.5, w, h)
+	_add_water_sprite(rect.get_center(), Vector2(w, h), TEX_WATER_CREEK)
+
+
+func _place_edge_pond(center: Vector2, size: float) -> void:
+	if not _clears_green(center, size):
+		return
+	_add_water_sprite(center, Vector2(size * 1.6, size * 1.2), TEX_WATER_POND)
+
+
+func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D) -> void:
+	var spr := Sprite2D.new()
+	spr.texture = tex
+	spr.position = center
+	spr.scale = Vector2(
+		span.x / float(tex.get_width()),
+		span.y / float(tex.get_height())
+	)
+	spr.z_index = 1
+	course_root.add_child(spr)
+	var area := Area2D.new()
+	area.collision_layer = 2
+	area.collision_mask = 0
+	var cs := CollisionShape2D.new()
+	var shape := RectangleShape2D.new()
+	shape.size = span
+	cs.shape = shape
+	area.position = center
+	area.add_child(cs)
+	area.monitoring = false
+	area.monitorable = true
+	area.add_to_group("water")
+	course_root.add_child(area)
 
 
 func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
@@ -570,6 +726,12 @@ func _should_show_green_book() -> bool:
 
 func _is_putt_context() -> bool:
 	return ball.get_lie() == "Green" or _pin_yards() <= 28.0
+
+
+func _sync_pin_flag_visible() -> void:
+	## Pin out on the green — flag height was lying about putt scale.
+	if _pin_flag:
+		_pin_flag.visible = not _is_putt_context()
 
 
 func _set_green_book_visible(on: bool) -> void:
@@ -738,7 +900,7 @@ func _begin_club_select() -> void:
 func _on_club_chosen(club: Dictionary) -> void:
 	_selecting_club = false
 	_chosen_club = club
-	AudioBus.play_ui()
+	AudioBus.play_club_bag()
 	if GameState.range_mode:
 		_begin_range_swing()
 	else:
@@ -960,14 +1122,15 @@ func _on_practice_result(verdict: Dictionary) -> void:
 
 
 func _set_aim_visuals_visible(on: bool) -> void:
+	var is_putt := ball != null and ball.get_lie() == "Green"
 	if _aim_cone:
-		_aim_cone.visible = on
+		_aim_cone.visible = on and not is_putt
 	if _aim_cone_edge:
-		_aim_cone_edge.visible = on
+		_aim_cone_edge.visible = on and not is_putt
+	if _aim_circle:
+		_aim_circle.visible = on and not is_putt
 	if _pin_ref_line:
 		_pin_ref_line.visible = on
-	if _aim_circle:
-		_aim_circle.visible = on
 	if not on and _wind_bias:
 		_wind_bias.visible = false
 
@@ -1034,32 +1197,57 @@ func _aim_shape_bend() -> float:
 func _refresh_aim_visuals() -> void:
 	var from := ball.global_position
 	var to := _aim_target
+	var is_putt := ball.get_lie() == "Green"
 	var inv_z := 1.0 / maxf(camera.zoom.x, 0.35)
-	var cone: Dictionary = AimControl.make_aim_cone(
-		from, to, _aim_shape_bend(), 42.0 * inv_z, 16.0 * inv_z, _power_previewing
-	)
-	_aim_cone.polygon = cone["points"]
-	_aim_cone.vertex_colors = cone["colors"]
-	# Soft edge stroke along the wedge flanks (skip the near-ball base).
-	var edge := PackedVector2Array()
-	var pts: PackedVector2Array = cone["points"]
-	if pts.size() >= 6:
-		edge.append(pts[0])
-		edge.append(pts[5])
-		edge.append(pts[4])
-		edge.append(pts[3])
-		edge.append(pts[2])
-		edge.append(pts[1])
-	_aim_cone_edge.points = edge
-	_aim_cone_edge.width = (2.4 if _power_previewing else 1.8) / maxf(camera.zoom.x, 0.35)
-	_aim_cone_edge.default_color = Color(1.0, 0.92, 0.4, 0.55 if _power_previewing else 0.28)
-	_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
-	var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
-	_aim_circle.points = AimControl.make_circle_points(to, radius_px)
-	_aim_circle.default_color = Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
-	_set_aim_visuals_visible(true)
+	if is_putt:
+		## White direction line that fades out — not a cup ruler / iron wedge.
+		var along := to - from
+		var len_px := along.length()
+		if len_px < 1.0:
+			along = Vector2(0, -1)
+			len_px = 8.0
+		var tip := from + along.normalized() * (len_px * 0.88)
+		_pin_ref_line.points = PackedVector2Array([from, tip])
+		_pin_ref_line.width = 2.6 / maxf(camera.zoom.x, 0.35)
+		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.55)
+		if _pin_ref_line.gradient == null:
+			var fade := Gradient.new()
+			fade.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
+			fade.colors = PackedColorArray([
+				Color(1.0, 1.0, 1.0, 0.55),
+				Color(1.0, 1.0, 1.0, 0.22),
+				Color(1.0, 1.0, 1.0, 0.0),
+			])
+			_pin_ref_line.gradient = fade
+		_set_aim_visuals_visible(true)
+	else:
+		_pin_ref_line.gradient = null
+		var cone: Dictionary = AimControl.make_aim_cone(
+			from, to, _aim_shape_bend(), 42.0 * inv_z, 16.0 * inv_z, _power_previewing
+		)
+		_aim_cone.polygon = cone["points"]
+		_aim_cone.vertex_colors = cone["colors"]
+		# Soft edge stroke along the wedge flanks (skip the near-ball base).
+		var edge := PackedVector2Array()
+		var pts: PackedVector2Array = cone["points"]
+		if pts.size() >= 6:
+			edge.append(pts[0])
+			edge.append(pts[5])
+			edge.append(pts[4])
+			edge.append(pts[3])
+			edge.append(pts[2])
+			edge.append(pts[1])
+		_aim_cone_edge.points = edge
+		_aim_cone_edge.width = (2.4 if _power_previewing else 1.8) / maxf(camera.zoom.x, 0.35)
+		_aim_cone_edge.default_color = Color(1.0, 0.92, 0.4, 0.55 if _power_previewing else 0.28)
+		_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
+		_pin_ref_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
+		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.22)
+		var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
+		_aim_circle.points = AimControl.make_circle_points(to, radius_px)
+		_aim_circle.default_color = Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
+		_set_aim_visuals_visible(true)
 	if _aiming:
-		var is_putt := ball.get_lie() == "Green"
 		_set_green_book_visible(_should_show_green_book())
 		_refresh_wind_indicator(not is_putt)
 	elif _wind_bias:
@@ -1247,13 +1435,10 @@ func _desired_camera_zoom() -> Vector2:
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
 	if _is_putt_context():
-		# Fill less of the viewport so long lags read as travel, not a dart across
-		# a phone-sized green. Green floor still keeps short putts from microscope zoom.
-		var half_span := maxf(
-			ball.global_position.distance_to(_cup_pos) * 0.5 + 52.0,
-			maxf(hole.green_radius_x, hole.green_radius_y) + 48.0
-		)
-		var z := clampf(view_min * 0.40 / maxf(half_span, 24.0), 2.6, 7.0)
+		# Frame ball→cup only — green-radius floor made short putts look like tap-ins.
+		var dist := ball.global_position.distance_to(_cup_pos)
+		var half_span := maxf(dist * 0.65 + 20.0, 28.0)
+		var z := clampf(view_min * 0.62 / maxf(half_span, 24.0), 3.2, 10.0)
 		return Vector2(z, z)
 	# Approach with green book — frame ball toward green without losing landing circle
 	if _aiming and _should_show_green_book():
@@ -1291,6 +1476,7 @@ func _follow_ball() -> void:
 
 
 func _process(_delta: float) -> void:
+	_sync_pin_flag_visible()
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
 		var look := ball.global_position
 		if ball.velocity.length() > 20.0:
@@ -1324,11 +1510,16 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		return
 	ball_in_flight = false
 	_set_green_book_visible(false)
-	if not GameState.range_mode and pos.distance_to(_cup_pos) < CUP_RADIUS:
+	if GameState.green_mode and pos.distance_to(_cup_pos) < CUP_RADIUS:
+		_on_practice_green_holed()
+		return
+	if not GameState.range_mode and not GameState.green_mode and pos.distance_to(_cup_pos) < CUP_RADIUS:
 		_on_holed_out()
 		return
 	if GameState.range_mode:
 		ball.set_lie("Tee")
+	elif GameState.green_mode:
+		ball.set_lie("Green")
 	else:
 		ball.set_lie(_classify_lie(pos))
 	_update_hud()
@@ -1364,16 +1555,43 @@ func _after_shot_continue() -> void:
 		_set_aim_visuals_visible(false)
 		_start_shot_ui()
 		return
+	if GameState.green_mode:
+		_reset_practice_green()
+		return
 	_start_shot_ui()
+
+
+func _reset_practice_green() -> void:
+	ball.reset_at(_practice_green_pos, "Green")
+	camera.global_position = Vector2(_practice_green_pos.x, _practice_green_pos.y - 40)
+	camera.zoom = Vector2(2.2, 2.2)
+	_set_aim_visuals_visible(false)
+	_update_hud()
+	_start_shot_ui()
+
+
+func _on_practice_green_holed() -> void:
+	## Sink juice, then reset — no scoring / hole advance.
+	ball_in_flight = false
+	_end_aim_phase()
+	shot_routine.set_active(false)
+	AudioBus.play_putt_drop()
+	feedback.text = "IN THE HOLE"
+	feedback.modulate = Color(1.0, 0.95, 0.5)
+	_update_hud()
+	var cam_tw := create_tween()
+	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.15)
+	cam_tw.parallel().tween_property(camera, "zoom", Vector2(4.5, 4.5), 0.12)
+	await get_tree().create_timer(0.7).timeout
+	if GameState.green_mode and GameState.run_active:
+		_reset_practice_green()
 
 
 func _classify_lie(pos: Vector2) -> String:
 	for b in _bunkers:
 		if pos.distance_to(b["c"]) <= float(b["r"]):
 			return "Sand"
-	var dx := (pos.x - _green_center.x) / maxf(hole.green_radius_x + 14.0, 1.0)
-	var dy := (pos.y - _green_center.y) / maxf(hole.green_radius_y + 14.0, 1.0)
-	if dx * dx + dy * dy <= 1.0:
+	if _on_painted_green(pos):
 		return "Green"
 	var fx := absf(pos.x - (540.0 + hole.fairway_bend * 0.35))
 	if fx <= _fairway_half + 20.0:
@@ -1381,6 +1599,24 @@ func _classify_lie(pos: Vector2) -> String:
 	if fx <= _fairway_half + 80.0:
 		return "Rough"
 	return "Rough"
+
+
+func _on_painted_green(pos: Vector2) -> bool:
+	## Ellipse is a cheap reject; painted alpha is the real silhouette
+	## (island beach / L-shape edge cutouts must not count as Green).
+	var dx := (pos.x - _green_center.x) / maxf(hole.green_radius_x + 14.0, 1.0)
+	var dy := (pos.y - _green_center.y) / maxf(hole.green_radius_y + 14.0, 1.0)
+	if dx * dx + dy * dy > 1.0:
+		return false
+	if _green_img == null or _green_sprite == null:
+		return true
+	var sz := Vector2(float(_green_img.get_width()), float(_green_img.get_height()))
+	var local := (pos - _green_sprite.position) / _green_sprite.scale + sz * 0.5
+	var ix := int(local.x)
+	var iy := int(local.y)
+	if ix < 0 or iy < 0 or ix >= int(sz.x) or iy >= int(sz.y):
+		return false
+	return _green_img.get_pixel(ix, iy).a > 0.5
 
 
 func _on_hazard(kind: String) -> void:
@@ -1397,6 +1633,13 @@ func _on_hazard(kind: String) -> void:
 		if GameState.range_mode:
 			_start_shot_ui()
 		return
+	if GameState.green_mode:
+		feedback.text = "Off green — try again"
+		_update_hud()
+		await get_tree().create_timer(0.45).timeout
+		if GameState.green_mode:
+			_reset_practice_green()
+		return
 	strokes += 1
 	GameState.record_stroke()
 	ball.reset_at(ball.get_last_safe(), "Fairway")
@@ -1407,6 +1650,9 @@ func _on_hazard(kind: String) -> void:
 
 
 func _on_holed_out() -> void:
+	if GameState.green_mode:
+		_on_practice_green_holed()
+		return
 	if hole_complete:
 		return
 	hole_complete = true
@@ -1424,6 +1670,7 @@ func _on_holed_out() -> void:
 	cam_tw.tween_property(camera, "zoom", Vector2(4.5, 4.5), 0.35)
 	var diff := strokes - hole.par
 	var result := Scoring.result_from_diff(diff)
+	GameState.add_score_to_par(diff)
 	var life_delta := GameState.apply_hole_result_lives(result)
 	_update_hud()
 	var life_txt := ""
@@ -1435,9 +1682,9 @@ func _on_holed_out() -> void:
 	feedback.modulate = Color(1.0, 0.95, 0.5)
 	if Scoring.is_birdie_or_better(result):
 		_show_birdie()
-		AudioBus.play_birdie()
+		AudioBus.play_golf_clap()
 	elif result == Scoring.Result.PAR:
-		AudioBus.play_ui()
+		AudioBus.play_golf_clap()
 	await get_tree().create_timer(1.1).timeout
 	if not GameState.run_active or GameState.lives <= 0:
 		request_game_over.emit()
@@ -1477,6 +1724,8 @@ func _update_hud() -> void:
 		return
 	if GameState.range_mode and hud.has_method("refresh_range"):
 		hud.refresh_range(strokes)
+	elif GameState.green_mode and hud.has_method("refresh_practice_green"):
+		hud.refresh_practice_green(strokes)
 	elif hud.has_method("refresh"):
 		hud.refresh(hole, strokes)
 
@@ -1487,7 +1736,7 @@ func _on_run_ended(_deepest: int, _reason: String) -> void:
 
 
 func skip_hole() -> void:
-	if GameState.range_mode:
+	if GameState.in_practice():
 		return
 	if hole_complete:
 		return

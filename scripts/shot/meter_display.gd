@@ -3,6 +3,9 @@ extends Control
 
 ## Live tempo ratio strip — or putt amplitude bar. Pad teaches the motion.
 
+const TEX_TRACK := preload("res://assets/ui/ui_tempo_meter_track.png")
+const TEX_NEEDLE := preload("res://assets/ui/ui_tempo_meter_needle.png")
+
 var tempo_gesture: TempoGesture
 var shot_type: String = "full"
 var timing_scale: float = 1.0
@@ -75,6 +78,7 @@ func _on_live() -> void:
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	texture_filter = TEXTURE_FILTER_NEAREST
 	set_process(true)
 
 
@@ -116,7 +120,7 @@ func _draw_putt_amplitude() -> void:
 	var band := PuttStroke.BAND_HALF
 	var title := str(_verdict.get("note", "Stroke"))
 	draw_string(
-		ThemeDB.fallback_font,
+		UiScale.FONT,
 		area.position + Vector2(12.0, 28.0),
 		title,
 		HORIZONTAL_ALIGNMENT_LEFT,
@@ -161,7 +165,7 @@ func _draw_tempo_ratio() -> void:
 	if not _verdict.is_empty():
 		title = str(_verdict.get("note", title))
 	draw_string(
-		ThemeDB.fallback_font,
+		UiScale.FONT,
 		area.position + Vector2(12.0, 28.0),
 		title,
 		HORIZONTAL_ALIGNMENT_LEFT,
@@ -172,8 +176,7 @@ func _draw_tempo_ratio() -> void:
 
 	# Compact ratio strip for short meter height
 	var strip := Rect2(area.position + Vector2(24.0, 40.0), Vector2(area.size.x - 48.0, 28.0))
-	draw_rect(strip, Color(0.12, 0.18, 0.14, 0.95), true)
-	draw_rect(strip, Color(0.25, 0.35, 0.28, 0.9), false, 2.0)
+	draw_texture_rect(TEX_TRACK, strip, false)
 
 	var r_min := 0.5
 	var r_max := 5.5
@@ -209,9 +212,14 @@ func _draw_tempo_ratio() -> void:
 				needle_c = Color(0.95, 0.85, 0.25)
 			else:
 				needle_c = Color(0.95, 0.35, 0.3)
-		draw_circle(Vector2(x_n, strip.position.y + strip.size.y * 0.5), 10.0, needle_c)
+		var nsz := TEX_NEEDLE.get_size()
+		var nd := 22.0
+		var ns := nd / maxf(nsz.x, 1.0)
+		draw_set_transform(Vector2(x_n, strip.position.y + strip.size.y * 0.5), 0.0, Vector2(ns, ns))
+		draw_texture(TEX_NEEDLE, -nsz * 0.5, needle_c)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 		draw_string(
-			ThemeDB.fallback_font,
+			UiScale.FONT,
 			Vector2(x_n - 24.0, strip.position.y - 8.0),
 			"%.1f:1" % ratio,
 			HORIZONTAL_ALIGNMENT_LEFT,

@@ -44,7 +44,9 @@ var ground_lie_at: Callable = Callable()
 @onready var area: Area2D = $Area
 
 
-const BALL_R := 5.0
+const BALL_R := 3.5
+## On-green draw radius — keeps putt lengths many ball-widths (flight stays BALL_R).
+const BALL_R_PUTT := 1.25
 const TRAIL_TEX := preload("res://assets/ball/ball_trail.png")
 
 var _ball_scale: float = 1.0
@@ -195,21 +197,22 @@ func get_lie() -> String:
 
 
 func _apply_lie_visual() -> void:
-	## One world radius always — putt zoom already enlarges on screen.
+	## Flight stays readable (BALL_R); green shrinks so 18 ft isn't 2 ball-widths.
+	var r := BALL_R_PUTT if _lie == "Green" else BALL_R
 	var tex_w := float(visual.texture.get_width()) if visual.texture else 961.0
-	_ball_scale = (BALL_R * 2.0) / tex_w
+	_ball_scale = (r * 2.0) / tex_w
 	visual.scale = Vector2.ONE * _ball_scale
 	# Shadow texture holds a wide soft ellipse; size it to a bit over ball width.
 	var sh_w := float(shadow.texture.get_width()) if shadow.texture else 512.0
-	_shadow_scale = ((BALL_R + 2.0) * 2.6) / sh_w
+	_shadow_scale = ((r + 2.0) * 2.6) / sh_w
 	shadow.scale = Vector2(_shadow_scale, _shadow_scale)
 	shadow.modulate.a = 0.85
 	# Glow ring ~2.6x ball diameter, spin arcs hug the ball.
 	if glow.texture:
-		_glow_scale = (BALL_R * 5.2) / float(glow.texture.get_width())
+		_glow_scale = (r * 5.2) / float(glow.texture.get_width())
 		glow.scale = Vector2.ONE * _glow_scale
 	if spin_fx.texture:
-		spin_fx.scale = Vector2.ONE * (BALL_R * 3.4) / float(spin_fx.texture.get_width())
+		spin_fx.scale = Vector2.ONE * (r * 3.4) / float(spin_fx.texture.get_width())
 
 
 func distance_traveled_yards() -> float:
@@ -389,7 +392,7 @@ func _on_area_entered(other: Area2D) -> void:
 	if other.is_in_group("cup"):
 		# Area overlap includes this ball's ~10px sensor; require center inside the cup.
 		var cs := other.get_child(0) as CollisionShape2D
-		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 12.0
+		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 3.0
 		if global_position.distance_to(other.global_position) > cup_r:
 			return
 		velocity = Vector2.ZERO

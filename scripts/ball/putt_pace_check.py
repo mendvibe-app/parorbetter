@@ -19,14 +19,14 @@ def recommended_power(remaining_yd: float, club_max: float) -> float:
 
 
 def putt_roll_yards(committed_power: float, tempo_power_mul: float, contact: str) -> float:
-    """Mirror launch_velocity putt distance after the unstack fix."""
+    """Mirror launch_velocity putt distance — amplitude owns pace; no contact dist_err."""
     # Tempo already applied into result.power = committed * tempo_power_mul
     result_power = committed_power * tempo_power_mul
-    # No contact_multiplier on putt distance
+    # No contact_multiplier and no FAT/THIN dist_err on putt distance
     power_mul = result_power * 1.0
     total = PUTTER_MAX_YD * power_mul
-    dist_err = {"THIN": 1.12, "FAT": 0.78, "MISS": 1.0, "GOOD": 1.0, "PERFECT": 1.0}.get(contact, 1.0)
-    return total * dist_err
+    _ = contact  # line only; distance unchanged
+    return total
 
 
 def main() -> int:
@@ -52,19 +52,28 @@ def main() -> int:
     assert "ShotResult.ContactQuality.MISS:" not in PHYS.split("if is_putt:")[1].split("return {")[0] or \
         "dist_err = 0.65" not in PHYS
     assert "dist_err = 0.65" not in PHYS
+    # Amplitude owns pace — no FAT/THIN distance stack on putts
+    putt_branch = PHYS.split("if is_putt:")[1].split("return {")[0]
+    assert "dist_err = 1.12" not in putt_branch
+    assert "dist_err = 0.78" not in putt_branch
+    assert "no FAT/THIN distance stack" in putt_branch or "Amplitude owns pace" in putt_branch
 
-    # MISS putt ≈ half intended via tempo power_mul only (~0.50), not ~13%
+    # Amplitude owns pace — contact label does not change yards
     committed = recommended_power(14.0, PUTTER_MAX_YD)
     intended = PUTTER_MAX_YD * committed
-    miss_roll = putt_roll_yards(committed, 0.50, "MISS")
+    smash_roll = putt_roll_yards(committed, 1.55, "THIN")
+    assert smash_roll >= intended * 1.5, smash_roll
     old_stack = intended * 0.50 * 0.4 * 0.65
-    assert miss_roll >= intended * 0.45, miss_roll
-    assert miss_roll <= intended * 0.55, miss_roll
-    assert miss_roll > old_stack * 2.5, (miss_roll, old_stack)
+    assert smash_roll > old_stack * 4.0, (smash_roll, old_stack)
+    # FAT leave = amplitude only (same yards as GOOD at same power_mul)
+    fat_roll = putt_roll_yards(committed, 0.80, "FAT")
+    good_roll = putt_roll_yards(committed, 0.80, "GOOD")
+    assert abs(fat_roll - good_roll) < 1e-9, (fat_roll, good_roll)
 
-    # Putt stroke owns the MISS distance floor (not TempoGrade ratio)
+    # No putt MISS distance floor — stroke length owns pace
     PUTT = DIR.joinpath("../shot/putt_stroke.gd").read_text(encoding="utf-8")
-    assert "power_mul = minf(power_mul, 0.50)" in PUTT or "min(power_mul, 0.50)" in PUTT
+    assert "power_mul = minf(power_mul, 0.50)" not in PUTT
+    assert "min(power_mul, 0.50)" not in PUTT
     assert "PuttStroke" in DIR.joinpath("../shot/shot_routine.gd").read_text(encoding="utf-8")
 
     # Pace UI: aim/stroke stay blind — no live pace/pin numbers on screen
@@ -80,13 +89,31 @@ def main() -> int:
     assert PUTTER_MAX_YD * 3.0 >= 95.0
     p95 = recommended_power(95.0 / 3.0, PUTTER_MAX_YD)
     assert p95 < 0.95, p95  # headroom past the hole
-    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT or "45, 60, 90" in PUTT
+    assert "SCALE_LABELED_FT := [3, 6, 10, 15, 30]" in PUTT
+    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT
+    assert "MARKER_ON_PACE_FRAC" not in PUTT
+    assert "power_from_frac" in PUTT
+    assert "frac_for_ft" in PUTT
+    GESTURE = Path(DIR.parent / "shot/tempo_gesture.gd").read_text(encoding="utf-8")
+    assert "putt_aim_ft" not in GESTURE
+    assert "SCALE_LABELED_FT" in GESTURE
 
     # Greens large enough that a 95 ft putt isn't edge-to-edge on a medium green
     GEN = DIR.joinpath("../course/hole_generator.gd").read_text(encoding="utf-8")
-    assert "lerpf(42.0, 78.0, green_size)" in GEN
-    # Putt camera leaves margin so long lags read as travel
-    assert "view_min * 0.40" in HOLE or "view_min * 0.4" in HOLE
+    assert "lerpf(34.0, 88.0, green_size)" in GEN
+    # Putt camera frames ball→cup only (no green-radius floor on short putts)
+    assert "view_min * 0.62" in HOLE
+    assert "dist * 0.65" in HOLE
+    assert "CUP_RADIUS := 3.0" in HOLE
+    BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
+    assert "BALL_R := 3.5" in BALL
+    assert "BALL_R_PUTT := 1.25" in BALL
+    assert "_sync_pin_flag_visible" in HOLE
+    assert "12.0 / fh" in HOLE or "12.0 / float" in HOLE
+    # Fairway must not run through putting surface (rectangular texture patch)
+    fairway_fn = HOLE.split("func _add_bent_fairway")[1].split("func ")[0]
+    assert "top_y := GREEN_Y + maxf(hole.green_radius_y" in fairway_fn
+    assert "GREEN_Y - 20.0)" not in fairway_fn  # old tip punched through green
 
     print("putt_pace_check: ok")
     return 0

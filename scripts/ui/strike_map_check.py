@@ -7,12 +7,22 @@ import sys
 from pathlib import Path
 
 DIR = Path(__file__).parent
+ROOT = DIR.parents[1]
 SM = DIR.joinpath("strike_map.gd").read_text(encoding="utf-8")
 PANEL = DIR.joinpath("shot_result_panel.gd").read_text(encoding="utf-8")
 REPORT = DIR.joinpath("../systems/shot_report.gd").read_text(encoding="utf-8")
+PHYS = DIR.joinpath("../ball/ball_physics.gd").read_text(encoding="utf-8")
 TSCN = DIR.joinpath("../../scenes/ui/shot_result_panel.tscn").read_text(encoding="utf-8")
+ASSETS = ROOT / "assets" / "ui"
 
 BAND_PERFECT, BAND_GOOD, BAND_THIN_FAT = 0.50, 1.15, 1.85  # TempoGrade / PuttStroke
+
+# Mirrors BallPhysics.BAG + Putter (parsed lightly so the check fails if a club is added unmapped).
+BAG_NAMES = [
+    "Driver", "3-Wood", "Hybrid",
+    "5-Iron", "6-Iron", "7-Iron", "8-Iron", "9-Iron",
+    "Pitching Wedge", "Gap/Sand Wedge",
+]
 
 
 def vertical_frac(err: float, tol: float) -> float:
@@ -30,6 +40,15 @@ def category(err: float, tol: float) -> str:
     if n <= BAND_THIN_FAT:
         return "thin" if err > 0.0 else "fat"
     return "miss"
+
+
+def face_family(club_name: str, lie: str) -> str:
+    """Mirrors StrikeMap.face_for buckets."""
+    if lie == "Green" or club_name == "Putter":
+        return "putter"
+    if "Iron" in club_name or "Wedge" in club_name:
+        return "iron"
+    return "wood"
 
 
 def main() -> int:
@@ -72,9 +91,39 @@ def main() -> int:
     assert PANEL.count("strike_map.show_strike(report)") == 2
     assert "strike_map.gd" in TSCN and 'name="StrikeMap"' in TSCN
 
-    # Dot replaced the prose — glance no longer prints contact/balance/line
-    assert "Contact %s" not in REPORT.split("func glance_text")[1].split("func ")[0]
-    assert "bal_word" not in REPORT.split("func glance_text")[1].split("func ")[0]
+    # Dot replaced the prose — glance is a short golf call, not tempo essay
+    glance = REPORT.split("func glance_text")[1].split("func ")[0]
+    assert "Contact %s" not in glance
+    assert "bal_word" not in glance
+    assert "tempo_note" not in glance
+    assert "_golf_call" in REPORT
+    assert '"Pure"' in REPORT and '"Thin"' in REPORT and '"Heavy"' in REPORT
+    assert '"fade"' in REPORT and '"draw"' in REPORT
+    assert '"On pace"' in REPORT
+    assert "Ball in motion" not in PANEL
+
+    # Three club-family face textures exist (polish pass)
+    for name in ("strike_face_wood.png", "strike_face_iron.png", "strike_face_putter.png"):
+        assert (ASSETS / name).is_file(), name
+    assert "draw_texture_rect" in SM and "StyleBoxFlat" not in SM
+    assert "func face_for" in SM
+
+    # Family mapping covers every bag club + putter
+    expected = {
+        "Driver": "wood", "3-Wood": "wood", "Hybrid": "wood",
+        "5-Iron": "iron", "6-Iron": "iron", "7-Iron": "iron",
+        "8-Iron": "iron", "9-Iron": "iron",
+        "Pitching Wedge": "iron", "Gap/Sand Wedge": "iron",
+        "Putter": "putter",
+    }
+    for name in BAG_NAMES:
+        assert f'"name": "{name}"' in PHYS, name  # bag still has this club
+        assert face_family(name, "Fairway") == expected[name], name
+    assert face_family("Putter", "Green") == "putter"
+    assert face_family("7-Iron", "Green") == "putter"  # green always putter art
+
+    # Animate-in: center → result + pure halo pulse
+    assert "_set_t" in SM and "_set_pulse" in SM and "create_tween" in SM
 
     print("strike_map_check: ok")
     return 0

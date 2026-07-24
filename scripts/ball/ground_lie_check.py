@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """Mirrors ground-lie gating — surface under the ball while rolling."""
 
+from pathlib import Path
+
 # From GolfBall._process_roll — rough must drag harder than fairway.
 FRICTION = {"Green": 1.8, "Fairway": 2.4, "Rough": 4.5, "Sand": 7.0, "Tee": 2.4}
+HOLE = Path(__file__).resolve().parents[1].joinpath("course/hole_controller.gd").read_text(encoding="utf-8")
+GREENS = Path(__file__).resolve().parents[2] / "assets" / "greens"
 
 
 def ground_lie_applies(state: str) -> bool:
@@ -94,6 +98,19 @@ def main() -> None:
         detect_r = (rx + 14.0 + ry + 14.0) * 0.5
         for rect in island_water_rects(rx, ry):
             assert not rect_intersects_circle(rect, 540.0, -80.0, detect_r + 10.0)
+
+    # Painted silhouette gates Green (island beach / L cutouts ≠ putter).
+    assert "_on_painted_green" in HOLE and "get_pixel" in HOLE
+    from PIL import Image
+
+    kidney = Image.open(GREENS / "green_kidney.png").convert("RGBA")
+    # Former mid-green bite must stay opaque — rough-through-hole forced wedges.
+    assert kidney.getpixel((90, 50))[3] > 200, "kidney putting surface must be opaque"
+    assert kidney.getpixel((64, 64))[3] > 200, "kidney center must be opaque"
+    # Oval center must stay opaque (putting surface).
+    oval = Image.open(GREENS / "green_oval.png").convert("RGBA")
+    assert oval.getpixel((64, 64))[3] > 200
+
     print("ground_lie_check: ok")
 
 
