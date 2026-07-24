@@ -214,8 +214,8 @@ func _make_range_hole() -> HoleData:
 	d.hole_number = 0
 	d.par = 4
 	d.fairway_width = 240.0
-	d.green_radius_x = 36.0
-	d.green_radius_y = 36.0
+	d.green_radius_x = 54.0
+	d.green_radius_y = 54.0
 	d.pin_offset = Vector2.ZERO
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
@@ -1247,11 +1247,13 @@ func _desired_camera_zoom() -> Vector2:
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
 	if _is_putt_context():
+		# Fill less of the viewport so long lags read as travel, not a dart across
+		# a phone-sized green. Green floor still keeps short putts from microscope zoom.
 		var half_span := maxf(
-			ball.global_position.distance_to(_cup_pos) * 0.5 + 40.0,
-			maxf(hole.green_radius_x, hole.green_radius_y) + 36.0
+			ball.global_position.distance_to(_cup_pos) * 0.5 + 52.0,
+			maxf(hole.green_radius_x, hole.green_radius_y) + 48.0
 		)
-		var z := clampf(view_min * 0.55 / maxf(half_span, 24.0), 4.0, 10.0)
+		var z := clampf(view_min * 0.40 / maxf(half_span, 24.0), 2.6, 7.0)
 		return Vector2(z, z)
 	# Approach with green book — frame ball toward green without losing landing circle
 	if _aiming and _should_show_green_book():

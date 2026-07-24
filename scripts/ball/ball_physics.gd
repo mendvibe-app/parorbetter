@@ -26,7 +26,8 @@ const BAG: Array[Dictionary] = [
 const POWER_POCKET_LO := 0.60
 const POWER_POCKET_HI := 0.92
 ## Fixed putter range — never derive from remaining (that canceled to a constant %).
-const PUTTER_MAX_YD := 35.0
+## 40 yd = 120 ft: covers long lags with headroom past the hole (was 35 / 105 ft).
+const PUTTER_MAX_YD := 40.0
 
 
 static func is_wedge_family(club_name: String) -> bool:

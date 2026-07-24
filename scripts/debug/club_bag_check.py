@@ -32,7 +32,7 @@ def clubs_for_lie(lie: str):
     return list(BAG)
 
 
-PUTTER_MAX_YD = 35.0
+PUTTER_MAX_YD = 40.0
 
 
 def pick_club(remaining: float, lie: str):

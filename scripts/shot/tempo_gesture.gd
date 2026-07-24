@@ -529,7 +529,7 @@ func _draw_putt() -> void:
 
 	# Arc-width lane: edge grows with distance (line affordance, no length answer).
 	_draw_putt_arc_lane(start, top, Color(0.15, 0.28, 0.35, 0.95), Color(0.3, 0.55, 0.7, 0.55))
-	# Soft feet scale — known short putts labeled; farther = feel (not an answer tick).
+	# Soft feet scale — scoring zone labeled; lag ticks so long putts aren't blank.
 	_draw_putt_soft_scale(start, top)
 	# Soft follow past address — room to finish, clamped on-pad (not a stop target).
 	_draw_putt_follow_cue(addr)
@@ -593,7 +593,7 @@ func _draw_putt_arc_lane(start: Vector2, top: Vector2, fill_c: Color, edge_c: Co
 
 
 func _draw_putt_soft_scale(start: Vector2, top: Vector2) -> void:
-	## Ruler in feet via the same map grade uses. Dense/clear ≤15 ft; softer 20–30; blank past.
+	## Ruler in feet via the same map grade uses. Dense ≤15 ft; 30 labeled; lag ticks 45–90.
 	var max_yd := BallPhysics.PUTTER_MAX_YD
 	for ft in PuttStroke.SCALE_LABELED_FT:
 		_draw_putt_scale_tick(start, top, int(ft), max_yd, true)
