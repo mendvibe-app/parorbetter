@@ -366,10 +366,13 @@ def main() -> int:
     assert "%dms back / %dms thru" in GRADE
     assert 'y := 0.22 if _is_putt() else 0.18' in GESTURE.split("func address_hint")[1].split("func ")[0]
     assert 'y := 0.92 if _is_putt() else 0.78' in GESTURE.split("func top_hint")[1].split("func ")[0]
-    # Putt: lane is target axis; stroke trail/cursor free (push/pull → path_error)
+    # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
     assert "func _lane_project" not in GESTURE
     assert "_address = address_hint()" in GESTURE
     assert "top_hint() - address_hint()" in GESTURE
+    assert "_axis = delta.normalized()" not in GESTURE, "finger axis desyncs progress from impact mark"
+    active_lm = GESTURE.split("func _draw_active_landmarks")[1].split("func ")[0]
+    assert "address_hint() if _axis_locked" in active_lm
     putt_draw = GESTURE.split("func _draw_putt")[1].split("func _draw_putt_lane_tex")[0]
     assert "draw_circle(_smoothed" in putt_draw
 

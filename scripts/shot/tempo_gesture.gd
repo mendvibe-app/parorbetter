@@ -411,15 +411,13 @@ func _update(pos: Vector2) -> void:
 
 	if not _axis_locked:
 		if delta.length() >= _deadzone():
-			if _is_putt():
-				## Lane is the target line; stroke may leave it (push/pull → path_error).
-				_address = address_hint()
-				_axis = (top_hint() - address_hint()).normalized()
-				if _axis.length_squared() < 0.5:
-					_axis = Vector2(0, 1)
-				delta = _smoothed - _address
-			else:
-				_axis = delta.normalized()
+			## Lane is the stroke axis (marks + progress share it). Finger may leave —
+			## putt path_error uses lateral; full path comes from tempo grade.
+			_address = address_hint()
+			_axis = (top_hint() - address_hint()).normalized()
+			if _axis.length_squared() < 0.5:
+				_axis = Vector2(0, 1)
+			delta = _smoothed - _address
 			_axis_locked = true
 			swinging = true
 			_ball_pop_at = Time.get_ticks_msec()
@@ -785,7 +783,8 @@ func _draw_putt_soft_scale(start: Vector2, top: Vector2) -> void:
 
 func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool) -> void:
 	var frac := PuttStroke.frac_for_ft(float(ft))
-	if frac < PuttStroke.MARKER_MIN_FRAC or frac > PuttStroke.MARKER_MAX_FRAC:
+	## Floor-collapsed lengths share MARKER_MIN — skip so digits don't stack there.
+	if frac <= PuttStroke.MARKER_MIN_FRAC or frac > PuttStroke.MARKER_MAX_FRAC:
 		return
 	var mark: Vector2 = start.lerp(top, frac)
 	var along := top - start
@@ -800,16 +799,18 @@ func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool)
 	var c := Color(0.55, 0.85, 0.95, a)
 	draw_line(mark, edge, c, thick, true)
 	if labeled:
+		## Smaller than CAPTION — linear map packs 10→20 closer than a 32px glyph.
+		const LABEL_PX := 22
 		var s := str(ft)
 		var tw := UiScale.FONT.get_string_size(
-			s, HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION
+			s, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_PX
 		).x
 		## Right edge of digits clears the lane by a small gap.
 		var label_at := Vector2(mark.x - half - 12.0 - tw, mark.y + 6.0)
 		draw_string(
 			UiScale.FONT, label_at, s,
 			HORIZONTAL_ALIGNMENT_LEFT, -1,
-			UiScale.CAPTION,
+			LABEL_PX,
 			Color(0.6, 0.88, 0.95, 0.75)
 		)
 
@@ -959,7 +960,11 @@ func _draw_idle_coach() -> void:
 
 
 func _draw_active_landmarks() -> void:
-	var addr := _address if dragging or _t_takeaway >= 0.0 else address_hint()
+	## After lock, address is on the lane — same x as pull-lane progress / impact mark.
+	var addr := (
+		address_hint() if _axis_locked or _t_impact >= 0.0
+		else (_address if dragging or _t_takeaway >= 0.0 else address_hint())
+	)
 	var top_p := peak_pos if _peak_disp > 1.0 else top_hint()
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.008)
 

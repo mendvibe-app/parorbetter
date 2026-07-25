@@ -75,8 +75,8 @@ def main() -> int:
     assert "power_mul_from_frac" not in PUTT
     assert "frac_for_relative_ft" not in PUTT
     assert "relative_scale_ticks" not in PUTT
-    assert "SCALE_LABELED_FT := [3, 6, 10, 15, 30]" in PUTT
-    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT
+    assert "SCALE_LABELED_FT := [10, 20, 40, 80]" in PUTT
+    assert "SCALE_TICK_FT := [60, 100]" in PUTT
     assert "func power_from_frac" in PUTT
     assert "func frac_for_ft" in PUTT
     assert "BAND_HALF := 0.06" in PUTT
@@ -108,6 +108,11 @@ def main() -> int:
     assert "arc_allowance(frac)" in tick_draw
     assert "mark.x - half" in tick_draw, "ft labels sit left of the lane, not over the fill"
     assert "draw_line(mark, edge" in tick_draw
+    assert "frac <= PuttStroke.MARKER_MIN_FRAC" in tick_draw, "skip floor-collapsed labels"
+    assert "LABEL_PX := 22" in tick_draw
+    # Labeled marks stay readable on the linear pad (≈676px gesture → ~27px for 10→20)
+    assert frac_for_ft(20.0) - frac_for_ft(10.0) > 0.05
+    assert frac_for_ft(40.0) - frac_for_ft(20.0) > 0.10
     assert "_putt_follow_cap_frac" in GESTURE
     assert "follow_cap_frac" in GESTURE
     assert "follow_cap_frac" in PUTT
