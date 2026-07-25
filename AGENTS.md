@@ -28,7 +28,8 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Dispersion circle (full shot) | `GameState.AIM_RADIUS_WEAK_YD/MID/PRO` (40 / 22 / 10 yd); `get_aim_radius_yards()` |
 | Dispersion circle (putt) | `GameState.PUTT_RADIUS_WEAK_YD/PRO` (2.7 / 1.0 yd) |
 | Form history window | `GameState.FORM_HISTORY_MAX` (8) |
-| Cup catch radius | `HoleController.CUP_RADIUS` (3.0 px); green ball `BALL_R_PUTT` (1.25), flight `BALL_R` (3.5) — cup ≈ 2.4× putt ball |
+| Cup catch radius | `HoleController.CUP_RADIUS` (2.4 px); green ball `BALL_R_PUTT` (1.0), flight `BALL_R` (3.5) — cup ≈ 2.4× putt ball |
+| Putt break | `GolfBall.PUTT_BREAK_LATERAL/ALONG` (90 / 55); green radii `HoleGenerator._green_radii` base 22–48 px (~60–130 ft) |
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |
