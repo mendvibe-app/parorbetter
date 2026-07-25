@@ -113,14 +113,20 @@ func _is_putt() -> bool:
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
 	## Putt uses more vertical span so 15 vs 30 ft is finger-resolvable.
+	## Half-pixel x so thick draw_line / nearest landmarks share one column.
 	var y := 0.22 if _is_putt() else 0.18
-	return Vector2(size.x * 0.5, size.y * y)
+	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
 	var y := 0.92 if _is_putt() else 0.78
-	return Vector2(size.x * 0.5, size.y * y)
+	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
+
+
+func _lane_peak_pos() -> Vector2:
+	## On-lane point at live backswing depth — progress tip + top mark share this.
+	return address_hint().lerp(top_hint(), clampf(_peak_disp / _lane_len(), 0.0, 1.2))
 
 
 func _lane_len() -> float:
@@ -681,7 +687,11 @@ func _draw_putt() -> void:
 	if putt_show_marker:
 		_draw_putt_practice_marker(start, top)
 
-	_draw_landmark_tex(TEX_PUTT_TOP, top if _peak_disp <= 1.0 else peak_pos, LANDMARK_DIAM)
+	_draw_landmark_tex(
+		TEX_PUTT_TOP,
+		top if _peak_disp <= 1.0 else _lane_peak_pos(),
+		LANDMARK_DIAM
+	)
 	_draw_putt_address(addr, pulse)
 
 	if active and not dragging and _t_impact < 0.0:
@@ -689,9 +699,7 @@ func _draw_putt() -> void:
 		_draw_landmark_tex(TEX_PUTT_COACH, coach_p, 44.0, Color(1, 1, 1, 0.55 + 0.35 * pulse))
 
 	if dragging and _axis_locked:
-		var prog := clampf(_peak_disp / lane, 0.0, 1.0)
-		var tip: Vector2 = start.lerp(top, prog)
-		draw_line(start, tip, trail_color(), 8.0, true)
+		draw_line(start, _lane_peak_pos(), trail_color(), 8.0, false)
 
 	_draw_trail()
 	if dragging:
@@ -901,10 +909,8 @@ func _draw_pull_lane(show_progress: bool) -> void:
 	draw_texture(TEX_LANE, -tex_size * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if show_progress and dragging and _axis_locked:
-		var lane_len := start.distance_to(top)
-		var prog := clampf(_peak_disp / maxf(lane_len, 1.0), 0.0, 1.0)
-		var tip: Vector2 = start.lerp(top, prog)
-		draw_line(start, tip, Color(0.45, 0.95, 0.55, 0.85), 10.0, true)
+		## No AA — Godot thick antialiased lines skew the bright spine a px or two.
+		draw_line(start, _lane_peak_pos(), Color(0.45, 0.95, 0.55, 0.85), 10.0, false)
 
 
 func _follow_cue_end(addr: Vector2) -> Vector2:
@@ -965,7 +971,8 @@ func _draw_active_landmarks() -> void:
 		address_hint() if _axis_locked or _t_impact >= 0.0
 		else (_address if dragging or _t_takeaway >= 0.0 else address_hint())
 	)
-	var top_p := peak_pos if _peak_disp > 1.0 else top_hint()
+	## Full swing: keep the top chevron on-lane (progress tip). Finger/trail may drift.
+	var top_p := _lane_peak_pos() if _peak_disp > 1.0 else top_hint()
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.008)
 
 	_draw_follow_cue(addr, 0.55 if had_top else 0.35)

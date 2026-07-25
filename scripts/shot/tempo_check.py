@@ -371,8 +371,14 @@ def main() -> int:
     assert "_address = address_hint()" in GESTURE
     assert "top_hint() - address_hint()" in GESTURE
     assert "_axis = delta.normalized()" not in GESTURE, "finger axis desyncs progress from impact mark"
+    assert "func _lane_peak_pos" in GESTURE
+    assert "floorf(size.x * 0.5) + 0.5" in GESTURE
     active_lm = GESTURE.split("func _draw_active_landmarks")[1].split("func ")[0]
     assert "address_hint() if _axis_locked" in active_lm
+    assert "_lane_peak_pos()" in active_lm
+    pull = GESTURE.split("func _draw_pull_lane")[1].split("func ")[0]
+    assert "draw_line(start, _lane_peak_pos()" in pull
+    assert ", false)" in pull, "progress line AA skews the bright spine off the impact mark"
     putt_draw = GESTURE.split("func _draw_putt")[1].split("func _draw_putt_lane_tex")[0]
     assert "draw_circle(_smoothed" in putt_draw
 
