@@ -24,9 +24,9 @@ const TEMPO_BIAS_MAX := 0.08
 const PURE_BALANCE := 0.72
 ## Display only — physics stays yards; golfers read putts in feet.
 const FT_PER_YD := 3.0
-## Soft pad scale: scoring zone labeled; lag ticks so long putts aren't blank.
-const SCALE_LABELED_FT := [3, 6, 10, 15, 30]
-const SCALE_TICK_FT := [45, 60, 90]
+## Soft pad scale: octave-ish labels so CAPTION digits don't stack on the linear map.
+const SCALE_LABELED_FT := [10, 20, 40, 80]
+const SCALE_TICK_FT := [60, 100]
 
 
 static func yd_to_ft(yd: float) -> float:

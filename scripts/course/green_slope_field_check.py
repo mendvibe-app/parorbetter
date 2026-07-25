@@ -104,7 +104,9 @@ def main() -> int:
     assert "ContourProfile" in DATA
     assert "_pick_contour" in GEN
     assert "lerpf(0.04, 0.42, t)" not in GEN
-    assert "lerpf(0.04, 0.42, rng.randf())" in GEN
+    assert "lerpf(0.04, 0.42, rng.randf())" not in GEN
+    assert "lerpf(0.10, 0.48, rng.randf())" in GEN
+    assert "lerpf(0.12, 0.03, t)" in GEN  # early FLAT weight cut
 
     slope = (0.3, 0.1)
     rx, ry = 50.0, 40.0

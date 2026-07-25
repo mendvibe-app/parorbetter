@@ -49,8 +49,11 @@ var ground_lie_at: Callable = Callable()
 
 
 const BALL_R := 3.5
-## On-green draw radius — keeps putt lengths many ball-widths (flight stays BALL_R).
-const BALL_R_PUTT := 1.25
+## On-green draw radius — smaller so 40 ft is many ball-widths (flight stays BALL_R).
+const BALL_R_PUTT := 1.0
+## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
+const PUTT_BREAK_LATERAL := 90.0
+const PUTT_BREAK_ALONG := 55.0
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -327,8 +330,8 @@ func _process_roll(delta: float) -> void:
 	if _is_putt:
 		# Break pulls offline; can fight aim (skill reads matter)
 		var right := Vector2(-_pin_dir.y, _pin_dir.x)
-		var break_amt := slope.dot(right) * 22.0
-		var along_break := slope.dot(_pin_dir) * 14.0
+		var break_amt := slope.dot(right) * PUTT_BREAK_LATERAL
+		var along_break := slope.dot(_pin_dir) * PUTT_BREAK_ALONG
 		velocity += right * break_amt * delta
 		velocity += _pin_dir * along_break * delta
 	elif _lie == "Green":

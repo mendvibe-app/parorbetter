@@ -89,8 +89,8 @@ def main() -> int:
     assert PUTTER_MAX_YD * 3.0 >= 95.0
     p95 = recommended_power(95.0 / 3.0, PUTTER_MAX_YD)
     assert p95 < 0.95, p95  # headroom past the hole
-    assert "SCALE_LABELED_FT := [3, 6, 10, 15, 30]" in PUTT
-    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT
+    assert "SCALE_LABELED_FT := [10, 20, 40, 80]" in PUTT
+    assert "SCALE_TICK_FT := [60, 100]" in PUTT
     assert "MARKER_ON_PACE_FRAC" not in PUTT
     assert "power_from_frac" in PUTT
     assert "frac_for_ft" in PUTT
@@ -98,22 +98,37 @@ def main() -> int:
     assert "putt_aim_ft" not in GESTURE
     assert "SCALE_LABELED_FT" in GESTURE
 
-    # Greens large enough that a 95 ft putt isn't edge-to-edge on a medium green
+    # Greens ~60–130 ft diameter (real-ish); long lags can span most of a medium green
     GEN = DIR.joinpath("../course/hole_generator.gd").read_text(encoding="utf-8")
-    assert "lerpf(34.0, 88.0, green_size)" in GEN
-    # Putt camera frames ball→cup only (no green-radius floor on short putts)
-    assert "view_min * 0.62" in HOLE
-    assert "dist * 0.65" in HOLE
-    assert "CUP_RADIUS := 3.0" in HOLE
+    assert "lerpf(22.0, 48.0, green_size)" in GEN
+    assert "lerpf(0.10, 0.48, rng.randf())" in GEN
+    assert "lerpf(0.12, 0.03, t)" in GEN  # less early FLAT
+    # Putt camera zooms out on lags so distance reads
+    assert "view_min * 0.52" in HOLE
+    assert "dist * 0.90" in HOLE
+    assert "CUP_RADIUS := 2.4" in HOLE
     BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
     assert "BALL_R := 3.5" in BALL
-    assert "BALL_R_PUTT := 1.25" in BALL
+    assert "BALL_R_PUTT := 1.0" in BALL
+    assert "PUTT_BREAK_LATERAL := 90.0" in BALL
+    assert "PUTT_BREAK_ALONG := 55.0" in BALL
+    # Mid-slope 40 ft must bend ~2 ball-widths (was sub-pixel at K=22)
+    px_per_yd = 2.25
+    travel_px = (40.0 / 3.0) * px_per_yd
+    friction = 108.0
+    t_roll = (2.0 * friction * travel_px) ** 0.5 / friction
+    bend = 0.5 * (0.22 * 90.0) * t_roll * t_roll
+    assert bend >= 4.0, bend
+    assert bend / (1.0 * 2.0) >= 1.8, bend  # ≥ ~1.8 ball diameters
     assert "_sync_pin_flag_visible" in HOLE
     assert "12.0 / fh" in HOLE or "12.0 / float" in HOLE
     # Fairway must not run through putting surface (rectangular texture patch)
     fairway_fn = HOLE.split("func _add_bent_fairway")[1].split("func ")[0]
     assert "top_y := GREEN_Y + maxf(hole.green_radius_y" in fairway_fn
     assert "GREEN_Y - 20.0)" not in fairway_fn  # old tip punched through green
+    # Practice green sized to match; start stays on surface
+    assert "d.green_radius_x = 38.0" in HOLE
+    assert "yards_to_pixels(12.0)" in HOLE
 
     print("putt_pace_check: ok")
     return 0
