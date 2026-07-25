@@ -227,9 +227,6 @@ func _physics_process(delta: float) -> void:
 		var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
 		if _trail.get_point_count() > cap:
 			_trail.remove_point(0)
-		# ponytail: temporary flight probe — remove after playtest confirms ribbon
-		if Engine.is_editor_hint() == false and _trail.get_point_count() == 1:
-			print("flight_tracer: first point at ", _trail.get_point_position(0))
 	elif state == State.ROLL and _is_putt:
 		_trail.add_point(global_position)
 		if _trail.get_point_count() > 48:
