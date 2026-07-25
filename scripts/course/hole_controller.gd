@@ -1388,7 +1388,9 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"aim_offset": aim_offset,
 		"form": GameState.get_form(),
 	}
-	if shot_result_panel and shot_result_panel.has_method("show_launch"):
+	# Full-shot flight owns the screen (up-and-in + tracer); glance waits for settle.
+	# Putts stay short — keep the live glance.
+	if _is_putt_context() and shot_result_panel and shot_result_panel.has_method("show_launch"):
 		shot_result_panel.show_launch(_last_report)
 	var slope: Vector2 = course_root.get_meta("slope", hole.green_slope)
 	ball.launch(result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center)
