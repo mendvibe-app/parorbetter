@@ -1,7 +1,7 @@
 class_name GolfBall
 extends CharacterBody2D
 
-## Visual ball with height-based shadow, speed trail, and launch arc ghosts.
+## Visual ball with height-based shadow + Trackman-style lofted flight tracer.
 ## Physics stay 2D top-down; _height fakes loft for arc readability.
 
 signal settled(position: Vector2, lie_hint: String)
@@ -10,6 +10,11 @@ signal holed_out
 signal perfect_flash
 
 enum State { IDLE, FLIGHT, ROLL, SETTLED }
+
+## Screen-up loft multiplier for tracer (matches old ghost-arc language).
+const TRACER_LIFT := 0.35
+const TRACER_CAP := 128
+const TRACER_CAP_PURE := 160
 
 var state: State = State.IDLE
 var spin: float = 0.0
@@ -23,7 +28,6 @@ var _height: float = 0.0
 var _last_safe_pos: Vector2 = Vector2.ZERO
 var _lie: String = "Tee"
 var _trail: Line2D
-var _ghost_arc: Node2D
 var _is_perfect_shot: bool = false
 
 var _shot_origin: Vector2 = Vector2.ZERO
@@ -50,7 +54,6 @@ const BALL_R_PUTT := 1.0
 ## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
 const PUTT_BREAK_LATERAL := 90.0
 const PUTT_BREAK_ALONG := 55.0
-const TRAIL_TEX := preload("res://assets/ball/ball_trail.png")
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -59,22 +62,32 @@ var _glow_scale: float = 1.0
 func _ready() -> void:
 	_apply_lie_visual()
 	_trail = Line2D.new()
-	_trail.width = 5.0
-	_trail.default_color = Color(0.85, 0.95, 1.0, 0.45)
-	_trail.texture = TRAIL_TEX
-	_trail.texture_mode = Line2D.LINE_TEXTURE_STRETCH
-	_trail.z_index = -1
-	_trail.top_level = true
+	# World width stays readable at launch zoom ~0.55 (≈7–9 screen px).
+	_trail.width = 14.0
+	_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
+	# Solid ribbon reads better as Trackman than the soft trail tex at distance.
+	_trail.z_index = 20
 	_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
-	add_child(_trail)
-	_ghost_arc = Node2D.new()
-	_ghost_arc.z_index = -2
-	_ghost_arc.top_level = true
-	add_child(_ghost_arc)
+	_trail.joint_mode = Line2D.LINE_JOINT_ROUND
+	# Host on hole root so points are true world coords (top_level under ball was flaky).
+	call_deferred("_mount_trail")
 	area.area_entered.connect(_on_area_entered)
 	_last_safe_pos = global_position
 	set_physics_process(false)
+
+
+func _mount_trail() -> void:
+	var host := get_parent()
+	if host == null or _trail == null:
+		return
+	if _trail.get_parent() == host:
+		_trail.position = Vector2.ZERO
+		return
+	if _trail.get_parent():
+		_trail.get_parent().remove_child(_trail)
+	host.add_child(_trail)
+	_trail.position = Vector2.ZERO
 
 
 func reset_at(pos: Vector2, lie: String = "Tee") -> void:
@@ -89,7 +102,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	state = State.IDLE
 	_planned_distance_px = 0.0
 	_trail.clear_points()
-	_clear_ghosts()
+	_trail.modulate.a = 1.0
 	visual.rotation = 0.0
 	visual.self_modulate = Color(1, 1, 1)
 	shadow.position = Vector2.ZERO
@@ -134,20 +147,19 @@ func launch(
 	_landing_speed = launch_data["landing_speed"]
 	_air_fraction = launch_data["air_fraction"]
 	_trail.clear_points()
+	_trail.position = Vector2.ZERO
+	_trail.modulate.a = 1.0
 	_is_perfect_shot = result.is_perfect() and result.stance_stability >= 0.72
 	if _is_perfect_shot:
 		perfect_flash.emit()
 		visual.self_modulate = Color(1.0, 0.95, 0.55)
-		# Cleaner/brighter flight tell — denser gold trail, not a louder UI flourish
-		_trail.default_color = Color(1.0, 0.9, 0.35, 0.82)
-		_trail.width = 7.0
+		_trail.default_color = Color(1.0, 0.85, 0.25, 0.95)
+		_trail.width = 16.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
-		_trail.default_color = Color(0.85, 0.95, 1.0, 0.45)
-		_trail.width = 5.0
+		_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
+		_trail.width = 14.0
 
-	_ghost_arc.global_position = Vector2.ZERO
-	_spawn_ghost_arc(launch_data)
 	if _is_putt or _air_fraction <= 0.001:
 		state = State.ROLL
 		velocity = _launch_dir * _landing_speed
@@ -156,34 +168,13 @@ func launch(
 	set_physics_process(true)
 
 
-func _spawn_ghost_arc(launch_data: Dictionary) -> void:
-	_clear_ghosts()
-	if _is_putt:
-		return
-	var travel: float = float(launch_data.get("travel_px", 200.0))
-	var air_frac: float = float(launch_data.get("air_fraction", 0.78))
-	var dir: Vector2 = launch_data.get("launch_dir", _launch_dir)
-	var dots := 7
-	for i in dots:
-		var t := float(i + 1) / float(dots + 1)
-		var along := travel * air_frac * t
-		var h := sin(t * PI) * (28.0 + travel * 0.02)
-		var p := Polygon2D.new()
-		p.color = Color(1, 1, 1, 0.2 + 0.1 * (1.0 - t))
-		var pts := PackedVector2Array()
-		for k in 8:
-			var a := TAU * float(k) / 8.0
-			pts.append(Vector2(cos(a), sin(a)) * (3.0 + h * 0.02))
-		p.polygon = pts
-		p.global_position = _shot_origin + dir * along + Vector2(0, -h * 0.15)
-		_ghost_arc.add_child(p)
-
-
-func _clear_ghosts() -> void:
-	if _ghost_arc == null:
-		return
-	for c in _ghost_arc.get_children():
-		c.queue_free()
+func air_progress() -> float:
+	## 0..1 through FLIGHT; 1 once rolling/settled. Used by up-and-in camera.
+	if state == State.ROLL or state == State.SETTLED:
+		return 1.0
+	if state != State.FLIGHT:
+		return 0.0
+	return clampf(_air_timer / maxf(_air_duration, 0.01), 0.0, 1.0)
 
 
 func get_last_safe() -> Vector2:
@@ -230,13 +221,16 @@ func _physics_process(delta: float) -> void:
 			_process_roll(delta)
 		_:
 			pass
-	_trail.add_point(global_position)
-	var trail_cap := 72 if _is_perfect_shot else 48
-	if _trail.get_point_count() > trail_cap:
-		_trail.remove_point(0)
-	var base_w := 5.5 if _is_perfect_shot else 3.0
-	var max_w := 12.0 if _is_perfect_shot else 10.0
-	_trail.width = clampf(base_w + _height * 0.04 + velocity.length() * 0.004, base_w, max_w)
+	# Flight: lofted Trackman tracer. Putt roll: short ground trail. Full-shot roll: freeze arc.
+	if state == State.FLIGHT:
+		_trail.add_point(global_position + Vector2(0.0, -_height * TRACER_LIFT))
+		var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
+		if _trail.get_point_count() > cap:
+			_trail.remove_point(0)
+	elif state == State.ROLL and _is_putt:
+		_trail.add_point(global_position)
+		if _trail.get_point_count() > 48:
+			_trail.remove_point(0)
 	_spin_vis += spin * delta * 4.0 + velocity.length() * 0.002
 	visual.rotation = _spin_vis
 	var s := 1.0 + _height * 0.006
@@ -382,7 +376,7 @@ func _finish_settle() -> void:
 	state = State.SETTLED
 	set_physics_process(false)
 	AudioBus.set_roll_intensity(0.0)
-	_clear_ghosts()
+	# Keep Trackman arc up through the result glance; next launch/reset clears it.
 	if _lie != "Water" and _lie != "OOB":
 		_last_safe_pos = global_position
 	settled.emit(global_position, _lie)
@@ -402,7 +396,6 @@ func _on_area_entered(other: Area2D) -> void:
 		state = State.SETTLED
 		set_physics_process(false)
 		AudioBus.set_roll_intensity(0.0)
-		_clear_ghosts()
 		holed_out.emit()
 		return
 	if other.is_in_group("water"):

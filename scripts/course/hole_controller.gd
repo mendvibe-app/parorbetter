@@ -8,6 +8,13 @@ const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
 ## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
 const CUP_RADIUS := 2.4
+## Full-shot "up and in" camera — wide launch, tighten hard on descent. Putt path untouched.
+const FLIGHT_ZOOM_LAUNCH := 0.55
+const FLIGHT_ZOOM_APEX := 0.58
+const FLIGHT_ZOOM_LAND := 1.45
+const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
+const FLIGHT_LOOK_LEAD_WIDE := 120.0
+const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
@@ -1381,7 +1388,9 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"aim_offset": aim_offset,
 		"form": GameState.get_form(),
 	}
-	if shot_result_panel and shot_result_panel.has_method("show_launch"):
+	# Full-shot flight owns the screen (up-and-in + tracer); glance waits for settle.
+	# Putts stay short — keep the live glance.
+	if _is_putt_context() and shot_result_panel and shot_result_panel.has_method("show_launch"):
 		shot_result_panel.show_launch(_last_report)
 	var slope: Vector2 = course_root.get_meta("slope", hole.green_slope)
 	ball.launch(result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center)
@@ -1397,7 +1406,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 
 
 func _on_pure_strike(_result: ShotResult) -> void:
-	## Slow-mo + camera punch + haptic + visual pop (sound-off parity).
+	## Slow-mo + flash + haptic. Zoom owned by up-and-in flight camera (don't fight it).
 	if ball.get_lie() == "Green":
 		AudioBus.play_putt_pure()
 	else:
@@ -1407,16 +1416,12 @@ func _on_pure_strike(_result: ShotResult) -> void:
 	Input.vibrate_handheld(22)
 	Engine.time_scale = 0.55
 	flash_rect.color = Color(1.0, 0.95, 0.55, 1.0)
-	var punch := _desired_camera_zoom() * 1.12
-	var restore := _desired_camera_zoom()
 	var tw := create_tween()
 	tw.set_ignore_time_scale(true)
 	tw.tween_property(flash_rect, "modulate:a", 0.55, 0.04)
-	tw.parallel().tween_property(camera, "zoom", punch, 0.06)
 	tw.tween_property(flash_rect, "modulate:a", 0.0, 0.18)
 	tw.tween_interval(0.22)
 	tw.tween_callback(func(): Engine.time_scale = 1.0)
-	tw.tween_property(camera, "zoom", restore, 0.28)
 
 
 func _pulse_pure_label() -> void:
@@ -1465,14 +1470,29 @@ func _desired_camera_look() -> Vector2:
 	return ball.global_position
 
 
+func _flight_camera_zoom() -> Vector2:
+	## Wide through apex; snap tight once the ball starts down (TV "up and in").
+	var t := ball.air_progress()
+	var z: float
+	if ball.state == GolfBall.State.ROLL or t >= 1.0:
+		z = FLIGHT_ZOOM_LAND
+	elif t < FLIGHT_ZOOM_IN_START:
+		z = lerpf(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_APEX, t / FLIGHT_ZOOM_IN_START)
+	else:
+		var u := (t - FLIGHT_ZOOM_IN_START) / maxf(1.0 - FLIGHT_ZOOM_IN_START, 0.01)
+		z = lerpf(FLIGHT_ZOOM_APEX, FLIGHT_ZOOM_LAND, u)
+	return Vector2(z, z)
+
+
 func _follow_ball() -> void:
-	camera.position_smoothing_enabled = not _is_putt_context()
-	var tw := create_tween()
-	tw.tween_property(camera, "global_position", ball.global_position, 0.25).set_trans(Tween.TRANS_SINE)
+	## Smoothing fights the up-and-in punch — own the transform directly in flight.
+	camera.position_smoothing_enabled = false
 	var z := _desired_camera_zoom()
 	if not _is_putt_context():
-		z = Vector2(0.72, 0.72)
-	tw.parallel().tween_property(camera, "zoom", z, 0.35)
+		z = Vector2(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAUNCH)
+	var tw := create_tween()
+	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(camera, "zoom", z, 0.2)
 
 
 func _process(_delta: float) -> void:
@@ -1480,15 +1500,22 @@ func _process(_delta: float) -> void:
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
 		var look := ball.global_position
 		if ball.velocity.length() > 20.0:
-			var lead := 40.0 if _is_putt_context() else 80.0
+			var lead := 40.0
+			if not _is_putt_context():
+				var tight := inverse_lerp(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAND, camera.zoom.x)
+				lead = lerpf(FLIGHT_LOOK_LEAD_WIDE, FLIGHT_LOOK_LEAD_TIGHT, clampf(tight, 0.0, 1.0))
 			look += ball.velocity.normalized() * lead
 		if _is_putt_context():
 			look = look.lerp(_cup_pos, 0.35)
 		camera.global_position = camera.global_position.lerp(look, 0.18)
 		var target_zoom := _desired_camera_zoom()
 		if not _is_putt_context():
-			target_zoom = Vector2(0.7, 0.7) if ball.state == GolfBall.State.FLIGHT else Vector2(0.78, 0.78)
-		camera.zoom = camera.zoom.lerp(target_zoom, 0.1)
+			target_zoom = _flight_camera_zoom()
+		# Aggressive zoom lerp on the "in" beat / roll so short flights still punch tight.
+		var z_lerp := 0.12
+		if not _is_putt_context() and (ball.state == GolfBall.State.ROLL or ball.air_progress() >= FLIGHT_ZOOM_IN_START):
+			z_lerp = 0.35
+		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
 		# Snap-feel aim follow (faster) so book/zoom don't crawl in
 		camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.28)
@@ -1499,8 +1526,13 @@ func _process(_delta: float) -> void:
 		camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.18)
 		_sync_screen_line_widths()
 	elif not ball_in_flight:
-		camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.08)
-		camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.08)
+		# Hold land framing while the glance/result panel is up so the "in" punch isn't undone.
+		if shot_result_panel and shot_result_panel.visible and not _is_putt_context():
+			camera.global_position = camera.global_position.lerp(ball.global_position, 0.12)
+			camera.zoom = camera.zoom.lerp(Vector2(FLIGHT_ZOOM_LAND, FLIGHT_ZOOM_LAND), 0.16)
+		else:
+			camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.08)
+			camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.08)
 
 
 func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
