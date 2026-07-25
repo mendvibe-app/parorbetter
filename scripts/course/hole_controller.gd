@@ -1685,6 +1685,11 @@ func _on_holed_out() -> void:
 		AudioBus.play_golf_clap()
 	elif result == Scoring.Result.PAR:
 		AudioBus.play_golf_clap()
+	# Start sting now — don't wait for the settle timer / panel.
+	var ending := not GameState.run_active or GameState.lives <= 0 \
+		or GameState.current_hole >= GameState.HOLE_COUNT
+	if ending:
+		AudioBus.play_water_hazard()
 	await get_tree().create_timer(1.1).timeout
 	if not GameState.run_active or GameState.lives <= 0:
 		request_game_over.emit()

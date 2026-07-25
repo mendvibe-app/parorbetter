@@ -791,16 +791,23 @@ func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool)
 	var along := top - start
 	if along.length_squared() < 1.0:
 		return
-	## Same +perp as arc edges — screen-right of the backswing lane.
+	## Tick stubs stay screen-right; labels sit left of the lane (not over the fill).
 	var perp := Vector2(-along.y, along.x).normalized()
-	var edge: Vector2 = mark + perp * (PuttStroke.arc_allowance(frac) * size.y)
+	var half := PuttStroke.arc_allowance(frac) * size.y
+	var edge: Vector2 = mark + perp * half
 	var thick := 2.0 if labeled else 1.5
 	var a := 0.7 if labeled else 0.4
 	var c := Color(0.55, 0.85, 0.95, a)
 	draw_line(mark, edge, c, thick, true)
 	if labeled:
+		var s := str(ft)
+		var tw := UiScale.FONT.get_string_size(
+			s, HORIZONTAL_ALIGNMENT_LEFT, -1, UiScale.CAPTION
+		).x
+		## Right edge of digits clears the lane by a small gap.
+		var label_at := Vector2(mark.x - half - 12.0 - tw, mark.y + 6.0)
 		draw_string(
-			UiScale.FONT, edge + perp * 8.0 + Vector2(0.0, 6.0), str(ft),
+			UiScale.FONT, label_at, s,
 			HORIZONTAL_ALIGNMENT_LEFT, -1,
 			UiScale.CAPTION,
 			Color(0.6, 0.88, 0.95, 0.75)

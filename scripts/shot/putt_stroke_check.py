@@ -106,6 +106,7 @@ def main() -> int:
     assert "aim_i" not in soft_scale and "putt_aim_ft" not in soft_scale
     tick_draw = GESTURE.split("func _draw_putt_scale_tick")[1].split("func ")[0]
     assert "arc_allowance(frac)" in tick_draw
+    assert "mark.x - half" in tick_draw, "ft labels sit left of the lane, not over the fill"
     assert "draw_line(mark, edge" in tick_draw
     assert "_putt_follow_cap_frac" in GESTURE
     assert "follow_cap_frac" in GESTURE

@@ -17,7 +17,6 @@ func _ready() -> void:
 
 func show_result(deepest: int, reason: String) -> void:
 	visible = true
-	AudioBus.play_water_hazard()
 	if reason == "course_complete":
 		title.text = "COURSE CLEAR"
 		detail.text = "You finished all %d holes.\nDeepest: %d" % [GameState.HOLE_COUNT, deepest]
