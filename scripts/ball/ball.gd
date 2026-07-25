@@ -64,12 +64,13 @@ func _ready() -> void:
 	_trail.default_color = Color(0.75, 0.95, 1.0, 0.75)
 	_trail.texture = TRAIL_TEX
 	_trail.texture_mode = Line2D.LINE_TEXTURE_STRETCH
-	_trail.z_index = -1
+	_trail.z_index = 8
 	_trail.top_level = true
 	_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.joint_mode = Line2D.LINE_JOINT_ROUND
 	add_child(_trail)
+	_trail.global_position = Vector2.ZERO  ## points are world-space
 	area.area_entered.connect(_on_area_entered)
 	_last_safe_pos = global_position
 	set_physics_process(false)
@@ -132,17 +133,18 @@ func launch(
 	_landing_speed = launch_data["landing_speed"]
 	_air_fraction = launch_data["air_fraction"]
 	_trail.clear_points()
+	_trail.global_position = Vector2.ZERO
 	_trail.modulate.a = 1.0
 	_is_perfect_shot = result.is_perfect() and result.stance_stability >= 0.72
 	if _is_perfect_shot:
 		perfect_flash.emit()
 		visual.self_modulate = Color(1.0, 0.95, 0.55)
 		_trail.default_color = Color(1.0, 0.88, 0.3, 0.9)
-		_trail.width = 5.5
+		_trail.width = 6.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
-		_trail.default_color = Color(0.75, 0.95, 1.0, 0.75)
-		_trail.width = 4.0
+		_trail.default_color = Color(0.75, 0.95, 1.0, 0.85)
+		_trail.width = 5.0
 
 	if _is_putt or _air_fraction <= 0.001:
 		state = State.ROLL

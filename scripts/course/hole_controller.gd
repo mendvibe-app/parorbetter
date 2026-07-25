@@ -11,8 +11,8 @@ const CUP_RADIUS := 3.0
 ## Full-shot "up and in" camera — wide launch, tighten hard on descent. Putt path untouched.
 const FLIGHT_ZOOM_LAUNCH := 0.55
 const FLIGHT_ZOOM_APEX := 0.58
-const FLIGHT_ZOOM_LAND := 1.2
-const FLIGHT_ZOOM_IN_START := 0.65  ## air_progress when the tight zoom begins
+const FLIGHT_ZOOM_LAND := 1.45
+const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 
@@ -1508,8 +1508,10 @@ func _process(_delta: float) -> void:
 		var target_zoom := _desired_camera_zoom()
 		if not _is_putt_context():
 			target_zoom = _flight_camera_zoom()
-		# Faster zoom lerp on the "in" beat so the land punch reads.
-		var z_lerp := 0.14 if (not _is_putt_context() and ball.air_progress() >= FLIGHT_ZOOM_IN_START) else 0.1
+		# Faster zoom lerp on the "in" beat / roll so short flights still punch tight.
+		var z_lerp := 0.1
+		if not _is_putt_context() and (ball.state == GolfBall.State.ROLL or ball.air_progress() >= FLIGHT_ZOOM_IN_START):
+			z_lerp = 0.22
 		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
 		# Snap-feel aim follow (faster) so book/zoom don't crawl in

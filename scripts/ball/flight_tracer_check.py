@@ -9,7 +9,7 @@ HOLE = Path(__file__).resolve().parents[1].joinpath("course/hole_controller.gd")
 
 def flight_zoom(t: float, state: str = "FLIGHT") -> float:
     """Mirror HoleController._flight_camera_zoom."""
-    launch, apex, land, start = 0.55, 0.58, 1.2, 0.65
+    launch, apex, land, start = 0.55, 0.58, 1.45, 0.55
     if state == "ROLL" or t >= 1.0:
         return land
     if t < start:
@@ -24,21 +24,23 @@ def main() -> None:
     assert "_spawn_ghost_arc" not in BALL
     assert "_ghost_arc" not in BALL
     assert "global_position + Vector2(0.0, -_height * TRACER_LIFT)" in BALL
+    assert "_trail.global_position = Vector2.ZERO" in BALL
+    assert "_trail.z_index = 8" in BALL
 
     assert "const FLIGHT_ZOOM_LAUNCH := 0.55" in HOLE
-    assert "const FLIGHT_ZOOM_LAND := 1.2" in HOLE
-    assert "const FLIGHT_ZOOM_IN_START := 0.65" in HOLE
+    assert "const FLIGHT_ZOOM_LAND := 1.45" in HOLE
+    assert "const FLIGHT_ZOOM_IN_START := 0.55" in HOLE
     assert "func _flight_camera_zoom()" in HOLE
     # Pure strike must not yank zoom back to aim framing mid-flight.
     pure = HOLE.split("func _on_pure_strike")[1].split("func ")[0]
     assert 'tween_property(camera, "zoom"' not in pure
 
     assert abs(flight_zoom(0.0) - 0.55) < 1e-6
-    assert abs(flight_zoom(0.65) - 0.58) < 1e-6
-    assert abs(flight_zoom(1.0) - 1.2) < 1e-6
-    assert abs(flight_zoom(0.5, "ROLL") - 1.2) < 1e-6
+    assert abs(flight_zoom(0.55) - 0.58) < 1e-6
+    assert abs(flight_zoom(1.0) - 1.45) < 1e-6
+    assert abs(flight_zoom(0.5, "ROLL") - 1.45) < 1e-6
     # Descent is the tight beat — mid-descent closer than apex.
-    assert flight_zoom(0.85) > flight_zoom(0.5)
+    assert flight_zoom(0.85) > flight_zoom(0.4)
     print("flight_tracer_check: ok")
 
 
