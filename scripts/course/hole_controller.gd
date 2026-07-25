@@ -1483,13 +1483,14 @@ func _flight_camera_zoom() -> Vector2:
 
 
 func _follow_ball() -> void:
-	camera.position_smoothing_enabled = not _is_putt_context()
-	var tw := create_tween()
-	tw.tween_property(camera, "global_position", ball.global_position, 0.25).set_trans(Tween.TRANS_SINE)
+	## Smoothing fights the up-and-in punch — own the transform directly in flight.
+	camera.position_smoothing_enabled = false
 	var z := _desired_camera_zoom()
 	if not _is_putt_context():
 		z = Vector2(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAUNCH)
-	tw.parallel().tween_property(camera, "zoom", z, 0.35)
+	var tw := create_tween()
+	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
+	tw.parallel().tween_property(camera, "zoom", z, 0.2)
 
 
 func _process(_delta: float) -> void:
@@ -1508,10 +1509,10 @@ func _process(_delta: float) -> void:
 		var target_zoom := _desired_camera_zoom()
 		if not _is_putt_context():
 			target_zoom = _flight_camera_zoom()
-		# Faster zoom lerp on the "in" beat / roll so short flights still punch tight.
-		var z_lerp := 0.1
+		# Aggressive zoom lerp on the "in" beat / roll so short flights still punch tight.
+		var z_lerp := 0.12
 		if not _is_putt_context() and (ball.state == GolfBall.State.ROLL or ball.air_progress() >= FLIGHT_ZOOM_IN_START):
-			z_lerp = 0.22
+			z_lerp = 0.35
 		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
 		# Snap-feel aim follow (faster) so book/zoom don't crawl in
@@ -1523,8 +1524,13 @@ func _process(_delta: float) -> void:
 		camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.18)
 		_sync_screen_line_widths()
 	elif not ball_in_flight:
-		camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.08)
-		camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.08)
+		# Hold land framing while the glance/result panel is up so the "in" punch isn't undone.
+		if shot_result_panel and shot_result_panel.visible and not _is_putt_context():
+			camera.global_position = camera.global_position.lerp(ball.global_position, 0.12)
+			camera.zoom = camera.zoom.lerp(Vector2(FLIGHT_ZOOM_LAND, FLIGHT_ZOOM_LAND), 0.16)
+		else:
+			camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.08)
+			camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.08)
 
 
 func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:

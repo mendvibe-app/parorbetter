@@ -25,7 +25,9 @@ def main() -> None:
     assert "_ghost_arc" not in BALL
     assert "global_position + Vector2(0.0, -_height * TRACER_LIFT)" in BALL
     assert "_trail.global_position = Vector2.ZERO" in BALL
-    assert "_trail.z_index = 8" in BALL
+    assert "_trail.z_index = 20" in BALL
+    assert "_trail.width = 14.0" in BALL
+    assert "TRAIL_TEX" not in BALL
 
     assert "const FLIGHT_ZOOM_LAUNCH := 0.55" in HOLE
     assert "const FLIGHT_ZOOM_LAND := 1.45" in HOLE

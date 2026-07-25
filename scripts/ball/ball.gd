@@ -51,7 +51,6 @@ var ground_lie_at: Callable = Callable()
 const BALL_R := 3.5
 ## On-green draw radius — keeps putt lengths many ball-widths (flight stays BALL_R).
 const BALL_R_PUTT := 1.25
-const TRAIL_TEX := preload("res://assets/ball/ball_trail.png")
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -60,11 +59,11 @@ var _glow_scale: float = 1.0
 func _ready() -> void:
 	_apply_lie_visual()
 	_trail = Line2D.new()
-	_trail.width = 4.0
-	_trail.default_color = Color(0.75, 0.95, 1.0, 0.75)
-	_trail.texture = TRAIL_TEX
-	_trail.texture_mode = Line2D.LINE_TEXTURE_STRETCH
-	_trail.z_index = 8
+	# World width stays readable at launch zoom ~0.55 (≈7–9 screen px).
+	_trail.width = 14.0
+	_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
+	# Solid ribbon reads better as Trackman than the soft trail tex at distance.
+	_trail.z_index = 20
 	_trail.top_level = true
 	_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
@@ -139,12 +138,12 @@ func launch(
 	if _is_perfect_shot:
 		perfect_flash.emit()
 		visual.self_modulate = Color(1.0, 0.95, 0.55)
-		_trail.default_color = Color(1.0, 0.88, 0.3, 0.9)
-		_trail.width = 6.0
+		_trail.default_color = Color(1.0, 0.85, 0.25, 0.95)
+		_trail.width = 16.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
-		_trail.default_color = Color(0.75, 0.95, 1.0, 0.85)
-		_trail.width = 5.0
+		_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
+		_trail.width = 14.0
 
 	if _is_putt or _air_fraction <= 0.001:
 		state = State.ROLL
@@ -362,22 +361,10 @@ func _finish_settle() -> void:
 	state = State.SETTLED
 	set_physics_process(false)
 	AudioBus.set_roll_intensity(0.0)
-	_fade_tracer()
+	# Keep Trackman arc up through the result glance; next launch/reset clears it.
 	if _lie != "Water" and _lie != "OOB":
 		_last_safe_pos = global_position
 	settled.emit(global_position, _lie)
-
-
-func _fade_tracer() -> void:
-	## Brief hold of the flight arc, then clear — next launch also clears.
-	if _trail.get_point_count() == 0:
-		return
-	var tw := create_tween()
-	tw.tween_property(_trail, "modulate:a", 0.0, 0.45)
-	tw.tween_callback(func():
-		_trail.clear_points()
-		_trail.modulate.a = 1.0
-	)
 
 
 func _on_area_entered(other: Area2D) -> void:
@@ -394,7 +381,6 @@ func _on_area_entered(other: Area2D) -> void:
 		state = State.SETTLED
 		set_physics_process(false)
 		AudioBus.set_roll_intensity(0.0)
-		_fade_tracer()
 		holed_out.emit()
 		return
 	if other.is_in_group("water"):
@@ -408,7 +394,6 @@ func _on_area_entered(other: Area2D) -> void:
 		state = State.SETTLED
 		set_physics_process(false)
 		AudioBus.set_roll_intensity(0.0)
-		_fade_tracer()
 		entered_hazard.emit("water")
 		return
 	if other.is_in_group("oob"):
@@ -417,7 +402,6 @@ func _on_area_entered(other: Area2D) -> void:
 		state = State.SETTLED
 		set_physics_process(false)
 		AudioBus.set_roll_intensity(0.0)
-		_fade_tracer()
 		entered_hazard.emit("oob")
 		return
 	if other.is_in_group("sand"):
