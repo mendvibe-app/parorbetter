@@ -89,8 +89,8 @@ def main() -> int:
     assert PUTTER_MAX_YD * 3.0 >= 95.0
     p95 = recommended_power(95.0 / 3.0, PUTTER_MAX_YD)
     assert p95 < 0.95, p95  # headroom past the hole
-    assert "SCALE_LABELED_FT := [3, 6, 10, 15, 30]" in PUTT
-    assert "SCALE_TICK_FT := [45, 60, 90]" in PUTT
+    assert "SCALE_LABELED_FT := [10, 20, 40, 80]" in PUTT
+    assert "SCALE_TICK_FT := [60, 100]" in PUTT
     assert "MARKER_ON_PACE_FRAC" not in PUTT
     assert "power_from_frac" in PUTT
     assert "frac_for_ft" in PUTT
