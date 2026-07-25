@@ -329,7 +329,7 @@ static func generate_hole(
 	wind.y = clampf(wind.y * 0.35, -20.0, 20.0)
 
 	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else (
-		lerpf(0.04, 0.42, rng.randf()) * float(mods.get("slope_mult", 1.0))
+		lerpf(0.10, 0.48, rng.randf()) * float(mods.get("slope_mult", 1.0))
 	)
 	var slope := Vector2.ZERO
 	if slope_mag > 0.0:
@@ -632,8 +632,8 @@ static func _green_radii(
 	green_size: float,
 	rng: RandomNumberGenerator
 ) -> Vector2:
-	# World px radii — wide band so tiny targets vs runway greens read before putt zoom.
-	var base := lerpf(34.0, 88.0, green_size)
+	# World px radii — ~60–130 ft diameter (real greens), not airport runways.
+	var base := lerpf(22.0, 48.0, green_size)
 	var rx := base
 	var ry := base
 	match shape:
@@ -675,12 +675,12 @@ static func _pick_contour(
 		HoleData.ContourProfile.FALSE_FRONT,
 		HoleData.ContourProfile.BI_TIER,
 	]
-	# Early: flat/side; late unlock false-front / bi-tier.
+	# Early: side/bowl over flat so break shows up in testing; late unlock false-front / bi-tier.
 	var weights: Array[float] = [
-		lerpf(0.35, 0.05, t),
-		lerpf(0.45, 0.25, t),
-		lerpf(0.12, 0.2, t),
-		lerpf(0.08, 0.15, t),
+		lerpf(0.12, 0.03, t),
+		lerpf(0.55, 0.28, t),
+		lerpf(0.18, 0.22, t),
+		lerpf(0.10, 0.15, t),
 		0.0 if t < 0.2 else lerpf(0.1, 0.2, t),
 		0.0 if t < 0.25 else lerpf(0.08, 0.18, t),
 	]

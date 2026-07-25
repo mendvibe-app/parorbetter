@@ -6,8 +6,8 @@ signal request_next_hole
 
 const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
-## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.25) — real hole ≈ 2.5× ball.
-const CUP_RADIUS := 3.0
+## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
+const CUP_RADIUS := 2.4
 
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
@@ -234,10 +234,10 @@ func load_practice_green() -> void:
 	ball_in_flight = false
 	_chosen_club.clear()
 	_build_course()
-	_practice_green_pos = _cup_pos + Vector2(0.0, BallPhysics.yards_to_pixels(18.0))
+	_practice_green_pos = _cup_pos + Vector2(0.0, BallPhysics.yards_to_pixels(12.0))
 	ball.reset_at(_practice_green_pos, "Green")
 	camera.global_position = Vector2(_practice_green_pos.x, _practice_green_pos.y - 40)
-	camera.zoom = Vector2(2.2, 2.2)
+	camera.zoom = Vector2(2.8, 2.8)
 	if not camera.is_current():
 		camera.make_current()
 	_update_hud()
@@ -251,8 +251,8 @@ func _make_range_hole() -> HoleData:
 	d.hole_number = 0
 	d.par = 4
 	d.fairway_width = 240.0
-	d.green_radius_x = 54.0
-	d.green_radius_y = 54.0
+	d.green_radius_x = 38.0
+	d.green_radius_y = 38.0
 	d.pin_offset = Vector2.ZERO
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
@@ -274,13 +274,13 @@ func _make_practice_green_hole() -> HoleData:
 	d.hole_number = 0
 	d.par = 3
 	d.fairway_width = 160.0
-	d.green_radius_x = 54.0
-	d.green_radius_y = 54.0
+	d.green_radius_x = 38.0
+	d.green_radius_y = 38.0
 	d.pin_offset = Vector2.ZERO
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
 	d.wind_vector = Vector2.ZERO
-	d.green_slope = Vector2(0.22, 0.0)
+	d.green_slope = Vector2(0.28, 0.0)
 	d.timing_window_scale = 1.0
 	d.hazards = []
 	d.hazard_bias = HoleData.HazardBias.NONE
@@ -1435,10 +1435,10 @@ func _desired_camera_zoom() -> Vector2:
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
 	if _is_putt_context():
-		# Frame ball→cup only — green-radius floor made short putts look like tap-ins.
+		# Frame ball→cup; zoom out sooner on lags so 40 ft reads as travel, not a short lag.
 		var dist := ball.global_position.distance_to(_cup_pos)
-		var half_span := maxf(dist * 0.65 + 20.0, 28.0)
-		var z := clampf(view_min * 0.62 / maxf(half_span, 24.0), 3.2, 10.0)
+		var half_span := maxf(dist * 0.90 + 26.0, 34.0)
+		var z := clampf(view_min * 0.52 / maxf(half_span, 28.0), 2.6, 7.5)
 		return Vector2(z, z)
 	# Approach with green book — frame ball toward green without losing landing circle
 	if _aiming and _should_show_green_book():

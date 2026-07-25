@@ -50,9 +50,9 @@ def main() -> int:
     assert "TEE_Y_MAX := 1500.0" in aim
     assert tee_y(650.0) < 1500.0
 
-    # Generator size band widened so tiny vs runway greens read on approach.
+    # Generator size band — real-ish greens (~60–130 ft), not airport runways.
     assert "lerpf(0.95, 0.22, t)" in GEN or "lerpf(0.95, 0.22" in GEN
-    assert "lerpf(34.0, 88.0, green_size)" in GEN
+    assert "lerpf(22.0, 48.0, green_size)" in GEN
 
     print("yardage_length_check: ok")
     return 0
