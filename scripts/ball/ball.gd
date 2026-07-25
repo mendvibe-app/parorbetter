@@ -64,15 +64,27 @@ func _ready() -> void:
 	_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
 	# Solid ribbon reads better as Trackman than the soft trail tex at distance.
 	_trail.z_index = 20
-	_trail.top_level = true
 	_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.joint_mode = Line2D.LINE_JOINT_ROUND
-	add_child(_trail)
-	_trail.global_position = Vector2.ZERO  ## points are world-space
+	# Host on hole root so points are true world coords (top_level under ball was flaky).
+	call_deferred("_mount_trail")
 	area.area_entered.connect(_on_area_entered)
 	_last_safe_pos = global_position
 	set_physics_process(false)
+
+
+func _mount_trail() -> void:
+	var host := get_parent()
+	if host == null or _trail == null:
+		return
+	if _trail.get_parent() == host:
+		_trail.position = Vector2.ZERO
+		return
+	if _trail.get_parent():
+		_trail.get_parent().remove_child(_trail)
+	host.add_child(_trail)
+	_trail.position = Vector2.ZERO
 
 
 func reset_at(pos: Vector2, lie: String = "Tee") -> void:
@@ -132,7 +144,7 @@ func launch(
 	_landing_speed = launch_data["landing_speed"]
 	_air_fraction = launch_data["air_fraction"]
 	_trail.clear_points()
-	_trail.global_position = Vector2.ZERO
+	_trail.position = Vector2.ZERO
 	_trail.modulate.a = 1.0
 	_is_perfect_shot = result.is_perfect() and result.stance_stability >= 0.72
 	if _is_perfect_shot:
