@@ -161,11 +161,19 @@ func launch(
 	if _is_perfect_shot:
 		perfect_flash.emit()
 		visual.self_modulate = Color(1.0, 0.95, 0.55)
-		_trail.default_color = Color(1.0, 0.85, 0.25, 0.95)
+		_trail.default_color = Color(1.0, 0.85, 0.25, 0.95)  # gold — reserved for pure strikes
 		_trail.width = 7.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
-		_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
+		# Same good/ok/bad palette already used by the swing-trail color and tempo
+		# needle (tempo_gesture.trail_color(), meter_display.gd) — reuse, don't invent.
+		match result.contact_quality:
+			ShotResult.ContactQuality.PERFECT:
+				_trail.default_color = Color(0.35, 0.92, 0.45, 0.92)  # green
+			ShotResult.ContactQuality.GOOD:
+				_trail.default_color = Color(0.95, 0.85, 0.25, 0.92)  # amber
+			_:  # THIN, FAT, MISS
+				_trail.default_color = Color(0.95, 0.35, 0.3, 0.92)  # red
 		_trail.width = 6.0
 
 	if _is_putt or _air_fraction <= 0.001:

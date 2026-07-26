@@ -35,6 +35,12 @@ def main() -> None:
     # Tracer clears as soon as the next shot's aim phase begins, not just at launch.
     assert "func clear_trail() -> void:" in BALL
     assert "ball.clear_trail()" in HOLE
+    # Tracer color reflects execution using the SAME good/ok/bad palette already
+    # used by the swing-trail color and tempo needle — not a new invented scheme.
+    assert "Color(0.35, 0.92, 0.45, 0.92)" in BALL  # green — matches tempo_gesture.trail_color()
+    assert "Color(0.95, 0.85, 0.25, 0.92)" in BALL  # amber
+    assert "Color(0.95, 0.35, 0.3, 0.92)" in BALL  # red
+    assert "ShotResult.ContactQuality.PERFECT:" in BALL
 
     assert "const FLIGHT_ZOOM_LAUNCH := 0.55" in HOLE
     assert "const FLIGHT_ZOOM_LAND := 1.45" in HOLE
