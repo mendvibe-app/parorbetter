@@ -62,8 +62,9 @@ var _glow_scale: float = 1.0
 func _ready() -> void:
 	_apply_lie_visual()
 	_trail = Line2D.new()
-	# World width stays readable at launch zoom ~0.55 (≈7–9 screen px).
-	_trail.width = 14.0
+	# World width stays readable at launch zoom ~0.55 (≈3–4 screen px at launch,
+	# thicker as the camera zooms toward landing). Overwritten per-shot in launch().
+	_trail.width = 6.0
 	_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
 	# Solid ribbon reads better as Trackman than the soft trail tex at distance.
 	_trail.z_index = 20
@@ -88,6 +89,13 @@ func _mount_trail() -> void:
 		_trail.get_parent().remove_child(_trail)
 	host.add_child(_trail)
 	_trail.position = Vector2.ZERO
+
+
+## Clears the flight tracer independent of a full ball reset — call this as soon as
+## the previous shot's result is dismissed, so the old tracer doesn't linger through
+## the next shot's read/club/aim routine.
+func clear_trail() -> void:
+	_trail.clear_points()
 
 
 func reset_at(pos: Vector2, lie: String = "Tee") -> void:
@@ -154,11 +162,11 @@ func launch(
 		perfect_flash.emit()
 		visual.self_modulate = Color(1.0, 0.95, 0.55)
 		_trail.default_color = Color(1.0, 0.85, 0.25, 0.95)
-		_trail.width = 16.0
+		_trail.width = 7.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
 		_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
-		_trail.width = 14.0
+		_trail.width = 6.0
 
 	if _is_putt or _air_fraction <= 0.001:
 		state = State.ROLL
@@ -221,15 +229,13 @@ func _physics_process(delta: float) -> void:
 			_process_roll(delta)
 		_:
 			pass
-	# Flight: lofted Trackman tracer. Putt roll: short ground trail. Full-shot roll: freeze arc.
-	if state == State.FLIGHT:
+	# Flight: lofted Trackman tracer. Full-shot roll: freeze arc. No tracer on putts —
+	# the ball never leaves the ground on a putt, so there's nothing a real tracer
+	# would be showing that the player can't already see directly.
+	if state == State.FLIGHT and not _is_putt:
 		_trail.add_point(global_position + Vector2(0.0, -_height * TRACER_LIFT))
 		var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
 		if _trail.get_point_count() > cap:
-			_trail.remove_point(0)
-	elif state == State.ROLL and _is_putt:
-		_trail.add_point(global_position)
-		if _trail.get_point_count() > 48:
 			_trail.remove_point(0)
 	_spin_vis += spin * delta * 4.0 + velocity.length() * 0.002
 	visual.rotation = _spin_vis
