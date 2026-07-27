@@ -936,7 +936,7 @@ func _begin_range_swing() -> void:
 	if bearing.length_squared() < 1.0:
 		bearing = Vector2(0, -1)
 	_aim_target = AimControl.point_along_bearing(_tee_pos, bearing, est)
-	_aim_radius_base_yd = GameState.get_aim_radius_yards(false)
+	_aim_radius_base_yd = GameState.get_aim_radius_yards(false, club_max)
 	_aim_radius_yd = _aim_radius_base_yd
 	_aim_lock_yards = est
 	_power_previewing = true
@@ -957,7 +957,7 @@ func _begin_aim_phase() -> void:
 		_chosen_club = BallPhysics.pick_club(pin_yd, lie)
 	var club_max := float(_chosen_club["max_yards"])
 	_power_previewing = false
-	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green")
+	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green", club_max)
 	_aim_radius_yd = _aim_radius_base_yd
 	_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
 	_aim_target = AimControl.clamp_aim(_aim_target)
