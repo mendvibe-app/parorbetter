@@ -29,6 +29,14 @@ var _drag_origin_scroll: int = 0
 var _drag_scrolling: bool = false
 const DRAG_DEADZONE := 12
 
+const TENDENCY_BADGE_TEXT := {
+	"rushed_transition": "Rushing",
+	"lingering_top": "Lingering",
+	"slice_tendency": "Slice",
+	"hook_tendency": "Hook",
+	"contact_issue": "Inconsistent",
+}
+
 
 func _ready() -> void:
 	visible = false
@@ -175,9 +183,24 @@ func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
 	## Omit when it's a full swing — "100% today" read as a mystery score.
 	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind)
 	var star := "★ " if is_suggested else ""
+	var badge := _tendency_badge(name)
 	if pct >= 0.95:
-		return "%s%s  —  %d yd" % [star, name, int(max_yd)]
-	return "%s%s  —  %d yd · %d%% swing" % [star, name, int(max_yd), int(pct * 100.0)]
+		return "%s%s  —  %d yd%s" % [star, name, int(max_yd), badge]
+	return "%s%s  —  %d yd · %d%% swing%s" % [star, name, int(max_yd), int(pct * 100.0), badge]
+
+
+func _tendency_badge(name: String) -> String:
+	## Text stub for the tendency icon (Phase 3) — swap for an icon lookup in hud_icons.gd
+	## once tendency art exists; resolve_tip().tag is already the icon key to use then.
+	if not GameState.club_coach_ui_enabled:
+		return ""
+	var stats: Dictionary = GameState.club_coach.clubs.get(name, {})
+	if int(stats.get("shots_logged", 0)) < ClubCoachLog.MIN_SAMPLES_FOR_TIP:
+		return ""
+	var tag := str(ClubCoachLog.resolve_tip(stats).get("tag", ""))
+	if not TENDENCY_BADGE_TEXT.has(tag):
+		return ""
+	return " · %s" % TENDENCY_BADGE_TEXT[tag]
 
 
 func _rebuild_list(prefer_name: String = "") -> void:

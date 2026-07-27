@@ -50,6 +50,12 @@ theme_override_font_sizes/font_size = 18
 text = "Metrics"
 autowrap_mode = 2
 
+[node name="ClubCoachLabel" type="Label" parent="Panel/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Club Coach — no shots yet"
+autowrap_mode = 2
+
 [node name="HoleRow" type="HBoxContainer" parent="Panel/VBox"]
 layout_mode = 2
 
@@ -184,6 +190,14 @@ layout_mode = 2
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Tempo guide (ghost)"
+
+[node name="ClubCoachUiRow" type="HBoxContainer" parent="Panel/VBox"]
+layout_mode = 2
+
+[node name="ClubCoachUiCheck" type="CheckButton" parent="Panel/VBox/ClubCoachUiRow"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Club Coach UI (player)"
 
 [node name="Buttons" type="GridContainer" parent="Panel/VBox"]
 layout_mode = 2

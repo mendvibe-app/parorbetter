@@ -3,12 +3,14 @@ extends Control
 signal start_pressed
 signal green_pressed
 signal range_pressed
+signal coach_pressed
 
 @onready var score_label: Label = $Panel/RecordBox/Inner/ScoreRow/RecordCol/ScoreLabel
 @onready var deepest_label: Label = $Panel/RecordBox/Inner/DeepestLabel
 @onready var start_btn: Button = $Panel/Buttons/StartButton
 @onready var green_btn: Button = $Panel/Buttons/GreenButton
 @onready var range_btn: Button = $Panel/Buttons/RangeButton
+@onready var coach_btn: Button = $Panel/Buttons/CoachButton
 
 
 func _ready() -> void:
@@ -25,10 +27,15 @@ func _ready() -> void:
 		AudioBus.play_ui()
 		range_pressed.emit()
 	)
+	coach_btn.pressed.connect(func():
+		AudioBus.play_ui()
+		coach_pressed.emit()
+	)
 
 
 func show_screen() -> void:
 	_refresh_record()
+	coach_btn.visible = GameState.club_coach_ui_enabled
 	visible = true
 
 

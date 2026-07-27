@@ -10,6 +10,8 @@ signal exit_range
 
 @onready var panel: PanelContainer = $Panel
 @onready var metrics: Label = $Panel/VBox/Metrics
+@onready var club_coach_label: Label = $Panel/VBox/ClubCoachLabel
+@onready var club_coach_ui_check: CheckButton = $Panel/VBox/ClubCoachUiRow/ClubCoachUiCheck
 @onready var hole_spin: SpinBox = $Panel/VBox/HoleRow/HoleSpin
 @onready var lives_spin: SpinBox = $Panel/VBox/LivesRow/LivesSpin
 @onready var timing_slider: HSlider = $Panel/VBox/TimingRow/TimingSlider
@@ -43,6 +45,7 @@ func _ready() -> void:
 	ema_slider.value = TempoGesture.EMA_ALPHA
 	release_check.button_pressed = TempoGesture.RELEASE_IS_IMPACT
 	guide_check.button_pressed = GameState.tempo_guide_enabled
+	club_coach_ui_check.button_pressed = GameState.club_coach_ui_enabled
 	_add_tap_in_rows()
 	$Panel/VBox/ToggleHint.text = "F1 / Debug — toggle"
 	$Panel/VBox/Buttons/SkipBtn.pressed.connect(func(): skip_hole.emit())
@@ -72,6 +75,9 @@ func _ready() -> void:
 	release_check.toggled.connect(func(on: bool): TempoGesture.RELEASE_IS_IMPACT = on)
 	guide_check.toggled.connect(func(on: bool):
 		GameState.tempo_guide_enabled = on
+	)
+	club_coach_ui_check.toggled.connect(func(on: bool):
+		GameState.club_coach_ui_enabled = on
 	)
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
@@ -183,6 +189,46 @@ func _process(_delta: float) -> void:
 			int(float(m.get("planned_yd", 0.0))),
 			("%d yd" % int(float(m.get("actual_yd")))) if m.has("actual_yd") else "—",
 		]
+	club_coach_label.text = _club_coach_dump()
+
+
+func _club_coach_dump() -> String:
+	var clubs: Dictionary = GameState.club_coach.clubs
+	var names := clubs.keys()
+	names.sort()
+	var lines: PackedStringArray = PackedStringArray()
+	for club_name in names:
+		var stats: Dictionary = clubs[club_name]
+		var shots := int(stats.get("shots_logged", 0))
+		if shots <= 0:
+			continue
+		var tally: Dictionary = stats.get("contact_tally", {})
+		var contact_bits: PackedStringArray = PackedStringArray()
+		for label_pair in [
+			["PERFECT", ShotResult.ContactQuality.PERFECT],
+			["GOOD", ShotResult.ContactQuality.GOOD],
+			["THIN", ShotResult.ContactQuality.THIN],
+			["FAT", ShotResult.ContactQuality.FAT],
+			["MISS", ShotResult.ContactQuality.MISS],
+		]:
+			contact_bits.append("%d %s" % [int(tally.get(label_pair[1], 0)), label_pair[0]])
+		var path_avg := ClubCoachLog.avg(stats.get("path_error_history", []))
+		var tempo_avg := ClubCoachLog.avg(stats.get("tempo_err_history", []))
+		var path_word := "slice bias" if path_avg > 0.0 else ("hook bias" if path_avg < 0.0 else "neutral")
+		var tempo_word := "rushed" if tempo_avg < 0.0 else ("lingering" if tempo_avg > 0.0 else "neutral")
+		var tip := ClubCoachLog.resolve_tip(stats)
+		lines.append("%s — %d shots" % [club_name.to_upper(), shots])
+		lines.append("  avg %d yd | contact: %s" % [
+			int(ClubCoachLog.avg(stats.get("yardage_history", []))),
+			" / ".join(contact_bits),
+		])
+		lines.append("  path avg %+.2f (%s) | tempo avg %+.2f (%s)" % [
+			path_avg, path_word, tempo_avg, tempo_word,
+		])
+		lines.append("  → resolved tip: %s" % str(tip.get("tag", "")))
+	if lines.is_empty():
+		return "Club Coach — no shots logged yet"
+	return "Club Coach:\n" + "\n".join(lines)
 
 
 func _apply_tweaks() -> void:

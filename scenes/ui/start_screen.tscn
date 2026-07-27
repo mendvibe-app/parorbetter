@@ -233,3 +233,14 @@ icon = ExtResource("4")
 icon_alignment = 1
 vertical_icon_alignment = 0
 expand_icon = false
+
+[node name="CoachButton" type="Button" parent="Panel/Buttons"]
+visible = false
+custom_minimum_size = Vector2(320, 90)
+layout_mode = 2
+theme_override_styles/normal = SubResource("menu_btn_normal")
+theme_override_styles/hover = SubResource("menu_btn_hover")
+theme_override_styles/pressed = SubResource("menu_btn_pressed")
+theme_override_styles/focus = SubResource("menu_btn_hover")
+theme_override_font_sizes/font_size = 28
+text = "Club Coach"
