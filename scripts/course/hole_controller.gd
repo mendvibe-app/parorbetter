@@ -828,6 +828,7 @@ func _add_circle(parent: Node2D, center: Vector2, radius: float, color: Color, g
 func _start_shot_ui() -> void:
 	if hole_complete or not GameState.run_active:
 		return
+	ball.clear_trail()
 	shot_routine.set_active(false)
 	if shot_result_panel and shot_result_panel.has_method("hide_now"):
 		shot_result_panel.hide_now()
@@ -948,7 +949,6 @@ func _begin_aim_phase() -> void:
 	_aiming = true
 	_aim_dragging = false
 	_selecting_club = false
-	ball.clear_trail()
 	if _club_select:
 		_club_select.dismiss()
 	var lie := ball.get_lie()

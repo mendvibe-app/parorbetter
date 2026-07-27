@@ -32,9 +32,12 @@ def main() -> None:
     # No flight tracer on putts — the ball never leaves the ground, nothing to trace.
     assert "if state == State.FLIGHT and not _is_putt:" in BALL
     assert "elif state == State.ROLL and _is_putt:" not in BALL
-    # Tracer clears as soon as the next shot's aim phase begins, not just at launch.
+    # Tracer clears at _start_shot_ui, the single entry point every post-shot path
+    # (aim, club-select, tap-in putt) runs through — not just at launch, and not only
+    # on the aim-phase branch some paths (tap-in putts) skip entirely.
     assert "func clear_trail() -> void:" in BALL
-    assert "ball.clear_trail()" in HOLE
+    start_shot_ui = HOLE.split("func _start_shot_ui()")[1].split("\nfunc ")[0]
+    assert "ball.clear_trail()" in start_shot_ui
     # Tracer color reflects execution using the SAME good/ok/bad palette already
     # used by the swing-trail color and tempo needle — not a new invented scheme.
     assert "Color(0.35, 0.92, 0.45, 0.92)" in BALL  # green — matches tempo_gesture.trail_color()
