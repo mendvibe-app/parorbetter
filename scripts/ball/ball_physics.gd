@@ -34,6 +34,25 @@ static func is_wedge_family(club_name: String) -> bool:
 	return club_name.contains("Wedge")
 
 
+## Realistic full-width (left-right) landing-pattern spread in yards for a
+## typical mid-handicap amateur, by club category — launch-monitor/on-course
+## ballpark figures. Longer clubs disperse much wider than short ones, so the
+## aim/landing circle should shrink with the club, not stay a fixed size.
+## Returns (low, high) — low = skilled/tight end, high = weak/wide end.
+static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
+	if club_max_yards >= 245.0:  # Driver
+		return Vector2(40.0, 60.0)
+	if club_max_yards >= 180.0:  # 3-Wood / Hybrid / long irons (4-5)
+		return Vector2(25.0, 45.0)
+	if club_max_yards >= 150.0:  # Mid irons (6-7)
+		return Vector2(18.0, 35.0)
+	if club_max_yards >= 120.0:  # Short irons (8-9)
+		return Vector2(12.0, 25.0)
+	if club_max_yards >= 95.0:  # Pitching Wedge
+		return Vector2(10.0, 18.0)
+	return Vector2(8.0, 18.0)  # Gap / Sand / Lob wedges
+
+
 static func putter_for(_remaining_yd: float = 0.0) -> Dictionary:
 	return {"name": "Putter", "max_yards": PUTTER_MAX_YD}
 
