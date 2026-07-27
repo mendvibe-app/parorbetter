@@ -26,9 +26,21 @@ def main() -> None:
     assert "global_position + Vector2(0.0, -_height * TRACER_LIFT)" in BALL
     assert "func _mount_trail()" in BALL
     assert "_trail.z_index = 20" in BALL
-    assert "_trail.width = 14.0" in BALL
+    assert "_trail.width = 6.0" in BALL  # thinned per playtest feedback (was 14.0)
     assert "TRAIL_TEX" not in BALL
     assert "call_deferred(\"_mount_trail\")" in BALL
+    # No flight tracer on putts — the ball never leaves the ground, nothing to trace.
+    assert "if state == State.FLIGHT and not _is_putt:" in BALL
+    assert "elif state == State.ROLL and _is_putt:" not in BALL
+    # Tracer clears as soon as the next shot's aim phase begins, not just at launch.
+    assert "func clear_trail() -> void:" in BALL
+    assert "ball.clear_trail()" in HOLE
+    # Tracer color reflects execution using the SAME good/ok/bad palette already
+    # used by the swing-trail color and tempo needle — not a new invented scheme.
+    assert "Color(0.35, 0.92, 0.45, 0.92)" in BALL  # green — matches tempo_gesture.trail_color()
+    assert "Color(0.95, 0.85, 0.25, 0.92)" in BALL  # amber
+    assert "Color(0.95, 0.35, 0.3, 0.92)" in BALL  # red
+    assert "ShotResult.ContactQuality.PERFECT:" in BALL
 
     assert "const FLIGHT_ZOOM_LAUNCH := 0.55" in HOLE
     assert "const FLIGHT_ZOOM_LAND := 1.45" in HOLE

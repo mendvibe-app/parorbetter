@@ -948,6 +948,7 @@ func _begin_aim_phase() -> void:
 	_aiming = true
 	_aim_dragging = false
 	_selecting_club = false
+	ball.clear_trail()
 	if _club_select:
 		_club_select.dismiss()
 	var lie := ball.get_lie()
