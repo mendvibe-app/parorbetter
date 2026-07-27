@@ -114,7 +114,7 @@ def main() -> int:
     assert "mark.x - half" in tick_draw, "ft labels sit left of the lane, not over the fill"
     assert "draw_line(mark, edge" in tick_draw
     assert "frac <= PuttStroke.MARKER_MIN_FRAC" in tick_draw, "skip floor-collapsed labels"
-    assert "LABEL_PX := 22" in tick_draw
+    assert "LABEL_PX := 28" in tick_draw
     # Labeled marks stay readable on the log pad
     assert frac_for_ft(20.0) - frac_for_ft(10.0) > 0.05
     assert frac_for_ft(40.0) - frac_for_ft(20.0) > 0.10

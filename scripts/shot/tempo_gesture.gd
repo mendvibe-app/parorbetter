@@ -807,8 +807,10 @@ func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool)
 	var c := Color(0.55, 0.85, 0.95, a)
 	draw_line(mark, edge, c, thick, true)
 	if labeled:
-		## Smaller than CAPTION — linear map packs 10→20 closer than a 32px glyph.
-		const LABEL_PX := 22
+		## Was 22 — the smallest text in the game and the hardest to read (5/7/S
+		## blur together in Pixelify Sans without AA). Ticks are ~75px+ apart on
+		## the log-spaced scale, so there's room to go bigger without stacking.
+		const LABEL_PX := 28
 		var s := str(ft)
 		var tw := UiScale.FONT.get_string_size(
 			s, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_PX
