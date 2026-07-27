@@ -26,8 +26,10 @@ const BAG: Array[Dictionary] = [
 const POWER_POCKET_LO := 0.60
 const POWER_POCKET_HI := 0.92
 ## Fixed putter range — never derive from remaining (that canceled to a constant %).
-## 40 yd = 120 ft: covers long lags with headroom past the hole (was 35 / 105 ft).
-const PUTTER_MAX_YD := 40.0
+## 25 yd = 75 ft: covers long lags with headroom past the hole (was 40 yd / 120 ft,
+## calibrated to a corner-to-corner putt on the largest generated green — putts
+## longer than 75 ft clamp to full pad, which is acceptable and realistic).
+const PUTTER_MAX_YD := 25.0
 
 
 static func is_wedge_family(club_name: String) -> bool:
@@ -172,6 +174,11 @@ static func recommended_power(remaining_yd: float, club_max_yards: float, lie: S
 	var wind_yards := 0.0
 	if lie != "Green":
 		wind_yards = -wind.y * 0.35 + absf(wind.x) * 0.08
+	# Putts get their own floor — 2 ft (a real tap-in), not the full-shot 2 yd / 0.05
+	# floor. lie_multiplier("Green") == 1.0, so effective_max == club_max_yards here.
+	if lie == "Green":
+		var need_putt := maxf(remaining_yd, 0.667)
+		return clampf(need_putt / effective_max, 0.0267, 1.0)
 	var need := maxf(remaining_yd + wind_yards, 2.0)
 	return clampf(need / effective_max, 0.05, 1.0)
 

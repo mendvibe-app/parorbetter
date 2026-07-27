@@ -21,8 +21,8 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 |------|--------|
 | Full-swing tempo target | `TempoGrade.TARGET_FULL` (3.0); tol half-width `TOL_FULL` (1.1 → accept ~1.9–4.1 at full balance; 14-hcp miss model) |
 | Chip tempo target | `TempoGrade.TARGET_SHORT` (2.0); `TOL_SHORT` (0.85) |
-| Putt stroke (amplitude) | `PuttStroke` absolute linear pad (`marker_frac` / `power_from_frac`); soft ticks `SCALE_LABELED_FT` / `SCALE_TICK_FT`; line via `arc_allowance` |
-| Putter max | `BallPhysics.PUTTER_MAX_YD` (40.0 → 120 ft); soft scale labels/ticks in `PuttStroke.SCALE_*_FT` |
+| Putt stroke (amplitude) | `PuttStroke` absolute log pad (`marker_frac` / `power_from_frac`, `_power_to_u` / `_u_to_power` + `BEND`); soft ticks `SCALE_LABELED_FT` / `SCALE_TICK_FT`; line via `arc_allowance` |
+| Putter max | `BallPhysics.PUTTER_MAX_YD` (25.0 → 75 ft); soft scale labels/ticks in `PuttStroke.SCALE_*_FT` |
 | Tap-in fast path | `GameState.tap_in_yd` (4.0) + `tap_in_break` (0.12) |
 | Pure balance gate | `TempoGrade.PURE_BALANCE` / `PuttStroke.PURE_BALANCE` / `ShotRoutine.PURE_BALANCE` (0.72) |
 | Dispersion circle (full shot) | `GameState.AIM_RADIUS_WEAK_YD/MID/PRO` (40 / 22 / 10 yd); `get_aim_radius_yards()` |
