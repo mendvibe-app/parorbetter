@@ -88,6 +88,13 @@ def main() -> int:
     assert "Gradient.new()" in HOLE
     assert "_pin_ref_line.gradient = null" in refresh
 
+    # Cone is tight at the ball and widens to exactly match the dispersion circle's
+    # radius at the tip — not a stylized fixed-width taper (real-golf reasoning: takeoff
+    # direction reads easily by eye, landing footprint is the genuinely uncertain part).
+    assert "10.0 * inv_z, radius_px, _power_previewing" in refresh
+    assert "far_w := far_half_w" in AIM
+    assert "far_half_w * (0.7 if power_preview else 1.0)" not in AIM
+
     print("aim_control_check: ok")
     return 0
 

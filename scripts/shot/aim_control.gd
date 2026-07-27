@@ -66,15 +66,18 @@ static func retarget_bearing(from: Vector2, world: Vector2, lock_yards: float) -
 	return point_along_bearing(from, bearing, lock_yards)
 
 
-## Directional aim wedge: wide near ball, tapers into the dispersion circle.
+## Directional aim wedge: tight at the ball (takeoff direction is easy to read),
+## fanning out to the dispersion circle's own radius at the tip — the widest point
+## of the cone is exactly as wide as the projected landing area, not a stylized taper.
 ## shape_bend −draw / +fade (mid bulge only). Tip stays on from→to so cone meets the circle.
-## power_preview sharpens (narrower, denser) once % is live.
+## power_preview sharpens the near end (narrower, denser) once % is live; far end stays
+## locked to far_half_w always, so the cone↔circle width match never goes stale mid-swing.
 static func make_aim_cone(
 	from: Vector2,
 	to: Vector2,
 	shape_bend: float = 0.0,
-	near_half_w: float = 42.0,
-	far_half_w: float = 14.0,
+	near_half_w: float = 10.0,
+	far_half_w: float = 40.0,
 	power_preview: bool = false
 ) -> Dictionary:
 	var along := to - from
@@ -95,7 +98,7 @@ static func make_aim_cone(
 	var tip := from + dir * tip_len
 	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.08)
 	var near_w := near_half_w * (0.55 if power_preview else 1.0)
-	var far_w := far_half_w * (0.7 if power_preview else 1.0)
+	var far_w := far_half_w
 	var pts := PackedVector2Array([
 		from - right * near_w,
 		from + right * near_w,
