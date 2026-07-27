@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Contract check for putt stroke — absolute linear pad, soft ticks, amplitude tiers."""
+"""Contract check for putt stroke — absolute log pad, soft ticks, amplitude tiers."""
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -13,23 +14,27 @@ REPORT = DIR.joinpath("../systems/shot_report.gd").read_text(encoding="utf-8")
 METER = DIR.joinpath("meter_display.gd").read_text(encoding="utf-8")
 HOLE = DIR.joinpath("../course/hole_controller.gd").read_text(encoding="utf-8")
 
-MARKER_MIN = 0.22
+MARKER_MIN = 0.26
 MARKER_MAX = 0.88
-POWER_FLOOR = 0.05
+POWER_FLOOR = 0.0267
 BAND_HALF = 0.06
 BAND_PERFECT = 0.50
 BAND_GOOD = 1.15
 ARC_FLOOR = 0.10
 ARC_SCALE = 0.16
-CLUB_MAX_YD = 40.0
+CLUB_MAX_YD = 25.0
+BEND = 1.0
 
 
 def power_to_u(committed_power: float) -> float:
-    return min(max((committed_power - POWER_FLOOR) / max(1.0 - POWER_FLOOR, 0.001), 0.0), 1.0)
+    p = min(max(committed_power, POWER_FLOOR), 1.0)
+    u = math.log(p / POWER_FLOOR) / math.log(1.0 / POWER_FLOOR)
+    return min(max(u, 0.0), 1.0) ** BEND
 
 
 def u_to_power(u: float) -> float:
-    return POWER_FLOOR + (1.0 - POWER_FLOOR) * min(max(u, 0.0), 1.0)
+    lin = min(max(u, 0.0), 1.0) ** (1.0 / BEND)
+    return POWER_FLOOR * (1.0 / POWER_FLOOR) ** lin
 
 
 def marker_frac(committed_power: float) -> float:
@@ -68,15 +73,15 @@ def contact_tier(abs_n: float, frac_err: float, incomplete: bool = False) -> str
 
 
 def main() -> int:
-    assert "MARKER_MIN_FRAC := 0.22" in PUTT
+    assert "MARKER_MIN_FRAC := 0.26" in PUTT
     assert "MARKER_MAX_FRAC := 0.88" in PUTT
     assert "MARKER_ON_PACE_FRAC" not in PUTT
     assert "SCALE_MULS" not in PUTT
     assert "power_mul_from_frac" not in PUTT
     assert "frac_for_relative_ft" not in PUTT
     assert "relative_scale_ticks" not in PUTT
-    assert "SCALE_LABELED_FT := [10, 20, 40, 80]" in PUTT
-    assert "SCALE_TICK_FT := [60, 100]" in PUTT
+    assert "SCALE_LABELED_FT := [3, 6, 12, 25, 50]" in PUTT
+    assert "SCALE_TICK_FT := [8, 18, 70]" in PUTT
     assert "func power_from_frac" in PUTT
     assert "func frac_for_ft" in PUTT
     assert "BAND_HALF := 0.06" in PUTT
@@ -110,7 +115,7 @@ def main() -> int:
     assert "draw_line(mark, edge" in tick_draw
     assert "frac <= PuttStroke.MARKER_MIN_FRAC" in tick_draw, "skip floor-collapsed labels"
     assert "LABEL_PX := 22" in tick_draw
-    # Labeled marks stay readable on the linear pad (≈676px gesture → ~27px for 10→20)
+    # Labeled marks stay readable on the log pad
     assert frac_for_ft(20.0) - frac_for_ft(10.0) > 0.05
     assert frac_for_ft(40.0) - frac_for_ft(20.0) > 0.10
     assert "_putt_follow_cap_frac" in GESTURE
@@ -125,17 +130,17 @@ def main() -> int:
     assert 'visible = p_type != "putt"' in METER or "visible = p_type != \"putt\"" in METER
     assert "Address · feel your pace · through the ball." in ROUTINE
 
-    # Absolute map: 10 ft and 100 ft sit at different pad marks
+    # Absolute map: 10 ft and 70 ft (near the new 75 ft ceiling) sit at different pad marks
     p10 = (10.0 / 3.0) / CLUB_MAX_YD
-    p100 = (100.0 / 3.0) / CLUB_MAX_YD
+    p70 = (70.0 / 3.0) / CLUB_MAX_YD
     f10 = marker_frac(p10)
-    f100 = marker_frac(p100)
-    assert f100 > f10 + 0.15, (f10, f100)
+    f70 = marker_frac(p70)
+    assert f70 > f10 + 0.15, (f10, f70)
     assert f10 > MARKER_MIN
-    assert f100 < MARKER_MAX
+    assert f70 < MARKER_MAX
 
     # Round-trip power ↔ frac
-    for p in (0.05, 0.25, 0.5, 0.75, 1.0):
+    for p in (POWER_FLOOR, 0.05, 0.25, 0.5, 0.75, 1.0):
         f = marker_frac(p)
         back = power_from_frac(f)
         assert abs(back - p) < 1e-5, (p, f, back)

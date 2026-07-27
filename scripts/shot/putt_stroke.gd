@@ -2,14 +2,19 @@ class_name PuttStroke
 extends RefCounted
 
 ## Putting stroke grade — amplitude (power) + arc path (line); tempo explains a miss.
-## Absolute linear pad: soft ticks are landmarks; you guess where THIS putt sits.
+## Absolute log pad: soft ticks are landmarks; you guess where THIS putt sits.
 
-## Pad marker range (fraction of lane). Floor stays above TempoGesture.MIN_BACKSWING_FRAC.
-const MARKER_MIN_FRAC := 0.22
+## Pad marker range (fraction of lane). MIN_BACKSWING_FRAC (0.14 of pad height)
+## is ~0.20 of lane fraction (lane = 0.70 of pad height) — floor needs real
+## headroom above that or a tap-in target sits right on "didn't register."
+const MARKER_MIN_FRAC := 0.26
 const MARKER_MAX_FRAC := 0.88
 ## Committed-power floor used in the map (matches recommended_power clamp).
-const POWER_FLOOR := 0.05
+## 2 ft at PUTTER_MAX_YD (25 yd / 75 ft) — a real tap-in, not a 6 ft floor.
+const POWER_FLOOR := 0.0267
 ## Half-width of accept band in pad-fraction space. Drawn = graded.
+## Log map makes this a percentage band (~±40% of the putt) rather than the old
+## fixed ±10 ft — tuning candidate for a follow-up pass.
 const BAND_HALF := 0.06
 ## Contact tiers by |frac_err| / BAND_HALF (same shape as TempoGrade bands).
 const BAND_PERFECT := 0.50
@@ -24,9 +29,11 @@ const TEMPO_BIAS_MAX := 0.08
 const PURE_BALANCE := 0.72
 ## Display only — physics stays yards; golfers read putts in feet.
 const FT_PER_YD := 3.0
-## Soft pad scale: octave-ish labels so CAPTION digits don't stack on the linear map.
-const SCALE_LABELED_FT := [10, 20, 40, 80]
-const SCALE_TICK_FT := [60, 100]
+## Soft pad scale: spaced for the log curve (linear-pad spacing bunches up on it).
+const SCALE_LABELED_FT := [3, 6, 12, 25, 50]
+const SCALE_TICK_FT := [8, 18, 70]
+## Curve shape on top of the log map — pow(u, BEND) / pow(u, 1/BEND). 1.0 = pure log.
+const BEND := 1.0
 
 
 static func yd_to_ft(yd: float) -> float:
@@ -38,16 +45,20 @@ static func ft_to_yd(ft: float) -> float:
 
 
 static func _power_to_u(committed_power: float) -> float:
-	## Linear u in [0,1] from power floor → full.
-	return clampf((committed_power - POWER_FLOOR) / maxf(1.0 - POWER_FLOOR, 0.001), 0.0, 1.0)
+	## Log u in [0,1] from power floor → full — constant thumb error → constant % distance error.
+	var p := clampf(committed_power, POWER_FLOOR, 1.0)
+	var u := log(p / POWER_FLOOR) / log(1.0 / POWER_FLOOR)
+	return pow(clampf(u, 0.0, 1.0), BEND)
 
 
 static func _u_to_power(u: float) -> float:
-	return POWER_FLOOR + (1.0 - POWER_FLOOR) * clampf(u, 0.0, 1.0)
+	## Exact inverse of _power_to_u.
+	var lin := pow(clampf(u, 0.0, 1.0), 1.0 / BEND)
+	return POWER_FLOOR * pow(1.0 / POWER_FLOOR, lin)
 
 
 static func marker_frac(committed_power: float) -> float:
-	## Linear: short putts low on pad, lags high — feel/guess, not mid-lane answer.
+	## Log-spaced: short putts low on pad, lags high — feel/guess, not mid-lane answer.
 	var u := _power_to_u(committed_power)
 	return MARKER_MIN_FRAC + (MARKER_MAX_FRAC - MARKER_MIN_FRAC) * u
 
@@ -59,7 +70,7 @@ static func power_from_frac(frac: float) -> float:
 	return _u_to_power(t)
 
 
-static func frac_for_ft(ft: float, club_max_yd: float = 40.0) -> float:
+static func frac_for_ft(ft: float, club_max_yd: float = BallPhysics.PUTTER_MAX_YD) -> float:
 	## Pad fraction for a putt length — same map grade uses (drawn = graded).
 	var yd := ft_to_yd(ft)
 	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, 1.0)

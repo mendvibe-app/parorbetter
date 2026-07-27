@@ -2,6 +2,7 @@
 """Contract check: putt pace is real (fixed max) and MISS doesn't triple-stack distance."""
 from __future__ import annotations
 
+import math
 import sys
 from pathlib import Path
 
@@ -10,12 +11,56 @@ PHYS = DIR.joinpath("ball_physics.gd").read_text(encoding="utf-8")
 GRADE = DIR.joinpath("../shot/tempo_grade.gd").read_text(encoding="utf-8")
 HOLE = DIR.joinpath("../course/hole_controller.gd").read_text(encoding="utf-8")
 
-PUTTER_MAX_YD = 40.0
+PUTTER_MAX_YD = 25.0
+POWER_FLOOR = 0.0267
+MARKER_MIN = 0.26
+MARKER_MAX = 0.88
+BEND = 1.0
 
 
 def recommended_power(remaining_yd: float, club_max: float) -> float:
-    need = max(remaining_yd, 2.0)
-    return min(max(need / club_max, 0.05), 1.0)
+    # Putt path's own floor: 2 ft (0.667 yd), not the full-shot 2 yd / 0.05 floor.
+    need = max(remaining_yd, 0.667)
+    return min(max(need / club_max, POWER_FLOOR), 1.0)
+
+
+def power_to_u(committed_power: float) -> float:
+    p = min(max(committed_power, POWER_FLOOR), 1.0)
+    u = math.log(p / POWER_FLOOR) / math.log(1.0 / POWER_FLOOR)
+    return min(max(u, 0.0), 1.0) ** BEND
+
+
+def u_to_power(u: float) -> float:
+    lin = min(max(u, 0.0), 1.0) ** (1.0 / BEND)
+    return POWER_FLOOR * (1.0 / POWER_FLOOR) ** lin
+
+
+def marker_frac(committed_power: float) -> float:
+    u = power_to_u(committed_power)
+    return MARKER_MIN + (MARKER_MAX - MARKER_MIN) * u
+
+
+def power_from_frac(frac: float) -> float:
+    span = MARKER_MAX - MARKER_MIN
+    t = min(max((frac - MARKER_MIN) / max(span, 0.001), 0.0), 1.0)
+    return u_to_power(t)
+
+
+def frac_for_ft(ft: float, club_max_yd: float = PUTTER_MAX_YD) -> float:
+    yd = ft / 3.0
+    power = min(max(yd / max(club_max_yd, 1.0), POWER_FLOOR), 1.0)
+    return marker_frac(power)
+
+
+def old_linear_frac_for_ft(ft: float, club_max_yd: float = 40.0) -> float:
+    """Pre-change mapping, for the gap-widening comparison below."""
+    old_floor = 0.05
+    old_min = 0.22
+    old_max = 0.88
+    yd = ft / 3.0
+    power = min(max(yd / max(club_max_yd, 1.0), old_floor), 1.0)
+    u = min(max((power - old_floor) / max(1.0 - old_floor, 0.001), 0.0), 1.0)
+    return old_min + (old_max - old_min) * u
 
 
 def putt_roll_yards(committed_power: float, tempo_power_mul: float, contact: str) -> float:
@@ -30,14 +75,14 @@ def putt_roll_yards(committed_power: float, tempo_power_mul: float, contact: str
 
 
 def main() -> int:
-    assert "PUTTER_MAX_YD := 40.0" in PHYS
+    assert "PUTTER_MAX_YD := 25.0" in PHYS
     assert "remaining_yd * 1.6" not in PHYS
     assert "max_yards\": PUTTER_MAX_YD" in PHYS or "PUTTER_MAX_YD" in PHYS
 
     # Fixed max → short vs long putts commit different %
     p3 = recommended_power(3.0, PUTTER_MAX_YD)
     p20 = recommended_power(20.0, PUTTER_MAX_YD)
-    assert abs(p3 - 3.0 / PUTTER_MAX_YD) < 1e-6 or abs(p3 - max(3.0, 2.0) / PUTTER_MAX_YD) < 1e-6
+    assert abs(p3 - 3.0 / PUTTER_MAX_YD) < 1e-6 or abs(p3 - max(3.0, 0.667) / PUTTER_MAX_YD) < 1e-6
     assert p20 > p3 + 0.2, (p3, p20)
     assert abs(p20 - 20.0 / PUTTER_MAX_YD) < 1e-6
 
@@ -85,12 +130,15 @@ def main() -> int:
     # Internal pace still computed for grading (aim distance → committed_power)
     assert "aim_yd" in HOLE or "distance_to(_aim_target)" in HOLE
 
-    # Long lag reachable: 95 ft under putter max with pad room above the marker
-    assert PUTTER_MAX_YD * 3.0 >= 95.0
+    # Long lag reachable: putter max is 75 ft (25 yd) with headroom past the hole;
+    # putts beyond 75 ft clamp to full pad (acceptable/realistic — was 120 ft ceiling).
+    assert PUTTER_MAX_YD * 3.0 >= 75.0
+    p60 = recommended_power(60.0 / 3.0, PUTTER_MAX_YD)
+    assert p60 < 0.95, p60  # headroom past the hole for a realistic long lag
     p95 = recommended_power(95.0 / 3.0, PUTTER_MAX_YD)
-    assert p95 < 0.95, p95  # headroom past the hole
-    assert "SCALE_LABELED_FT := [10, 20, 40, 80]" in PUTT
-    assert "SCALE_TICK_FT := [60, 100]" in PUTT
+    assert p95 == 1.0, p95  # beyond 75 ft clamps to full pad
+    assert "SCALE_LABELED_FT := [3, 6, 12, 25, 50]" in PUTT
+    assert "SCALE_TICK_FT := [8, 18, 70]" in PUTT
     assert "MARKER_ON_PACE_FRAC" not in PUTT
     assert "power_from_frac" in PUTT
     assert "frac_for_ft" in PUTT
@@ -129,6 +177,27 @@ def main() -> int:
     # Practice green sized to match; start stays on surface
     assert "d.green_radius_x = 38.0" in HOLE
     assert "yards_to_pixels(12.0)" in HOLE
+
+    # Log map round-trips exactly (u <-> power are inverse for any BEND)
+    for p in (POWER_FLOOR, 0.05, 0.1, 0.25, 0.5, 0.75, 1.0):
+        back = u_to_power(power_to_u(p))
+        assert abs(back - p) < 1e-6, (p, back)
+
+    # 6 ft vs 8 ft pad gap is now thumb-resolvable — at least 3x the old linear gap
+    new_gap = frac_for_ft(8.0) - frac_for_ft(6.0)
+    old_gap = old_linear_frac_for_ft(8.0) - old_linear_frac_for_ft(6.0)
+    assert new_gap >= old_gap * 3.0, (new_gap, old_gap)
+
+    # Log invariant: a fixed pad-space nudge is a fixed % distance change,
+    # whether the putt is short, mid, or long.
+    delta = 0.03
+    ratios = []
+    for ft in (6.0, 20.0, 60.0):
+        target = frac_for_ft(ft)
+        p_target = power_from_frac(target)
+        p_nudged = power_from_frac(target + delta)
+        ratios.append(p_nudged / p_target)
+    assert max(ratios) - min(ratios) < 1e-6, ratios
 
     print("putt_pace_check: ok")
     return 0
