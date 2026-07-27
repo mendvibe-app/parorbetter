@@ -1230,8 +1230,11 @@ func _refresh_aim_visuals() -> void:
 		_set_aim_visuals_visible(true)
 	else:
 		_pin_ref_line.gradient = null
+		# Cone's widest point (tip) matches the dispersion circle's own radius exactly —
+		# tight takeoff read at the ball, fanning out to the real landing-area width.
+		var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
 		var cone: Dictionary = AimControl.make_aim_cone(
-			from, to, _aim_shape_bend(), 42.0 * inv_z, 16.0 * inv_z, _power_previewing
+			from, to, _aim_shape_bend(), 10.0 * inv_z, radius_px, _power_previewing
 		)
 		_aim_cone.polygon = cone["points"]
 		_aim_cone.vertex_colors = cone["colors"]
@@ -1251,7 +1254,6 @@ func _refresh_aim_visuals() -> void:
 		_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
 		_pin_ref_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
 		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.22)
-		var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
 		_aim_circle.points = AimControl.make_circle_points(to, radius_px)
 		_aim_circle.default_color = Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
 		_set_aim_visuals_visible(true)
