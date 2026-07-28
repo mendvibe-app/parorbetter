@@ -123,6 +123,14 @@ var _max_lateral: float = 0.0
 var _marker_crossed: bool = false
 ## msec when axis locked — brief ball pop-in scale.
 var _ball_pop_at: int = 0
+## Fastest speed reached during the backswing — baseline for the transition check.
+var _peak_vel: float = 0.0
+## Speed at the exact moment of reversal — compared against _peak_vel to grade
+## "did you slow down before turning around" instead of the reversal angle itself.
+var _vel_at_top: float = 0.0
+## Skips one jerk sample right after the mandatory reversal — same spirit as the
+## axis-lock _disp seed: don't let a detection-timing artifact read as erratic swing.
+var _skip_jerk_frame: bool = false
 
 
 func _ready() -> void:
@@ -277,6 +285,9 @@ func reset() -> void:
 	_max_lateral = 0.0
 	_marker_crossed = false
 	_ball_pop_at = 0
+	_peak_vel = 0.0
+	_vel_at_top = 0.0
+	_skip_jerk_frame = false
 	queue_redraw()
 	trail_updated.emit(trail)
 	live_changed.emit()
@@ -486,6 +497,9 @@ func _update(pos: Vector2) -> void:
 	var accel := (_vel - _prev_vel) / dt
 	_max_accel = maxf(_max_accel, absf(accel) / maxf(size.y, 1.0))
 
+	if not had_top:
+		_peak_vel = maxf(_peak_vel, absf(_vel))
+
 	# Lateral (perp to stroke axis) — putt line grade. Putt axis = lane.
 	var perp := Vector2(-_axis.y, _axis.x)
 	var lat := delta.dot(perp) / maxf(size.y, 1.0)
@@ -496,8 +510,11 @@ func _update(pos: Vector2) -> void:
 	if seg.length_squared() > 4.0:
 		var seg_dir := seg.normalized()
 		if _prev_seg_dir.length_squared() > 0.5:
-			var ang := absf(_prev_seg_dir.angle_to(seg_dir))
-			_max_jerk = maxf(_max_jerk, ang)
+			if _skip_jerk_frame:
+				_skip_jerk_frame = false
+			else:
+				var ang := absf(_prev_seg_dir.angle_to(seg_dir))
+				_max_jerk = maxf(_max_jerk, ang)
 		_prev_seg_dir = seg_dir
 
 	if _disp >= _peak_disp:
@@ -521,6 +538,8 @@ func _update(pos: Vector2) -> void:
 		var peaked := _disp < _peak_disp - _deadzone() * 0.15 and _vel < 0.0
 		if reversing or peaked:
 			had_top = true
+			_vel_at_top = absf(_vel)
+			_skip_jerk_frame = true
 			_t_top = now
 			_top_flash_until = Time.get_ticks_msec() + 320
 			moment.emit("top")
@@ -596,6 +615,8 @@ func _finish_impact(now: float, incomplete: bool) -> void:
 		"follow_cap_frac": _putt_follow_cap_frac() if _is_putt() else 1.0,
 		"max_lateral": _max_lateral,
 		"incomplete": incomplete,
+		"vel_at_top": _vel_at_top,
+		"peak_vel": _peak_vel,
 	}
 	moment.emit("impact")
 	dragging = false
