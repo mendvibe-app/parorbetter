@@ -31,9 +31,39 @@ const POWER_POCKET_HI := 0.92
 ## longer than 75 ft clamp to full pad, which is acceptable and realistic).
 const PUTTER_MAX_YD := 25.0
 
+## Short display labels for compact UI (Club Coach). Falls back to the full name.
+const CLUB_ABBR := {
+	"Driver": "D",
+	"3-Wood": "3W",
+	"Hybrid": "H",
+	"5-Iron": "5I",
+	"6-Iron": "6I",
+	"7-Iron": "7I",
+	"8-Iron": "8I",
+	"9-Iron": "9I",
+	"Pitching Wedge": "PW",
+	"Gap/Sand Wedge": "GSW",
+	"Putter": "P",
+}
+
 
 static func is_wedge_family(club_name: String) -> bool:
 	return club_name.contains("Wedge")
+
+
+static func club_abbr(club_name: String) -> String:
+	return CLUB_ABBR.get(club_name, club_name)
+
+
+## Sort key for longest→shortest club ordering (Club Coach lists). BAG is already
+## longest→shortest; Putter sorts last regardless of its short max_yards.
+static func club_sort_key(club_name: String) -> int:
+	for i in BAG.size():
+		if String(BAG[i]["name"]) == club_name:
+			return i
+	if club_name == "Putter":
+		return BAG.size()
+	return BAG.size() + 1
 
 
 ## Realistic full-width (left-right) landing-pattern spread in yards for a

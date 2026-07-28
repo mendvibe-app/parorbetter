@@ -195,7 +195,7 @@ func _process(_delta: float) -> void:
 func _club_coach_dump() -> String:
 	var clubs: Dictionary = GameState.club_coach.clubs
 	var names := clubs.keys()
-	names.sort()
+	names.sort_custom(func(a, b): return BallPhysics.club_sort_key(a) < BallPhysics.club_sort_key(b))
 	var lines: PackedStringArray = PackedStringArray()
 	for club_name in names:
 		var stats: Dictionary = clubs[club_name]
@@ -217,7 +217,7 @@ func _club_coach_dump() -> String:
 		var path_word := "slice bias" if path_avg > 0.0 else ("hook bias" if path_avg < 0.0 else "neutral")
 		var tempo_word := "rushed" if tempo_avg < 0.0 else ("lingering" if tempo_avg > 0.0 else "neutral")
 		var tip := ClubCoachLog.resolve_tip(stats)
-		lines.append("%s — %d shots" % [club_name.to_upper(), shots])
+		lines.append("%s — %d shots" % [BallPhysics.club_abbr(club_name), shots])
 		lines.append("  avg %d yd | contact: %s" % [
 			int(ClubCoachLog.avg(stats.get("yardage_history", []))),
 			" / ".join(contact_bits),

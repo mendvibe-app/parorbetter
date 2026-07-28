@@ -89,7 +89,7 @@ func _rebuild_list() -> void:
 
 	var clubs: Dictionary = GameState.club_coach.clubs
 	var names := clubs.keys()
-	names.sort()
+	names.sort_custom(func(a, b): return BallPhysics.club_sort_key(a) < BallPhysics.club_sort_key(b))
 
 	var any_shots := false
 	for club_name in names:
@@ -116,7 +116,7 @@ func _build_row(club_name: String, stats: Dictionary) -> Control:
 	head.add_theme_font_size_override("font_size", UiScale.BODY)
 	var avg_yd := int(ClubCoachLog.avg(stats.get("yardage_history", [])))
 	var shots := int(stats.get("shots_logged", 0))
-	head.text = "%s — avg %d yd (%d shots)" % [club_name, avg_yd, shots]
+	head.text = "%s — avg %d yd (%d shots)" % [BallPhysics.club_abbr(club_name), avg_yd, shots]
 	row.add_child(head)
 
 	if club_name == "Putter":
