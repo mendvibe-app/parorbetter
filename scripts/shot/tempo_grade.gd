@@ -51,6 +51,17 @@ static func base_tolerance(shot_type: String) -> float:
 	return TOL_SHORT if shot_type == "putt" or shot_type == "pitch" else TOL_FULL
 
 
+## Minimum backswing/follow-through length (fraction of pad size.y) to avoid the
+## balance() short-swing penalty. Single source of truth — grading and the pad's
+## drawn floor markers (tempo_gesture.gd) both read from here.
+static func bs_floor(shot_type: String) -> float:
+	return 0.10 if shot_type == "putt" or shot_type == "pitch" else 0.18
+
+
+static func ft_floor(shot_type: String) -> float:
+	return 0.04 if shot_type == "putt" or shot_type == "pitch" else 0.08
+
+
 static func ratio(sample: Dictionary) -> float:
 	var bs: float = float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))
 	var ds: float = float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))
@@ -71,14 +82,14 @@ static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String 
 	var incomplete: bool = bool(sample.get("incomplete", false))
 	# Short strokes are shorter — don't grade putt/pitch length against a full-swing pad.
 	var short_game := shot_type == "putt" or shot_type == "pitch"
-	var bs_floor := 0.10 if short_game else 0.18
-	var ft_floor := 0.04 if short_game else 0.08
+	var floor_bs := bs_floor(shot_type)
+	var floor_ft := ft_floor(shot_type)
 
 	# ponytail: accel/jerk thresholds are playtest knobs — calibrate on-device
 	var accel_pen := clampf((accel - 8.0) / 24.0, 0.0, 1.0) * t
 	var jerk_pen := clampf((jerk - 0.6) / 1.4, 0.0, 1.0) * t
-	var short_bs := clampf((bs_floor - bs_len) / bs_floor, 0.0, 1.0)
-	var short_ft := 0.0 if incomplete else clampf((ft_floor - ft_len) / ft_floor, 0.0, 1.0)
+	var short_bs := clampf((floor_bs - bs_len) / floor_bs, 0.0, 1.0)
+	var short_ft := 0.0 if incomplete else clampf((floor_ft - ft_len) / floor_ft, 0.0, 1.0)
 	# Incomplete still hurts; short game less — early release is common on a putt stroke.
 	var incomplete_pen := (0.30 if short_game else 0.55) if incomplete else 0.0
 
@@ -153,9 +164,8 @@ static func grade(
 	if bal < 0.35:
 		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
 
-	var short_game := shot_type == "putt" or shot_type == "pitch"
-	var bs_floor := 0.10 if short_game else 0.18
-	var short_bs := clampf((bs_floor - float(sample.get("backswing_len", 0.0))) / bs_floor, 0.0, 1.0)
+	var floor_bs := bs_floor(shot_type)
+	var short_bs := clampf((floor_bs - float(sample.get("backswing_len", 0.0))) / floor_bs, 0.0, 1.0)
 
 	return {
 		"ratio": r,
