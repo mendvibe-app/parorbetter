@@ -102,6 +102,7 @@ func begin_shot(p_practice: bool = false) -> void:
 	if shot_type == "putt" or shot_type == "chip":
 		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
 		tempo_gesture.putt_show_marker = practice_mode
+		tempo_gesture.club_max_yards = club_max_yards
 	else:
 		tempo_gesture.putt_show_marker = false
 	tempo_gesture.set_enabled(true)
