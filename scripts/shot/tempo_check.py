@@ -364,8 +364,14 @@ def main() -> int:
     assert "match the ghost through" not in GRADE
     assert "ghost down" not in GRADE
     assert "%dms back / %dms thru" in GRADE
-    assert 'y := 0.22 if _is_putt() else 0.18' in GESTURE.split("func address_hint")[1].split("func ")[0]
-    assert 'y := 0.92 if _is_putt() else 0.78' in GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert (
+        'y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.18)'
+        in GESTURE.split("func address_hint")[1].split("func ")[0]
+    )
+    assert (
+        'y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.78)'
+        in GESTURE.split("func top_hint")[1].split("func ")[0]
+    )
     # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
     assert "func _lane_project" not in GESTURE
     assert "_address = address_hint()" in GESTURE
@@ -397,13 +403,22 @@ def main() -> int:
         "ui_putt_landmark_follow.png",
         "ui_putt_lane.png",
         "ui_putt_coach_idle.png",
+        "ui_chip_landmark_start.png",
+        "ui_chip_landmark_top.png",
+        "ui_chip_landmark_through.png",
+        "ui_chip_lane.png",
+        "ui_chip_coach_idle.png",
     ):
         assert (DIR.parent.parent / "assets" / "ui" / name).is_file(), name
     assert 'res://assets/ui/ui_tempo_lane.png' in GESTURE
     assert 'res://assets/ui/ui_putt_lane.png' in GESTURE
     assert 'res://assets/ui/ui_putt_landmark_start.png' in GESTURE
+    assert 'res://assets/ui/ui_chip_lane.png' in GESTURE
+    assert 'res://assets/ui/ui_chip_landmark_start.png' in GESTURE
     assert "func _draw_putt_lane_tex" in GESTURE
     assert "func _draw_putt_arc_edges" in GESTURE
+    assert "func _draw_chip" in GESTURE
+    assert "func _is_chip" in GESTURE
     assert 'res://assets/ui/ui_tempo_coach_idle.png' in GESTURE
     assert 'res://assets/ui/ui_tempo_meter_track.png' in METER
     assert "func _draw_landmark_tex" in GESTURE
@@ -411,14 +426,17 @@ def main() -> int:
     assert (DIR.parent.parent / "assets" / "ball" / "fx_pure_burst.png").is_file()
     assert (DIR.parent.parent / "art" / "prompts" / "putt_pad.md").is_file()
 
-    for putt in (False, True):
-        addr_y = 0.22 if putt else 0.18
-        top_y = 0.92 if putt else 0.78
+    for kind in ("full", "putt", "chip"):
+        addr_y = 0.22 if kind == "putt" else (0.20 if kind == "chip" else 0.18)
+        top_y = 0.92 if kind == "putt" else (0.85 if kind == "chip" else 0.78)
         assert addr_y < top_y, "address above top (toward target)"
         assert (addr_y - top_y) < 0.0  # through = address - top → −Y (up)
-        if putt:
+        if kind in ("putt", "chip"):
             # Address leaves pad room above for a matched follow cue
-            assert addr_y > 0.12, "putt through room on-pad"
+            assert addr_y > 0.12, "%s through room on-pad" % kind
+    # Chip lane sits strictly between putt (finest resolution) and full (longest reach)
+    assert 0.18 < 0.20 < 0.22, "chip address between full and putt"
+    assert 0.78 < 0.85 < 0.92, "chip top between full and putt"
 
     # Edge rejection math — 4% floor 24px on a 1080-wide viewport
     EDGE_FRAC = 0.04
@@ -451,9 +469,10 @@ def main() -> int:
     assert "address_hint()" not in golfer_draw  # top-left, not mid-lane
     assert "_draw_golfer()" in GESTURE.split("func _draw()")[1].split("func ")[0]
     assert "_is_putt()" in GESTURE.split("func _golfer_pose_pair")[1].split("func ")[0]
+    assert "_is_chip()" in GESTURE.split("func _golfer_pose_pair")[1].split("func ")[0]
     root = DIR.parents[1]
     for pose in ("address", "mid", "top", "impact", "follow"):
-        for prefix in ("ui_golfer_", "ui_golfer_putt_"):
+        for prefix in ("ui_golfer_", "ui_golfer_putt_", "ui_golfer_chip_"):
             name = f"{prefix}{pose}.png"
             assert f'preload("res://assets/ui/{name}")' in GESTURE, name
             assert (root / "assets" / "ui" / name).is_file(), name
