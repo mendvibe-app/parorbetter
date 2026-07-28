@@ -70,9 +70,16 @@ var has_finished_course: bool = false
 
 const RECORDS_PATH := "user://records.cfg"
 
+## Per-club tendency aggregate — persists across runs, excluded from reset_run().
+var club_coach: ClubCoachLog
+## Player-facing coach card toggle (start_screen + club_select badges). Defaults off.
+var club_coach_ui_enabled: bool = false
+
 
 func _ready() -> void:
 	_load_records()
+	club_coach = ClubCoachLog.new()
+	club_coach.load_data()
 	reset_run()
 
 

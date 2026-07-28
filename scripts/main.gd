@@ -5,14 +5,22 @@ extends Node
 @onready var start_screen: Control = $UIOverlay/StartScreen
 @onready var debug_panel: Control = $UIOverlay/DebugPanel
 
+var coach_screen: CoachScreen
+
 
 func _ready() -> void:
+	coach_screen = CoachScreen.new()
+	coach_screen.name = "CoachScreen"
+	$UIOverlay.add_child(coach_screen)
+	coach_screen.dismissed.connect(_on_coach_dismissed)
+
 	hole_controller.request_next_hole.connect(_on_next_hole)
 	hole_controller.request_game_over.connect(_on_game_over)
 	game_over.restart_pressed.connect(_on_restart)
 	start_screen.start_pressed.connect(_on_start)
 	start_screen.green_pressed.connect(_on_practice_green)
 	start_screen.range_pressed.connect(_on_practice_range)
+	start_screen.coach_pressed.connect(_on_coach)
 	debug_panel.skip_hole.connect(func(): hole_controller.skip_hole())
 	debug_panel.jump_hole.connect(_on_jump)
 	debug_panel.force_perfect.connect(func(): hole_controller.debug_force_shot(true))
@@ -69,6 +77,15 @@ func _on_game_over() -> void:
 
 func _on_restart() -> void:
 	_return_to_start()
+
+
+func _on_coach() -> void:
+	start_screen.hide_screen()
+	coach_screen.present()
+
+
+func _on_coach_dismissed() -> void:
+	start_screen.show_screen()
 
 
 func _on_jump(index: int) -> void:
