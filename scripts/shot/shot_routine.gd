@@ -78,7 +78,7 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
-	# Green: feet (how golfers read putts). Full/chip stay yards.
+	# Green: feet (how golfers read putts). Full/pitch stay yards.
 	if lie == "Green":
 		info_label.text = "%d ft" % int(round(PuttStroke.yd_to_ft(aim_distance_yd)))
 	elif absf(aim_distance_yd - pin_distance_yd) < 1.5:
@@ -99,7 +99,7 @@ func begin_shot(p_practice: bool = false) -> void:
 	last_verdict.clear()
 	tempo_gesture.reset()
 	tempo_gesture.shot_type = shot_type
-	if shot_type == "putt":
+	if shot_type == "putt" or shot_type == "chip":
 		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
 		tempo_gesture.putt_show_marker = practice_mode
 	else:
@@ -107,18 +107,20 @@ func begin_shot(p_practice: bool = false) -> void:
 	tempo_gesture.set_enabled(true)
 	if meter_display:
 		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
-		if shot_type == "putt":
+		if shot_type == "putt" or shot_type == "chip":
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	# One live instruction — golf moments, not engine marks.
 	if practice_mode:
-		if shot_type == "putt":
+		if shot_type == "putt" or shot_type == "chip":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		else:
 			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
-		hint_label.text = "CHIP ~2:1 — address · to the top · through the ball."
+		hint_label.text = "CHIP — feel the distance · small stroke · through the ball."
+	elif shot_type == "pitch":
+		hint_label.text = "PITCH ~2:1 — address · to the top · through the ball."
 	else:
 		hint_label.text = "SWING ~3:1 — address · to the top · through the ball."
 	phase_changed.emit("active")
@@ -183,15 +185,17 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		bal_tighten = float(GameState.debug_balance_tighten)
 
 	var verdict: Dictionary
-	if shot_type == "putt":
-		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards)
+	if shot_type == "putt" or shot_type == "chip":
+		var chip_tol := PuttStroke.CHIP_TOL_SCALE if shot_type == "chip" else 1.0
+		var chip_arc := PuttStroke.CHIP_ARC_SCALE if shot_type == "chip" else 1.0
+		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards, chip_tol, chip_arc)
 	else:
 		verdict = TempoGrade.grade(sample, shot_type, timing_scale, tol_scale, bal_tighten)
 	last_verdict = verdict
 	GameState.last_tempo_metrics = verdict
 
 	if GameState.force_perfect:
-		if shot_type == "putt":
+		if shot_type == "putt" or shot_type == "chip":
 			var tf := PuttStroke.marker_frac(committed_power)
 			verdict = {
 				"ratio": 1.0,
@@ -222,7 +226,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		last_verdict = verdict
 		GameState.last_tempo_metrics = verdict
 	elif GameState.force_mishit:
-		if shot_type == "putt":
+		if shot_type == "putt" or shot_type == "chip":
 			var tf2 := PuttStroke.marker_frac(committed_power)
 			verdict = {
 				"ratio": 0.55,

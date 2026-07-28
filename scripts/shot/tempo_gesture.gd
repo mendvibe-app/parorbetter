@@ -47,6 +47,29 @@ const TEX_GOLFER_PUTT_MID := preload("res://assets/ui/ui_golfer_putt_mid.png")
 const TEX_GOLFER_PUTT_TOP := preload("res://assets/ui/ui_golfer_putt_top.png")
 const TEX_GOLFER_PUTT_IMPACT := preload("res://assets/ui/ui_golfer_putt_impact.png")
 const TEX_GOLFER_PUTT_FOLLOW := preload("res://assets/ui/ui_golfer_putt_follow.png")
+const TEX_CHIP_START := preload("res://assets/ui/ui_chip_landmark_start.png")
+const TEX_CHIP_TOP := preload("res://assets/ui/ui_chip_landmark_top.png")
+const TEX_CHIP_THROUGH := preload("res://assets/ui/ui_chip_landmark_through.png")
+const TEX_CHIP_LANE := preload("res://assets/ui/ui_chip_lane.png")
+const TEX_CHIP_COACH := preload("res://assets/ui/ui_chip_coach_idle.png")
+const TEX_GOLFER_CHIP_ADDRESS := preload("res://assets/ui/ui_golfer_chip_address.png")
+const TEX_GOLFER_CHIP_MID := preload("res://assets/ui/ui_golfer_chip_mid.png")
+const TEX_GOLFER_CHIP_TOP := preload("res://assets/ui/ui_golfer_chip_top.png")
+const TEX_GOLFER_CHIP_IMPACT := preload("res://assets/ui/ui_golfer_chip_impact.png")
+const TEX_GOLFER_CHIP_FOLLOW := preload("res://assets/ui/ui_golfer_chip_follow.png")
+## Chip pad palette — warm sand/wedge tones (art/STYLE.md Sand anchors), so chip
+## reads distinct from putt's cool water palette at a glance. Current ui_chip_*
+## art is a recolor placeholder of the putt set (see art/prompts/chip_pad.md)
+## until dedicated chip art is generated.
+const CHIP_BG := Color(0.16, 0.12, 0.07, 0.78)
+const CHIP_BORDER := Color(0.83, 0.73, 0.57, 0.75)
+const CHIP_ARC_EDGE := Color(0.7, 0.55, 0.35, 0.55)
+const CHIP_FOLLOW_LINE := Color(0.85, 0.68, 0.42)
+const CHIP_FOLLOW_RING := Color(0.9, 0.78, 0.55)
+const CHIP_ADDRESS_GLOW := Color(0.85, 0.68, 0.42)
+const CHIP_MARKER_BAND := Color(0.7, 0.55, 0.3, 0.35)
+const CHIP_MARKER_TICK := Color(0.95, 0.85, 0.55, 0.95)
+const CHIP_DRAG_DOT := Color(1.0, 0.85, 0.55, 0.9)
 const BALL_POP_MS := 120.0
 const LANDMARK_DIAM := 36.0
 const GOLFER_DRAW_H := 120.0
@@ -63,7 +86,7 @@ var dragging: bool = false
 var swinging: bool = false
 var trail: PackedVector2Array = PackedVector2Array()
 var shot_type: String = "full"
-## Putt: target backswing fraction of lane (set by ShotRoutine). Unused for full/chip.
+## Putt: target backswing fraction of lane (set by ShotRoutine). Unused for full/pitch.
 var putt_target_frac: float = 0.5
 ## Practice only — scored strokes stay blind on length (no PACE tick / band).
 var putt_show_marker: bool = false
@@ -110,17 +133,22 @@ func _is_putt() -> bool:
 	return shot_type == "putt"
 
 
+func _is_chip() -> bool:
+	return shot_type == "chip"
+
+
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
-	## Putt uses more vertical span so 15 vs 30 ft is finger-resolvable.
-	## Half-pixel x so thick draw_line / nearest landmarks share one column.
-	var y := 0.22 if _is_putt() else 0.18
+	## Putt uses more vertical span so 15 vs 30 ft is finger-resolvable. Chip sits
+	## between putt and full — shorter reach than putt (no fine ft resolving needed)
+	## but shorter than full swing's lane. Starting values for playtesting (Phase 4).
+	var y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.18)
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
-	var y := 0.92 if _is_putt() else 0.78
+	var y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.78)
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
@@ -179,7 +207,7 @@ func live_ratio() -> float:
 
 
 func trail_color() -> Color:
-	if _is_putt():
+	if _is_putt() or _is_chip():
 		return _putt_trail_color()
 	var r := live_ratio()
 	if r < 0.0:
@@ -565,6 +593,10 @@ func _draw() -> void:
 		_draw_putt()
 		_draw_golfer()
 		return
+	if _is_chip():
+		_draw_chip()
+		_draw_golfer()
+		return
 	_draw_pad_bounds()
 	if active and not dragging and _t_impact < 0.0:
 		_draw_idle_coach()
@@ -629,7 +661,7 @@ func _draw_golfer_stage(stage: Rect2) -> void:
 
 
 func _golfer_pose_pair() -> Array:
-	## Returns [tex_a, tex_b, blend 0..1]. Putt uses short-stroke frames.
+	## Returns [tex_a, tex_b, blend 0..1]. Putt/chip use short-stroke frames.
 	var addr: Texture2D
 	var mid: Texture2D
 	var top: Texture2D
@@ -641,6 +673,12 @@ func _golfer_pose_pair() -> Array:
 		top = TEX_GOLFER_PUTT_TOP
 		impact = TEX_GOLFER_PUTT_IMPACT
 		follow = TEX_GOLFER_PUTT_FOLLOW
+	elif _is_chip():
+		addr = TEX_GOLFER_CHIP_ADDRESS
+		mid = TEX_GOLFER_CHIP_MID
+		top = TEX_GOLFER_CHIP_TOP
+		impact = TEX_GOLFER_CHIP_IMPACT
+		follow = TEX_GOLFER_CHIP_FOLLOW
 	else:
 		addr = TEX_GOLFER_ADDRESS
 		mid = TEX_GOLFER_MID
@@ -706,26 +744,26 @@ func _draw_putt() -> void:
 		draw_circle(_smoothed, 10.0, Color(0.7, 0.95, 1.0, 0.9))
 
 
-func _draw_putt_lane_tex(start: Vector2, top: Vector2) -> void:
+func _draw_putt_lane_tex(start: Vector2, top: Vector2, tex: Texture2D = TEX_PUTT_LANE) -> void:
 	var mid := (start + top) * 0.5
 	var dist := start.distance_to(top)
-	var tex_size := TEX_PUTT_LANE.get_size()
+	var tex_size := tex.get_size()
 	# Match mid-stroke arc width (~2 × arc_allowance(0.5) × pad) so the strip isn't thinner than the grade.
 	var sx := 56.0 / maxf(tex_size.x, 1.0)
 	var sy := dist / maxf(tex_size.y, 1.0)
 	draw_set_transform(mid, (top - start).angle() - PI * 0.5, Vector2(sx, sy))
-	draw_texture(TEX_PUTT_LANE, -tex_size * 0.5)
+	draw_texture(tex, -tex_size * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _draw_putt_arc_edges(start: Vector2, top: Vector2, edge_c: Color) -> void:
+func _draw_putt_arc_edges(start: Vector2, top: Vector2, edge_c: Color, arc_scale_mul: float = 1.0) -> void:
 	var steps := 8
 	var perp := Vector2(-(top - start).y, (top - start).x).normalized()
 	for i in range(steps):
 		var u0 := float(i) / float(steps)
 		var u1 := float(i + 1) / float(steps)
-		var a0 := PuttStroke.arc_allowance(u0) * size.y
-		var a1 := PuttStroke.arc_allowance(u1) * size.y
+		var a0 := PuttStroke.arc_allowance(u0, arc_scale_mul) * size.y
+		var a1 := PuttStroke.arc_allowance(u1, arc_scale_mul) * size.y
 		var p0: Vector2 = start.lerp(top, u0)
 		var p1: Vector2 = start.lerp(top, u1)
 		draw_line(p0 + perp * a0, p1 + perp * a1, edge_c, 2.0, true)
@@ -756,22 +794,32 @@ func _putt_follow_len(addr: Vector2) -> float:
 	return minf(want, _putt_follow_room(addr))
 
 
-func _draw_putt_follow_cue(addr: Vector2) -> void:
+func _draw_putt_follow_cue(
+	addr: Vector2,
+	line_rgb: Color = Color(0.45, 0.75, 0.9),
+	ring_rgb: Color = Color(0.55, 0.85, 1.0)
+) -> void:
 	## Soft finish past address — open ring (no slash landmark).
 	var through := _lane_through_dir()
 	var tip := addr + through * _putt_follow_len(addr)
 	var a := 0.7 if had_top else 0.45
-	draw_line(addr, tip, Color(0.45, 0.75, 0.9, 0.28 * a), 5.0, true)
-	draw_arc(tip, 11.0, 0.0, TAU, 24, Color(0.55, 0.85, 1.0, 0.5 * a), 2.5, true)
+	draw_line(addr, tip, Color(line_rgb.r, line_rgb.g, line_rgb.b, 0.28 * a), 5.0, true)
+	draw_arc(tip, 11.0, 0.0, TAU, 24, Color(ring_rgb.r, ring_rgb.g, ring_rgb.b, 0.5 * a), 2.5, true)
 
 
-func _draw_putt_address(p: Vector2, pulse: float) -> void:
+func _draw_putt_address(
+	p: Vector2,
+	pulse: float,
+	tex_start: Texture2D = TEX_PUTT_START,
+	tex_through: Texture2D = TEX_PUTT_THROUGH,
+	glow_rgb: Color = Color(0.45, 0.85, 1.0)
+) -> void:
 	if _axis_locked or _t_impact >= 0.0:
 		_draw_pad_ball(p, _ball_pop_scale())
 		return
 	if not dragging and _t_impact < 0.0:
-		draw_circle(p, 16.0 + pulse * 4.0, Color(0.45, 0.85, 1.0, 0.18 + 0.15 * pulse))
-	var tex: Texture2D = TEX_PUTT_THROUGH if had_top else TEX_PUTT_START
+		draw_circle(p, 16.0 + pulse * 4.0, Color(glow_rgb.r, glow_rgb.g, glow_rgb.b, 0.18 + 0.15 * pulse))
+	var tex: Texture2D = tex_through if had_top else tex_start
 	_draw_landmark_tex(tex, p, LANDMARK_DIAM * (1.0 + 0.08 * pulse))
 
 
@@ -825,7 +873,12 @@ func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool)
 		)
 
 
-func _draw_putt_practice_marker(start: Vector2, top: Vector2) -> void:
+func _draw_putt_practice_marker(
+	start: Vector2,
+	top: Vector2,
+	band_c: Color = Color(0.35, 0.75, 0.9, 0.35),
+	tick_c: Color = Color(0.55, 0.95, 1.0, 0.95)
+) -> void:
 	## Practice-only: PACE tick on the backswing (the length answer). No THRU destination —
 	## through is the soft follow cue; mirroring pace past address flies off-pad on long putts.
 	var tgt := clampf(putt_target_frac, PuttStroke.MARKER_MIN_FRAC, PuttStroke.MARKER_MAX_FRAC)
@@ -833,9 +886,51 @@ func _draw_putt_practice_marker(start: Vector2, top: Vector2) -> void:
 	var mark: Vector2 = start.lerp(top, tgt)
 	var band_lo: Vector2 = start.lerp(top, clampf(tgt - band, 0.0, 1.0))
 	var band_hi: Vector2 = start.lerp(top, clampf(tgt + band, 0.0, 1.0))
-	draw_line(band_lo, band_hi, Color(0.35, 0.75, 0.9, 0.35), 22.0, true)
-	var tick_c := Color(0.55, 0.95, 1.0, 0.95)
+	draw_line(band_lo, band_hi, band_c, 22.0, true)
 	draw_line(mark + Vector2(-20, 0), mark + Vector2(20, 0), tick_c, 3.5, true)
+
+
+func _draw_chip() -> void:
+	## Warm sand/wedge palette, shorter lane than putt — shares putt's amplitude-pad
+	## drawing helpers (lane, arc edges, follow cue, address ball, practice marker)
+	## parameterized with chip's own textures/colors so it reads distinct at a glance.
+	## No soft-scale ruler: PuttStroke's ft ticks are calibrated against club_max_yd,
+	## which TempoGesture doesn't have for the player's wedge (Phase 4 territory).
+	var r := Rect2(Vector2.ZERO, size).grow(-8.0)
+	draw_rect(r, CHIP_BG, true)
+	draw_rect(r, CHIP_BORDER, false, 3.0)
+
+	var start := address_hint()
+	var top := top_hint()
+	var addr := start if _axis_locked or not dragging else (
+		_address if dragging or _t_takeaway >= 0.0 else start
+	)
+	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
+
+	_draw_putt_lane_tex(start, top, TEX_CHIP_LANE)
+	_draw_putt_arc_edges(start, top, CHIP_ARC_EDGE, PuttStroke.CHIP_ARC_SCALE)
+	_draw_putt_follow_cue(addr, CHIP_FOLLOW_LINE, CHIP_FOLLOW_RING)
+
+	if putt_show_marker:
+		_draw_putt_practice_marker(start, top, CHIP_MARKER_BAND, CHIP_MARKER_TICK)
+
+	_draw_landmark_tex(
+		TEX_CHIP_TOP,
+		top if _peak_disp <= 1.0 else _lane_peak_pos(),
+		LANDMARK_DIAM
+	)
+	_draw_putt_address(addr, pulse, TEX_CHIP_START, TEX_CHIP_THROUGH, CHIP_ADDRESS_GLOW)
+
+	if active and not dragging and _t_impact < 0.0:
+		var coach_p := start.lerp(top, 0.28)
+		_draw_landmark_tex(TEX_CHIP_COACH, coach_p, 44.0, Color(1, 1, 1, 0.55 + 0.35 * pulse))
+
+	if dragging and _axis_locked:
+		draw_line(start, _lane_peak_pos(), trail_color(), 8.0, false)
+
+	_draw_trail()
+	if dragging:
+		draw_circle(_smoothed, 10.0, CHIP_DRAG_DOT)
 
 
 func _draw_tempo_ghost(looping: bool) -> void:

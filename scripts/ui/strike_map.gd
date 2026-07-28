@@ -87,7 +87,7 @@ func _set_pulse(v: float) -> void:
 
 func _vertical_frac(contact: String) -> float:
 	## Signed error from the measurement contact quality derives from:
-	## full/chip (ratio − target)/tol, putt (actual − target frac)/tol.
+	## full/pitch (ratio − target)/tol, putt (actual − target frac)/tol.
 	## Both models grade |err|/tol against the same bands, so /BAND_THIN_FAT
 	## puts THIN at the top edge, FAT at the bottom, PERFECT at center.
 	var m: Dictionary = GameState.last_tempo_metrics

@@ -14,9 +14,10 @@ Side/¾ silhouette drawn in a **top-left mini stage** (sky + grass drawn in code
 
 This is **not** the idle coach cue (`ui_tempo_coach_idle` / `ui_putt_coach_idle`). Coach stays an abstract takeaway chevron; golfer is a separate overlay.
 
-**Two swing sets:**
-- **Full / chip** — shoulder turn, long club
+**Three swing sets:**
+- **Full / pitch** — shoulder turn, long club
 - **Putt** — short putter stroke; arms stay waist–chest height
+- **Chip** — shoulders-only wedge stroke; same waist–chest arc as putt but a wedge in hand, not a putter (real-golf distinction: amplitude-controlled like putt, not a tempo swing)
 
 Required frames per set (in stroke order):
 - ADDRESS – club grounded, ready
@@ -39,6 +40,8 @@ Required frames per set (in stroke order):
   - `ui_golfer_address.png` / `_mid` / `_top` / `_impact` / `_follow`
 - Naming (putt):
   - `ui_golfer_putt_address.png` / `_mid` / `_top` / `_impact` / `_follow`
+- Naming (chip):
+  - `ui_golfer_chip_address.png` / `_mid` / `_top` / `_impact` / `_follow`
 
 ---
 
@@ -47,6 +50,7 @@ Required frames per set (in stroke order):
 - Readable at ~100–130px on-screen (Filter Off), top-left of pad.
 - Full: arms + long club carry a big arc.
 - Putt: short shaft; takeaway/top stay roughly waist–chest (no over-shoulder).
+- Chip: wedge (longer shaft than putter, chunkier clubhead) but same compact waist–chest arc as putt — the tell that separates it from putt at a glance should be the club, not a bigger swing.
 - Facing the lane (right). Leave margin so outline survives nearest scaling.
 - No face detail mush — simple cap + body blocks.
 
@@ -56,7 +60,7 @@ Required frames per set (in stroke order):
 
 ```
 flat UI overlay, crunchy true pixel golfer silhouette 128x192, side view facing right,
-hard outline, transparent background, mobile golf [full swing|putt stroke] pose,
+hard outline, transparent background, mobile golf [full swing|putt stroke|chip stroke] pose,
 [address|mid|top|impact|follow-through], same character across frames, limited STYLE palette
 ```
 
@@ -64,4 +68,6 @@ hard outline, transparent background, mobile golf [full swing|putt stroke] pose,
 
 ## 5. Output
 
-`art/generated/ui_golfer_*.png` → cleaned → `assets/ui/`. Wire in `TempoGesture._draw_golfer` / `_golfer_pose_pair` (`_is_putt()` picks set). Stage = `_draw_golfer_stage`.
+`art/generated/ui_golfer_*.png` → cleaned → `assets/ui/`. Wire in `TempoGesture._draw_golfer` / `_golfer_pose_pair` (`_is_putt()` / `_is_chip()` pick the set). Stage = `_draw_golfer_stage`.
+
+Current chip frames are placeholder art — the putt set exact-recolored into chip_pad.md's warm sand palette. Replace with dedicated chip poses (wedge in hand, per Generation Guidance above) when ready.
