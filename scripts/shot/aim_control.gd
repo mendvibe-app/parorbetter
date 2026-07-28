@@ -67,11 +67,11 @@ static func retarget_bearing(from: Vector2, world: Vector2, lock_yards: float) -
 
 
 ## Directional aim wedge: tight at the ball (takeoff direction is easy to read),
-## fanning out to the dispersion circle's own radius at the tip — the widest point
-## of the cone is exactly as wide as the projected landing area, not a stylized taper.
+## fanning out at the tip to the dispersion circle's own chord width at that point —
+## the tip corners land exactly on the circle's boundary, not past it, so cone and
+## circle read as one seamless shape instead of the cap cutting a line across the circle.
 ## shape_bend −draw / +fade (mid bulge only). Tip stays on from→to so cone meets the circle.
-## power_preview sharpens the near end (narrower, denser) once % is live; far end stays
-## locked to far_half_w always, so the cone↔circle width match never goes stale mid-swing.
+## power_preview sharpens the near end (narrower, denser) once % is live.
 static func make_aim_cone(
 	from: Vector2,
 	to: Vector2,
@@ -98,7 +98,13 @@ static func make_aim_cone(
 	var tip := from + dir * tip_len
 	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.08)
 	var near_w := near_half_w * (0.55 if power_preview else 1.0)
-	var far_w := far_half_w
+	# Tip sits before the circle's center (see tip_len above), so a flat cap at the
+	# full radius pokes its corners outside the circle while its middle sits inside —
+	# that crossing draws a visible seam through the circle's edge. Use the circle's
+	# own chord width at this offset instead, so the cap corners land exactly on the
+	# circle's boundary.
+	var tip_to_center := length - tip_len
+	var far_w := sqrt(maxf(far_half_w * far_half_w - tip_to_center * tip_to_center, 0.0))
 	var pts := PackedVector2Array([
 		from - right * near_w,
 		from + right * near_w,
