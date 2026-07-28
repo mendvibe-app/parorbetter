@@ -183,6 +183,8 @@ static func grade(
 		),
 		"backswing_ms": int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0),
 		"downswing_ms": int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0),
+		"max_accel": float(sample.get("max_accel", 0.0)),
+		"max_jerk": float(sample.get("max_jerk", 0.0)),
 	}
 
 
