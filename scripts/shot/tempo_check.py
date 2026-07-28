@@ -365,11 +365,11 @@ def main() -> int:
     assert "ghost down" not in GRADE
     assert "%dms back / %dms thru" in GRADE
     assert (
-        'y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.18)'
+        'y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.30)'
         in GESTURE.split("func address_hint")[1].split("func ")[0]
     )
     assert (
-        'y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.78)'
+        'y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.92)'
         in GESTURE.split("func top_hint")[1].split("func ")[0]
     )
     # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
@@ -427,16 +427,18 @@ def main() -> int:
     assert (DIR.parent.parent / "art" / "prompts" / "putt_pad.md").is_file()
 
     for kind in ("full", "putt", "chip"):
-        addr_y = 0.22 if kind == "putt" else (0.20 if kind == "chip" else 0.18)
-        top_y = 0.92 if kind == "putt" else (0.85 if kind == "chip" else 0.78)
+        addr_y = 0.22 if kind == "putt" else (0.20 if kind == "chip" else 0.30)
+        top_y = 0.92 if kind == "putt" else (0.85 if kind == "chip" else 0.92)
         assert addr_y < top_y, "address above top (toward target)"
         assert (addr_y - top_y) < 0.0  # through = address - top → −Y (up)
         if kind in ("putt", "chip"):
             # Address leaves pad room above for a matched follow cue
             assert addr_y > 0.12, "%s through room on-pad" % kind
-    # Chip lane sits strictly between putt (finest resolution) and full (longest reach)
-    assert 0.18 < 0.20 < 0.22, "chip address between full and putt"
-    assert 0.78 < 0.85 < 0.92, "chip top between full and putt"
+    # Full/pitch moved 0.18→0.30 address, 0.78→0.92 top (playtest): reclaims dead pad
+    # space below the old backswing landmark and gives the follow-through floor
+    # marker real room. Full now sits deepest on address and ties putt's edge on top.
+    assert 0.20 < 0.22 < 0.30, "full address now deepest (playtest move)"
+    assert 0.85 < 0.92, "chip top sits inside putt/full's shared 0.92 edge"
 
     # Edge rejection math — 4% floor 24px on a 1080-wide viewport
     EDGE_FRAC = 0.04

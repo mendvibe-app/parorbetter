@@ -145,13 +145,18 @@ func address_hint() -> Vector2:
 	## Putt uses more vertical span so 15 vs 30 ft is finger-resolvable. Chip sits
 	## between putt and full — shorter reach than putt (no fine ft resolving needed)
 	## but shorter than full swing's lane. Starting values for playtesting (Phase 4).
-	var y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.18)
+	## Full/pitch moved 0.18→0.30 (playtest): reclaims dead pad space below the old
+	## backswing landmark and gives the follow-through floor marker real room
+	## instead of overlapping the ball.
+	var y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.30)
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
-	var y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.78)
+	## Full/pitch moved 0.78→0.92 (playtest) to match address_hint()'s move — keeps
+	## the same lane length while shifting the whole lane down the pad.
+	var y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.92)
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
