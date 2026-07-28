@@ -225,6 +225,9 @@ func _club_coach_dump() -> String:
 		lines.append("  path avg %+.2f (%s) | tempo avg %+.2f (%s)" % [
 			path_avg, path_word, tempo_avg, tempo_word,
 		])
+		if club_name == "Putter":
+			var longest_ft := PuttStroke.yd_to_ft(float(stats.get("longest_made_yards", 0.0)))
+			lines.append("  longest putt made: %d ft" % int(round(longest_ft)))
 		lines.append("  → resolved tip: %s" % str(tip.get("tag", "")))
 	if lines.is_empty():
 		return "Club Coach — no shots logged yet"

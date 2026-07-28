@@ -1547,10 +1547,16 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		return
 	ball_in_flight = false
 	_set_green_book_visible(false)
-	if GameState.green_mode and pos.distance_to(_cup_pos) < CUP_RADIUS:
+	var actual := ball.distance_traveled_yards()
+	# Holed shots short-circuit below before _last_report.set_actual — record here so
+	# a made putt (the one "longest putt" actually cares about) isn't dropped.
+	var holed := pos.distance_to(_cup_pos) < CUP_RADIUS and not GameState.range_mode
+	if _last_result and _last_report:
+		GameState.club_coach.record(_last_report.club_name, _last_result, GameState.last_tempo_metrics, actual, holed)
+	if GameState.green_mode and holed:
 		_on_practice_green_holed()
 		return
-	if not GameState.range_mode and not GameState.green_mode and pos.distance_to(_cup_pos) < CUP_RADIUS:
+	if not GameState.range_mode and not GameState.green_mode and holed:
 		_on_holed_out()
 		return
 	if GameState.range_mode:
@@ -1560,11 +1566,8 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	else:
 		ball.set_lie(_classify_lie(pos))
 	_update_hud()
-	var actual := ball.distance_traveled_yards()
 	if _last_report:
 		_last_report.set_actual(actual)
-		if _last_result:
-			GameState.club_coach.record(_last_report.club_name, _last_result, GameState.last_tempo_metrics, actual)
 		GameState.last_shot_metrics["actual_yd"] = actual
 		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
 		# Panel owns the report; clearing Feedback avoids the stacked double-text bug.

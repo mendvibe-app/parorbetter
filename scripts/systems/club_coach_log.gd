@@ -23,11 +23,14 @@ func _ensure(club_name: String) -> Dictionary:
 			"path_error_history": [],
 			"tempo_err_history": [],
 			"contact_tally": {},
+			"longest_made_yards": 0.0,
 		}
 	return clubs[club_name]
 
 
-func record(club_name: String, result: ShotResult, verdict: Dictionary, actual_yards: float) -> void:
+func record(
+	club_name: String, result: ShotResult, verdict: Dictionary, actual_yards: float, holed: bool = false
+) -> void:
 	var stats := _ensure(club_name)
 	stats["shots_logged"] = int(stats["shots_logged"]) + 1
 	_push(stats["yardage_history"], actual_yards)
@@ -38,6 +41,8 @@ func record(club_name: String, result: ShotResult, verdict: Dictionary, actual_y
 	var tally: Dictionary = stats["contact_tally"]
 	var key := int(result.contact_quality)
 	tally[key] = int(tally.get(key, 0)) + 1
+	if holed:
+		stats["longest_made_yards"] = maxf(float(stats.get("longest_made_yards", 0.0)), actual_yards)
 	save_data()
 
 
@@ -118,6 +123,7 @@ func load_data() -> void:
 			"path_error_history": Array(cfg.get_value(section, "path_error_history", [])),
 			"tempo_err_history": Array(cfg.get_value(section, "tempo_err_history", [])),
 			"contact_tally": Dictionary(cfg.get_value(section, "contact_tally", {})),
+			"longest_made_yards": float(cfg.get_value(section, "longest_made_yards", 0.0)),
 		}
 
 
@@ -130,4 +136,5 @@ func save_data() -> void:
 		cfg.set_value(club_name, "path_error_history", stats["path_error_history"])
 		cfg.set_value(club_name, "tempo_err_history", stats["tempo_err_history"])
 		cfg.set_value(club_name, "contact_tally", stats["contact_tally"])
+		cfg.set_value(club_name, "longest_made_yards", stats["longest_made_yards"])
 	cfg.save(SAVE_PATH)

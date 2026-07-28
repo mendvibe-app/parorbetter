@@ -119,6 +119,14 @@ func _build_row(club_name: String, stats: Dictionary) -> Control:
 	head.text = "%s — avg %d yd (%d shots)" % [club_name, avg_yd, shots]
 	row.add_child(head)
 
+	if club_name == "Putter":
+		var longest_row := Label.new()
+		longest_row.add_theme_font_size_override("font_size", UiScale.CAPTION)
+		longest_row.add_theme_color_override("font_color", UiScale.TEXT_SECONDARY)
+		var longest_ft := PuttStroke.yd_to_ft(float(stats.get("longest_made_yards", 0.0)))
+		longest_row.text = "Longest putt made: %d ft" % int(round(longest_ft))
+		row.add_child(longest_row)
+
 	var tip := ClubCoachLog.resolve_tip(stats)
 	var tip_label := Label.new()
 	tip_label.add_theme_font_size_override("font_size", UiScale.CAPTION)
