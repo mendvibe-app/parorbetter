@@ -71,6 +71,7 @@ var _aim_lock_yards: float = 160.0
 var _chosen_club: Dictionary = {}
 var _aim_cone: Polygon2D
 var _aim_cone_edge: Line2D
+var _aim_cone_edge_r: Line2D
 var _pin_ref_line: Line2D
 var _aim_circle: Line2D
 var _wind_bias: Line2D
@@ -162,6 +163,16 @@ func _setup_aim_visuals() -> void:
 	_aim_cone_edge.z_index = 5
 	_aim_cone_edge.visible = false
 	add_child(_aim_cone_edge)
+
+	# Right flank drawn separately from the left (_aim_cone_edge) — the two flanks
+	# each end tangent to the landing circle, and must stay unconnected to each
+	# other so no straight line is ever drawn across the circle's face.
+	_aim_cone_edge_r = Line2D.new()
+	_aim_cone_edge_r.width = 2.0
+	_aim_cone_edge_r.default_color = Color(1.0, 0.92, 0.4, 0.35)
+	_aim_cone_edge_r.z_index = 5
+	_aim_cone_edge_r.visible = false
+	add_child(_aim_cone_edge_r)
 
 	_aim_circle = Line2D.new()
 	_aim_circle.width = 3.0
@@ -1136,6 +1147,8 @@ func _set_aim_visuals_visible(on: bool) -> void:
 		_aim_cone.visible = on and not is_putt
 	if _aim_cone_edge:
 		_aim_cone_edge.visible = on and not is_putt
+	if _aim_cone_edge_r:
+		_aim_cone_edge_r.visible = on and not is_putt
 	if _aim_circle:
 		_aim_circle.visible = on and not is_putt
 	if _pin_ref_line:
@@ -1239,19 +1252,30 @@ func _refresh_aim_visuals() -> void:
 		)
 		_aim_cone.polygon = cone["points"]
 		_aim_cone.vertex_colors = cone["colors"]
-		# Soft edge stroke along the wedge flanks (skip the near-ball base).
-		var edge := PackedVector2Array()
+		# Each flank is stroked as its own open polyline (skip the near-ball base) —
+		# the two flanks end tangent to the landing circle rather than meeting each
+		# other, so they must stay unconnected or the join would draw a straight
+		# line across the circle's face.
+		# Point layout from AimControl.make_aim_cone: base_l, base_r, mid_r, tip_r,
+		# [near-side arc samples...], tip_l, mid_l — arc length varies with geometry,
+		# so the left-side pair is read from the end, not a fixed index.
 		var pts: PackedVector2Array = cone["points"]
+		var edge_l := PackedVector2Array()
+		var edge_r := PackedVector2Array()
 		if pts.size() >= 6:
-			edge.append(pts[0])
-			edge.append(pts[5])
-			edge.append(pts[4])
-			edge.append(pts[3])
-			edge.append(pts[2])
-			edge.append(pts[1])
-		_aim_cone_edge.points = edge
+			var n := pts.size()
+			edge_l.append(pts[0])
+			edge_l.append(pts[n - 1])
+			edge_l.append(pts[n - 2])
+			edge_r.append(pts[1])
+			edge_r.append(pts[2])
+			edge_r.append(pts[3])
+		_aim_cone_edge.points = edge_l
 		_aim_cone_edge.width = (2.4 if _power_previewing else 1.8) / maxf(camera.zoom.x, 0.35)
 		_aim_cone_edge.default_color = Color(1.0, 0.92, 0.4, 0.55 if _power_previewing else 0.28)
+		_aim_cone_edge_r.points = edge_r
+		_aim_cone_edge_r.width = _aim_cone_edge.width
+		_aim_cone_edge_r.default_color = _aim_cone_edge.default_color
 		_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
 		_pin_ref_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
 		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.22)
