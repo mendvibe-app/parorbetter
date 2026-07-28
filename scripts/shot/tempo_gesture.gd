@@ -467,6 +467,10 @@ func _update(pos: Vector2) -> void:
 			if _axis.length_squared() < 0.5:
 				_axis = Vector2(0, 1)
 			delta = _smoothed - _address
+			_disp = delta.dot(_axis)  # Seed baseline so this lock frame reads as zero
+			# velocity/accel instead of a phantom spike computed against the pre-lock
+			# default of 0 — that phantom jump was landing at ~400+ on max_accel,
+			# dwarfing the real 8-32 penalty range, on every single swing.
 			_axis_locked = true
 			swinging = true
 			_ball_pop_at = Time.get_ticks_msec()
