@@ -15,3 +15,7 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+
+# Python (contract-check scripts)
+__pycache__/
+*.pyc
