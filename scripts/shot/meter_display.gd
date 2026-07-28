@@ -38,8 +38,8 @@ func set_shot_context(p_type: String, p_timing: float, p_practice: bool = false)
 	_guide_phase = 0.0
 	_next_tick_at = 0.15
 	_refresh_guide_alpha()
-	# Putt: hide dead empty bar until post-stroke reveal (hint owns live instruction).
-	visible = p_type != "putt"
+	# Putt/chip: hide dead empty bar until post-stroke reveal (hint owns live instruction).
+	visible = p_type != "putt" and p_type != "chip"
 	queue_redraw()
 
 
@@ -87,8 +87,8 @@ func _process(delta: float) -> void:
 		return
 	if tempo_gesture and (tempo_gesture.dragging or tempo_gesture.swinging):
 		queue_redraw()
-	# Putt meter doesn't need metronome ticks — pad marker is the guide.
-	if shot_type == "putt":
+	# Putt/chip meter doesn't need metronome ticks — pad marker is the guide.
+	if shot_type == "putt" or shot_type == "chip":
 		return
 	if _guide_alpha > 0.02 and tempo_gesture and tempo_gesture.active and tempo_gesture.dragging:
 		_guide_phase += delta
@@ -104,7 +104,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	if shot_type == "putt":
+	if shot_type == "putt" or shot_type == "chip":
 		_draw_putt_amplitude()
 		return
 	_draw_tempo_ratio()

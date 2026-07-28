@@ -16,6 +16,12 @@ const PITCH_YD := 50.0
 ## Cap pitch-gate as a fraction of club max so short clubs (Gap) aren't forced
 ## onto 2:1 while still swinging a near-stock % — same pad feel as longer clubs.
 const PITCH_POWER_CAP := 0.42
+## Below this aim distance → chip (amplitude-graded via PuttStroke, not tempo
+## ratio). Flat gate, independent of club — real short-game stats split
+## "inside 20" from "20-40," not by club. Tuning default, not a final number:
+## a future pass could calibrate this per the player's actual wedge carry
+## data instead of a hardcoded flat yardage.
+const CHIP_YD := 20.0
 
 ## Contact tiers by |ratio − target| / tolerance (after balance × timing scale).
 ## Slightly off stays GOOD; thin/fat only when clearly wrong; MISS = disaster.
@@ -27,6 +33,8 @@ const BAND_THIN_FAT := 1.85
 static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
 	if lie == "Green":
 		return "putt"
+	if remaining_yd < CHIP_YD:
+		return "chip"
 	var gate := PITCH_YD
 	if club_max_yards > 1.0:
 		gate = minf(PITCH_YD, club_max_yards * PITCH_POWER_CAP)
