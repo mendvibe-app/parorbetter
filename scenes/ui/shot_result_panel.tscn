@@ -1,7 +1,8 @@
-[gd_scene load_steps=3 format=3 uid="uid://shotresult001"]
+[gd_scene load_steps=4 format=3 uid="uid://shotresult001"]
 
 [ext_resource type="Script" path="res://scripts/ui/shot_result_panel.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/ui/strike_map.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/ui/tempo_mini.gd" id="3"]
 
 [node name="ShotResultPanel" type="Control"]
 layout_mode = 3
@@ -18,7 +19,7 @@ layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_bottom = -56.0
+offset_bottom = -92.0
 mouse_filter = 2
 
 [node name="Margin" type="MarginContainer" parent="Panel"]
@@ -46,6 +47,17 @@ layout_mode = 2
 custom_minimum_size = Vector2(300, 260)
 mouse_filter = 2
 script = ExtResource("2")
+
+[node name="TempoMini" type="Control" parent="."]
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -92.0
+offset_bottom = -52.0
+mouse_filter = 2
+script = ExtResource("3")
 
 [node name="Hint" type="Label" parent="."]
 layout_mode = 1
