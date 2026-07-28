@@ -186,7 +186,9 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 
 	var verdict: Dictionary
 	if shot_type == "putt" or shot_type == "chip":
-		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards)
+		var chip_tol := PuttStroke.CHIP_TOL_SCALE if shot_type == "chip" else 1.0
+		var chip_arc := PuttStroke.CHIP_ARC_SCALE if shot_type == "chip" else 1.0
+		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards, chip_tol, chip_arc)
 	else:
 		verdict = TempoGrade.grade(sample, shot_type, timing_scale, tol_scale, bal_tighten)
 	last_verdict = verdict

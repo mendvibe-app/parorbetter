@@ -756,14 +756,14 @@ func _draw_putt_lane_tex(start: Vector2, top: Vector2, tex: Texture2D = TEX_PUTT
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
-func _draw_putt_arc_edges(start: Vector2, top: Vector2, edge_c: Color) -> void:
+func _draw_putt_arc_edges(start: Vector2, top: Vector2, edge_c: Color, arc_scale_mul: float = 1.0) -> void:
 	var steps := 8
 	var perp := Vector2(-(top - start).y, (top - start).x).normalized()
 	for i in range(steps):
 		var u0 := float(i) / float(steps)
 		var u1 := float(i + 1) / float(steps)
-		var a0 := PuttStroke.arc_allowance(u0) * size.y
-		var a1 := PuttStroke.arc_allowance(u1) * size.y
+		var a0 := PuttStroke.arc_allowance(u0, arc_scale_mul) * size.y
+		var a1 := PuttStroke.arc_allowance(u1, arc_scale_mul) * size.y
 		var p0: Vector2 = start.lerp(top, u0)
 		var p1: Vector2 = start.lerp(top, u1)
 		draw_line(p0 + perp * a0, p1 + perp * a1, edge_c, 2.0, true)
@@ -908,7 +908,7 @@ func _draw_chip() -> void:
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
 
 	_draw_putt_lane_tex(start, top, TEX_CHIP_LANE)
-	_draw_putt_arc_edges(start, top, CHIP_ARC_EDGE)
+	_draw_putt_arc_edges(start, top, CHIP_ARC_EDGE, PuttStroke.CHIP_ARC_SCALE)
 	_draw_putt_follow_cue(addr, CHIP_FOLLOW_LINE, CHIP_FOLLOW_RING)
 
 	if putt_show_marker:
