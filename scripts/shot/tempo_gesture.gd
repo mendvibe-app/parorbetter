@@ -164,6 +164,13 @@ func _lane_len() -> float:
 	return maxf(address_hint().distance_to(top_hint()), 1.0)
 
 
+func _bs_floor_pos() -> Vector2:
+	## Point on the address→top axis where TempoGrade.balance()'s short-backswing
+	## penalty kicks in — floor*size.y is a pixel displacement, not a lane fraction.
+	var frac := TempoGrade.bs_floor(shot_type) * size.y / _lane_len()
+	return address_hint().lerp(top_hint(), frac)
+
+
 func _lane_through_dir() -> Vector2:
 	## Past address, away from top (up toward target on camera).
 	var d := address_hint() - top_hint()
@@ -1059,16 +1066,38 @@ func _draw_pull_lane(show_progress: bool) -> void:
 		draw_line(start, _lane_peak_pos(), Color(0.45, 0.95, 0.55, 0.85), 10.0, false)
 
 
+func _ft_floor_len(addr: Vector2) -> float:
+	## Minimum follow-through TempoGrade.balance() actually requires, clamped to the
+	## pad's top margin (same room clamp putt/chip use — drawn = graded).
+	return minf(TempoGrade.ft_floor(shot_type) * size.y, _putt_follow_room(addr))
+
+
 func _follow_cue_end(addr: Vector2) -> Vector2:
-	## Soft room past address — "keep going," not a stop target.
-	return addr + _lane_through_dir() * (size.y * 0.14)
+	## Anchored to ft_floor — this is the minimum, not a decorative "keep going" ring.
+	return addr + _lane_through_dir() * _ft_floor_len(addr)
 
 
 func _draw_follow_cue(addr: Vector2, a: float = 0.45) -> void:
-	## Soft "keep going" past address — open ring, not a hard target landmark.
+	## Follow-through floor marker — open ring at the graded minimum length.
 	var tip := _follow_cue_end(addr)
 	draw_line(addr, tip, Color(0.55, 0.85, 0.55, 0.28 * a), 5.0, true)
 	draw_arc(tip, 11.0, 0.0, TAU, 24, Color(0.6, 0.9, 0.55, 0.5 * a), 2.5, true)
+
+
+func _draw_bs_floor_marker() -> void:
+	## Backswing floor — the actual minimum TempoGrade.balance() grades against.
+	## Pad marks only (no word labels): a double-tick "rung," amber and distinct from
+	## the TEX_TOP chevron texture ("ideal") so players don't confuse "minimum to
+	## avoid a penalty" with "target to aim for."
+	var along := top_hint() - address_hint()
+	if along.length_squared() < 1.0:
+		return
+	var p := _bs_floor_pos()
+	var perp := Vector2(-along.y, along.x).normalized()
+	var half := 14.0
+	var c := Color(1.0, 0.65, 0.3, 0.85)
+	draw_line(p - perp * half, p + perp * half, c, 3.0, true)
+	draw_line(p - perp * half + along.normalized() * 4.0, p + perp * half + along.normalized() * 4.0, c, 1.5, true)
 
 
 func _ball_pop_scale() -> float:
@@ -1104,6 +1133,7 @@ func _draw_idle_coach() -> void:
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.006)
 	_draw_pull_lane(false)
 	_draw_follow_cue(start, 0.7)
+	_draw_bs_floor_marker()
 	_draw_landmark_tex(TEX_TOP, top, LANDMARK_DIAM)
 	_draw_address_mark(start, pulse)
 	# Takeaway cue between address and top
@@ -1122,6 +1152,7 @@ func _draw_active_landmarks() -> void:
 	var pulse := 0.55 + 0.45 * sin(Time.get_ticks_msec() * 0.008)
 
 	_draw_follow_cue(addr, 0.55 if had_top else 0.35)
+	_draw_bs_floor_marker()
 	_draw_address_mark(addr, pulse)
 
 	var flash := Time.get_ticks_msec() < _top_flash_until
