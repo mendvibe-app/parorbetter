@@ -61,7 +61,13 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
     short_bs = min(max((bs_floor - bs_len) / bs_floor, 0.0), 1.0)
     short_ft = 0.0 if incomplete else min(max((ft_floor - ft_len) / ft_floor, 0.0), 1.0)
     incomplete_pen = ((0.30 if short_game else 0.55) if incomplete else 0.0)
-    pen = accel_pen * 0.35 + jerk_pen * 0.30 + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
+    peak_vel = float(sample.get("peak_vel", 0.0))
+    transition_ratio = float(sample.get("vel_at_top", 0.0)) / max(peak_vel, 0.001)
+    transition_pen = min(max((transition_ratio - 0.15) / (0.55 - 0.15), 0.0), 1.0) * t
+    pen = (
+        accel_pen * 0.35 + jerk_pen * 0.15 + transition_pen * 0.15
+        + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
+    )
     return min(max(1.0 - pen, 0.0), 1.0)
 
 
@@ -121,6 +127,13 @@ def main() -> int:
     assert "abs_n * 0.35" in GRADE
     assert "maxf(bal, 0.70)" in GRADE or "max(bal, 0.70)" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
+    # Transition check: graded relative to the swing's own peak speed (drift guard —
+    # a hardcoded threshold here would silently defeat the "adapts to any swing speed" design).
+    assert "transition_ratio" in GRADE and "transition_pen" in GRADE
+    assert "peak_vel" in GRADE and "vel_at_top" in GRADE
+    assert "jerk_pen * 0.15" in GRADE and "transition_pen * 0.15" in GRADE
+    assert "_peak_vel" in GESTURE and "_vel_at_top" in GESTURE
+    assert "_skip_jerk_frame" in GESTURE
     assert "RELEASE_IS_IMPACT" in GESTURE
     assert "TempoGesture" in ROUTINE
     assert "PowerStance" not in ROUTINE
@@ -170,14 +183,19 @@ def main() -> int:
     assert gm["power_mul"] >= 0.82, gm
     assert gm["path_error"] > 0.0
 
-    # Mild tempo + lurch balance must stay playable (not hosel from accel alone)
+    # Mild tempo + lurch balance must stay playable (not hosel from accel alone).
+    # These legacy samples predate the transition check (no peak_vel/vel_at_top),
+    # so it defaults to 0 penalty — jerk's freed-up weight (30%→15%) only half
+    # lands here, balance sits ~0.15 higher than pre-reweight. A real erratic
+    # swing with no pause at top would also fail the transition check and land
+    # back near the old value.
     snappy = {
         "t_takeaway": 0.0, "t_top": 0.783, "t_impact": 0.968,  # 4.23:1 like playtest
         "max_accel": 40.0, "max_jerk": 2.0, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
     }
     gsl = grade(snappy, "full")
     assert abs(gsl["ratio"] - 4.23) < 0.05, gsl
-    assert gsl["balance"] < 0.4, gsl
+    assert gsl["balance"] < 0.6, gsl
     assert gsl["contact"] != "MISS", gsl
     assert gsl["power_mul"] >= 0.55, gsl
 
@@ -188,7 +206,7 @@ def main() -> int:
     }
     gb = grade(best, "full")
     assert abs(gb["ratio"] - 3.5) < 0.05, gb
-    assert gb["balance"] < 0.4, gb
+    assert gb["balance"] < 0.6, gb
     assert gb["contact"] in ("PERFECT", "GOOD"), gb
     assert gb["power_mul"] >= 0.85, gb
 
@@ -236,6 +254,19 @@ def main() -> int:
     tw_lurch = tolerance_width("full", lurch)
     assert tw_lurch < tw_calm, (tw_lurch, tw_calm)
     assert tw_calm <= TOL_FULL * 1.0 + 1e-6
+
+    # Transition check: graded relative to the swing's own peak speed, not a fixed
+    # number — paused before reversing (slow vel_at_top vs peak_vel) stays clean;
+    # no pause (vel_at_top near peak_vel) gets penalized regardless of raw speed.
+    base_stroke = {"max_accel": 1.0, "max_jerk": 0.1, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False}
+    paused = dict(base_stroke, peak_vel=10.0, vel_at_top=0.5)  # 5% of peak — clean pause
+    no_pause = dict(base_stroke, peak_vel=10.0, vel_at_top=8.0)  # 80% of peak — barrels through
+    fast_paused = dict(base_stroke, peak_vel=40.0, vel_at_top=2.0)  # 5% of a much faster peak
+    bal_paused = balance(paused)
+    bal_no_pause = balance(no_pause)
+    bal_fast_paused = balance(fast_paused)
+    assert bal_paused > bal_no_pause, (bal_paused, bal_no_pause)
+    assert abs(bal_paused - bal_fast_paused) < 1e-6, "graded by ratio to own peak, not raw speed"
 
     # Putt graded against 2:1 not 3:1
     putt_ok = {"t_takeaway": 0.0, "t_top": 0.4, "t_impact": 0.6, "max_accel": 2.0, "max_jerk": 0.2, "backswing_len": 0.3, "follow_through_len": 0.12, "incomplete": False}

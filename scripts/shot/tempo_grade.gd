@@ -93,7 +93,17 @@ static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String 
 	# Incomplete still hurts; short game less — early release is common on a putt stroke.
 	var incomplete_pen := (0.30 if short_game else 0.55) if incomplete else 0.0
 
-	var pen := accel_pen * 0.35 + jerk_pen * 0.30 + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
+	# Did you slow down before turning around, relative to your own backswing speed —
+	# not a fixed threshold, so it adapts to fast/slow swingers like the tempo ratio does.
+	var peak_vel := float(sample.get("peak_vel", 0.0))
+	var transition_ratio := float(sample.get("vel_at_top", 0.0)) / maxf(peak_vel, 0.001)
+	# Playtest knobs, same as the existing accel/jerk thresholds — calibrate on-device.
+	var transition_pen := clampf((transition_ratio - 0.15) / (0.55 - 0.15), 0.0, 1.0) * t
+
+	var pen := (
+		accel_pen * 0.35 + jerk_pen * 0.15 + transition_pen * 0.15
+		+ short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
+	)
 	return clampf(1.0 - pen, 0.0, 1.0)
 
 
