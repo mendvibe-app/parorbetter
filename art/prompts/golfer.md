@@ -15,7 +15,7 @@ Side/¾ silhouette drawn in a **top-left mini stage** (sky + grass drawn in code
 This is **not** the idle coach cue (`ui_tempo_coach_idle` / `ui_putt_coach_idle`). Coach stays an abstract takeaway chevron; golfer is a separate overlay.
 
 **Two swing sets:**
-- **Full / chip** — shoulder turn, long club
+- **Full / pitch** — shoulder turn, long club
 - **Putt** — short putter stroke; arms stay waist–chest height
 
 Required frames per set (in stroke order):

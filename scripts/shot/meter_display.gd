@@ -94,7 +94,7 @@ func _process(delta: float) -> void:
 		_guide_phase += delta
 		if not tempo_gesture.had_top and _guide_phase >= _next_tick_at:
 			AudioBus.play_tick(0.45 * _guide_alpha)
-			# Match TempoGesture ghost backswing — chip was 1.125s ticks vs 0.50s disc.
+			# Match TempoGesture ghost backswing — pitch was 1.125s ticks vs 0.50s disc.
 			var back := (
 				TempoGesture.GUIDE_BACK_SHORT
 				if TempoGrade.target_ratio(shot_type) < 2.5

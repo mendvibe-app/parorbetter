@@ -63,7 +63,7 @@ var dragging: bool = false
 var swinging: bool = false
 var trail: PackedVector2Array = PackedVector2Array()
 var shot_type: String = "full"
-## Putt: target backswing fraction of lane (set by ShotRoutine). Unused for full/chip.
+## Putt: target backswing fraction of lane (set by ShotRoutine). Unused for full/pitch.
 var putt_target_frac: float = 0.5
 ## Practice only — scored strokes stay blind on length (no PACE tick / band).
 var putt_show_marker: bool = false

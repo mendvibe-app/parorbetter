@@ -78,7 +78,7 @@ func configure(
 	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
-	# Green: feet (how golfers read putts). Full/chip stay yards.
+	# Green: feet (how golfers read putts). Full/pitch stay yards.
 	if lie == "Green":
 		info_label.text = "%d ft" % int(round(PuttStroke.yd_to_ft(aim_distance_yd)))
 	elif absf(aim_distance_yd - pin_distance_yd) < 1.5:
@@ -117,8 +117,8 @@ func begin_shot(p_practice: bool = false) -> void:
 			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
-	elif shot_type == "chip":
-		hint_label.text = "CHIP ~2:1 — address · to the top · through the ball."
+	elif shot_type == "pitch":
+		hint_label.text = "PITCH ~2:1 — address · to the top · through the ball."
 	else:
 		hint_label.text = "SWING ~3:1 — address · to the top · through the ball."
 	phase_changed.emit("active")

@@ -11,11 +11,11 @@ const TARGET_SHORT := 2.0
 const TOL_FULL := 1.1
 const TOL_SHORT := 0.85
 const PURE_BALANCE := 0.72
-## Below this aim distance → chip tempo (2:1); at/above → full (3:1).
-const CHIP_YD := 50.0
-## Cap chip-gate as a fraction of club max so short clubs (Gap) aren't forced
+## Below this aim distance → pitch tempo (2:1); at/above → full (3:1).
+const PITCH_YD := 50.0
+## Cap pitch-gate as a fraction of club max so short clubs (Gap) aren't forced
 ## onto 2:1 while still swinging a near-stock % — same pad feel as longer clubs.
-const CHIP_POWER_CAP := 0.42
+const PITCH_POWER_CAP := 0.42
 
 ## Contact tiers by |ratio − target| / tolerance (after balance × timing scale).
 ## Slightly off stays GOOD; thin/fat only when clearly wrong; MISS = disaster.
@@ -27,20 +27,20 @@ const BAND_THIN_FAT := 1.85
 static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
 	if lie == "Green":
 		return "putt"
-	var gate := CHIP_YD
+	var gate := PITCH_YD
 	if club_max_yards > 1.0:
-		gate = minf(CHIP_YD, club_max_yards * CHIP_POWER_CAP)
+		gate = minf(PITCH_YD, club_max_yards * PITCH_POWER_CAP)
 	if remaining_yd < gate:
-		return "chip"
+		return "pitch"
 	return "full"
 
 
 static func target_ratio(shot_type: String) -> float:
-	return TARGET_SHORT if shot_type == "putt" or shot_type == "chip" else TARGET_FULL
+	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" else TARGET_FULL
 
 
 static func base_tolerance(shot_type: String) -> float:
-	return TOL_SHORT if shot_type == "putt" or shot_type == "chip" else TOL_FULL
+	return TOL_SHORT if shot_type == "putt" or shot_type == "pitch" else TOL_FULL
 
 
 static func ratio(sample: Dictionary) -> float:
@@ -61,8 +61,8 @@ static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String 
 	var bs_len := float(sample.get("backswing_len", 0.0))
 	var ft_len := float(sample.get("follow_through_len", 0.0))
 	var incomplete: bool = bool(sample.get("incomplete", false))
-	# Short strokes are shorter — don't grade putt/chip length against a full-swing pad.
-	var short_game := shot_type == "putt" or shot_type == "chip"
+	# Short strokes are shorter — don't grade putt/pitch length against a full-swing pad.
+	var short_game := shot_type == "putt" or shot_type == "pitch"
 	var bs_floor := 0.10 if short_game else 0.18
 	var ft_floor := 0.04 if short_game else 0.08
 
@@ -145,7 +145,7 @@ static func grade(
 	if bal < 0.35:
 		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
 
-	var short_game := shot_type == "putt" or shot_type == "chip"
+	var short_game := shot_type == "putt" or shot_type == "pitch"
 	var bs_floor := 0.10 if short_game else 0.18
 	var short_bs := clampf((bs_floor - float(sample.get("backswing_len", 0.0))) / bs_floor, 0.0, 1.0)
 

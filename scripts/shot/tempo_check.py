@@ -21,18 +21,18 @@ BAND_PERFECT = 0.50
 BAND_GOOD = 1.15
 BAND_THIN_FAT = 1.85
 PURE_BALANCE = 0.72
-CHIP_YD = 50.0
-CHIP_POWER_CAP = 0.42
+PITCH_YD = 50.0
+PITCH_POWER_CAP = 0.42
 
 
 def shot_type_for(lie: str, remaining_yd: float, club_max_yards: float = 0.0) -> str:
     if lie == "Green":
         return "putt"
-    gate = CHIP_YD
+    gate = PITCH_YD
     if club_max_yards > 1.0:
-        gate = min(CHIP_YD, club_max_yards * CHIP_POWER_CAP)
+        gate = min(PITCH_YD, club_max_yards * PITCH_POWER_CAP)
     if remaining_yd < gate:
-        return "chip"
+        return "pitch"
     return "full"
 
 
@@ -53,7 +53,7 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
     bs_len = float(sample.get("backswing_len", 0.0))
     ft_len = float(sample.get("follow_through_len", 0.0))
     incomplete = bool(sample.get("incomplete", False))
-    short_game = shot_type in ("putt", "chip")
+    short_game = shot_type in ("putt", "pitch")
     bs_floor = 0.10 if short_game else 0.18
     ft_floor = 0.04 if short_game else 0.08
     accel_pen = min(max((accel - 8.0) / 24.0, 0.0), 1.0) * t
@@ -66,18 +66,18 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
 
 
 def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_scale: float = 1.0) -> float:
-    base_tol = TOL_SHORT if shot_type in ("putt", "chip") else TOL_FULL
+    base_tol = TOL_SHORT if shot_type in ("putt", "pitch") else TOL_FULL
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     shrink = 0.35 + (1.0 - 0.35) * min(max(bal, 0.0), 1.0)
     return base * shrink
 
 
 def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: float = 1.0, bal_tighten: float = 1.0) -> dict:
-    target = TARGET_SHORT if shot_type in ("putt", "chip") else TARGET_FULL
+    target = TARGET_SHORT if shot_type in ("putt", "pitch") else TARGET_FULL
     bal = balance(sample, bal_tighten, shot_type)
     r = ratio(sample["t_takeaway"], sample["t_top"], sample["t_impact"])
     err = r - target
-    base_tol = TOL_SHORT if shot_type in ("putt", "chip") else TOL_FULL
+    base_tol = TOL_SHORT if shot_type in ("putt", "pitch") else TOL_FULL
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     raw_n = abs(err) / max(base, 0.01)
     bal_for_tol = max(bal, 0.70) if raw_n <= BAND_GOOD else bal
@@ -128,23 +128,23 @@ def main() -> int:
     assert "committed_power" in ROUTINE
     assert "practice_mode" in ROUTINE
     assert "PURE_BALANCE" in ROUTINE
-    assert "CHIP_YD := 50.0" in GRADE
-    assert "CHIP_POWER_CAP" in GRADE
+    assert "PITCH_YD := 50.0" in GRADE
+    assert "PITCH_POWER_CAP" in GRADE
     assert 'club_name.contains("Wedge")' not in GRADE
     assert "club_max_yards" in GRADE
-    # Chip vs full is swing size, not club identity — but gate caps by club % so Gap
+    # Pitch vs full is swing size, not club identity — but gate caps by club % so Gap
     # isn't forced onto 2:1 while still near a stock swing.
     assert shot_type_for("Fairway", 90.0) == "full"
     assert shot_type_for("Fairway", 70.0) == "full"
-    assert shot_type_for("Fairway", 49.0) == "chip"  # no club → absolute CHIP_YD
-    assert shot_type_for("Fairway", 10.0) == "chip"
+    assert shot_type_for("Fairway", 49.0) == "pitch"  # no club → absolute PITCH_YD
+    assert shot_type_for("Fairway", 10.0) == "pitch"
     assert shot_type_for("Green", 90.0) == "putt"
     assert shot_type_for("Sand", 80.0) == "full"
-    # Gap 85 yd: chip gate = min(50, 85*0.42) ≈ 35.7 — 40 yd stays full like an iron
+    # Gap 85 yd: pitch gate = min(50, 85*0.42) ≈ 35.7 — 40 yd stays full like an iron
     assert shot_type_for("Fairway", 40.0, 85.0) == "full"
-    assert shot_type_for("Fairway", 30.0, 85.0) == "chip"
-    # Mid-iron unchanged: still chips below 50
-    assert shot_type_for("Fairway", 49.0, 160.0) == "chip"
+    assert shot_type_for("Fairway", 30.0, 85.0) == "pitch"
+    # Mid-iron unchanged: still pitches below 50
+    assert shot_type_for("Fairway", 49.0, 160.0) == "pitch"
     assert shot_type_for("Fairway", 55.0, 160.0) == "full"
 
     # Speed invariance: same ratio at 2× overall speed grades identically

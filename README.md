@@ -26,7 +26,7 @@ Minimal Godot 4 mobile golf prototype — tempo-ratio swing, aim circles, lives,
 ### 2) Tempo swing (one thumb)
 - Power is **committed** at aim confirm (recommended % for club/distance). The gesture cannot add distance — only tempo quality can subtract.
 - **Drag back** (takeaway) → slight pause at the **top** → **drag through** impact.
-- Graded on **tempo ratio** (full ~3:1, chip/putt ~2:1), not how fast you swipe. Fast ≠ good.
+- Graded on **tempo ratio** (full ~3:1, putt/pitch ~2:1), not how fast you swipe. Fast ≠ good.
 - Balance is read from the gesture (spikes, jerks, stubby backswing) and tightens the window — not a second meter.
 - Desktop: **LMB drag** on the swing pad.
 
