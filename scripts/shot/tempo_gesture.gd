@@ -90,6 +90,9 @@ var shot_type: String = "full"
 var putt_target_frac: float = 0.5
 ## Practice only — scored strokes stay blind on length (no PACE tick / band).
 var putt_show_marker: bool = false
+## Chip's actual club max carry (set by ShotRoutine) — the soft-scale ruler grades
+## its yard ticks against this, not the putter constant putt's ruler defaults to.
+var club_max_yards: float = 40.0
 var peak_pos: Vector2 = Vector2.ZERO
 
 var _touch_index: int = -1
@@ -873,6 +876,49 @@ func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool)
 		)
 
 
+func _draw_chip_soft_scale(start: Vector2, top: Vector2) -> void:
+	## Same "absolute soft ruler" idea as putt, but yards (not feet) graded against
+	## the actual wedge's club_max_yards — a flat 20yd chip vs an 85yd Gap wedge maps
+	## to a very different pad slice than putt's fixed putter-length ruler would.
+	for yd in PuttStroke.CHIP_SCALE_LABELED_YD:
+		_draw_chip_scale_tick(start, top, float(yd), true)
+	for yd in PuttStroke.CHIP_SCALE_TICK_YD:
+		_draw_chip_scale_tick(start, top, float(yd), false)
+
+
+func _draw_chip_scale_tick(start: Vector2, top: Vector2, yd: float, labeled: bool) -> void:
+	var frac := PuttStroke.frac_for_yd(yd, maxf(club_max_yards, 1.0))
+	## Floor-collapsed lengths share MARKER_MIN — skip so digits don't stack there.
+	if frac <= PuttStroke.MARKER_MIN_FRAC or frac > PuttStroke.MARKER_MAX_FRAC:
+		return
+	var mark: Vector2 = start.lerp(top, frac)
+	var along := top - start
+	if along.length_squared() < 1.0:
+		return
+	## Tick stubs stay screen-right; labels sit left of the lane (not over the fill).
+	var perp := Vector2(-along.y, along.x).normalized()
+	var half := PuttStroke.arc_allowance(frac, PuttStroke.CHIP_ARC_SCALE) * size.y
+	var edge: Vector2 = mark + perp * half
+	var thick := 2.0 if labeled else 1.5
+	var a := 0.7 if labeled else 0.4
+	var c := Color(CHIP_BORDER.r, CHIP_BORDER.g, CHIP_BORDER.b, a)
+	draw_line(mark, edge, c, thick, true)
+	if labeled:
+		const LABEL_PX := 28
+		var s := "%dy" % int(yd)
+		var tw := UiScale.FONT.get_string_size(
+			s, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_PX
+		).x
+		## Right edge of digits clears the lane by a small gap.
+		var label_at := Vector2(mark.x - half - 12.0 - tw, mark.y + 6.0)
+		draw_string(
+			UiScale.FONT, label_at, s,
+			HORIZONTAL_ALIGNMENT_LEFT, -1,
+			LABEL_PX,
+			Color(CHIP_BORDER.r, CHIP_BORDER.g, CHIP_BORDER.b, 0.85)
+		)
+
+
 func _draw_putt_practice_marker(
 	start: Vector2,
 	top: Vector2,
@@ -894,8 +940,10 @@ func _draw_chip() -> void:
 	## Warm sand/wedge palette, shorter lane than putt — shares putt's amplitude-pad
 	## drawing helpers (lane, arc edges, follow cue, address ball, practice marker)
 	## parameterized with chip's own textures/colors so it reads distinct at a glance.
-	## No soft-scale ruler: PuttStroke's ft ticks are calibrated against club_max_yd,
-	## which TempoGesture doesn't have for the player's wedge (Phase 4 territory).
+	## Soft-scale ruler is yards (not putt's feet), graded against club_max_yards
+	## (the actual wedge's max carry, set by ShotRoutine) rather than putt's fixed
+	## putter-length default — playtest feedback: chip had no distance reference at
+	## all before this, unlike putt's ruler.
 	var r := Rect2(Vector2.ZERO, size).grow(-8.0)
 	draw_rect(r, CHIP_BG, true)
 	draw_rect(r, CHIP_BORDER, false, 3.0)
@@ -909,6 +957,7 @@ func _draw_chip() -> void:
 
 	_draw_putt_lane_tex(start, top, TEX_CHIP_LANE)
 	_draw_putt_arc_edges(start, top, CHIP_ARC_EDGE, PuttStroke.CHIP_ARC_SCALE)
+	_draw_chip_soft_scale(start, top)
 	_draw_putt_follow_cue(addr, CHIP_FOLLOW_LINE, CHIP_FOLLOW_RING)
 
 	if putt_show_marker:

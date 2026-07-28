@@ -32,6 +32,11 @@ const FT_PER_YD := 3.0
 ## Soft pad scale: spaced for the log curve (linear-pad spacing bunches up on it).
 const SCALE_LABELED_FT := [3, 6, 12, 25, 50]
 const SCALE_TICK_FT := [8, 18, 70]
+## Chip's soft-scale ruler ticks, in yards (not feet — golfers read short wedge
+## shots in yards). Range fits under TempoGrade.CHIP_YD (20yd); tuning starting
+## point like the other Phase 3/4 chip constants, not a final calibration.
+const CHIP_SCALE_LABELED_YD := [5, 10, 15, 20]
+const CHIP_SCALE_TICK_YD := [3, 8, 13, 17]
 ## Curve shape on top of the log map — pow(u, BEND) / pow(u, 1/BEND). 1.0 = pure log.
 const BEND := 1.0
 ## Phase 4 tuning: BAND_HALF/ARC_FLOOR/ARC_SCALE above were calibrated against real
@@ -82,6 +87,14 @@ static func power_from_frac(frac: float) -> float:
 static func frac_for_ft(ft: float, club_max_yd: float = BallPhysics.PUTTER_MAX_YD) -> float:
 	## Pad fraction for a putt length — same map grade uses (drawn = graded).
 	var yd := ft_to_yd(ft)
+	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, 1.0)
+	return marker_frac(power)
+
+
+static func frac_for_yd(yd: float, club_max_yd: float) -> float:
+	## Pad fraction for a chip length in yards — golfers read greenside wedge shots
+	## in yards, not feet. Same map as frac_for_ft, graded against the actual club's
+	## max carry (not the putter constant frac_for_ft defaults to).
 	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, 1.0)
 	return marker_frac(power)
 
