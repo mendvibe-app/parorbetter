@@ -7,6 +7,7 @@ signal dismissed
 @onready var body: Label = $Panel/Margin/VBox/Body
 @onready var strike_map: StrikeMap = $Panel/Margin/VBox/StrikeMap
 @onready var hint: Label = $Hint
+@onready var tempo_mini: TempoMini = $TempoMini
 
 var _waiting: bool = false
 
@@ -18,6 +19,8 @@ func _ready() -> void:
 	if hint == null:
 		# Created in scene; tolerate missing node during reload
 		hint = get_node_or_null("Hint") as Label
+	if tempo_mini == null:
+		tempo_mini = get_node_or_null("TempoMini") as TempoMini
 
 
 func show_launch(report: ShotReport) -> void:
@@ -27,6 +30,8 @@ func show_launch(report: ShotReport) -> void:
 	strike_map.show_strike(report)
 	if hint:
 		hint.text = ""
+	if tempo_mini and not GameState.last_tempo_metrics.is_empty():
+		tempo_mini.show_verdict(GameState.last_tempo_metrics, report.lie == "Green")
 	visible = true
 	modulate.a = 1.0
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -37,6 +42,8 @@ func show_final(report: ShotReport) -> void:
 	strike_map.show_strike(report)
 	if hint:
 		hint.text = "Tap to continue"
+	if tempo_mini and not GameState.last_tempo_metrics.is_empty():
+		tempo_mini.show_verdict(GameState.last_tempo_metrics, report.lie == "Green")
 	visible = true
 	modulate.a = 1.0
 	mouse_filter = Control.MOUSE_FILTER_STOP
