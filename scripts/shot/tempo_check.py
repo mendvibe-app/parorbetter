@@ -133,7 +133,10 @@ def main() -> int:
     assert "peak_vel" in GRADE and "vel_at_top" in GRADE
     assert "jerk_pen * 0.15" in GRADE and "transition_pen * 0.15" in GRADE
     assert "_peak_vel" in GESTURE and "_vel_at_top" in GESTURE
-    assert "_skip_jerk_frame" in GESTURE
+    # Accel/jerk fold-in is deferred past the top-detection check so the exact
+    # reversal frame (guaranteed sharp regardless of skill) can be excluded.
+    assert "is_top_frame" in GESTURE and "was_had_top" in GESTURE
+    assert "_skip_jerk_frame" not in GESTURE
     assert "RELEASE_IS_IMPACT" in GESTURE
     assert "TempoGesture" in ROUTINE
     assert "PowerStance" not in ROUTINE
