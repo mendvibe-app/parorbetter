@@ -128,9 +128,6 @@ var _peak_vel: float = 0.0
 ## Speed at the exact moment of reversal — compared against _peak_vel to grade
 ## "did you slow down before turning around" instead of the reversal angle itself.
 var _vel_at_top: float = 0.0
-## Skips one jerk sample right after the mandatory reversal — same spirit as the
-## axis-lock _disp seed: don't let a detection-timing artifact read as erratic swing.
-var _skip_jerk_frame: bool = false
 
 
 func _ready() -> void:
@@ -287,7 +284,6 @@ func reset() -> void:
 	_ball_pop_at = 0
 	_peak_vel = 0.0
 	_vel_at_top = 0.0
-	_skip_jerk_frame = false
 	queue_redraw()
 	trail_updated.emit(trail)
 	live_changed.emit()
@@ -495,7 +491,7 @@ func _update(pos: Vector2) -> void:
 	_prev_vel = _vel
 	_vel = (_disp - _prev_disp) / dt
 	var accel := (_vel - _prev_vel) / dt
-	_max_accel = maxf(_max_accel, absf(accel) / maxf(size.y, 1.0))
+	var accel_n := absf(accel) / maxf(size.y, 1.0)
 
 	if not had_top:
 		_peak_vel = maxf(_peak_vel, absf(_vel))
@@ -507,16 +503,16 @@ func _update(pos: Vector2) -> void:
 		_max_lateral = lat
 
 	var seg := _smoothed - _last_pos
+	var jerk_ang := 0.0
+	var have_jerk := false
 	if seg.length_squared() > 4.0:
 		var seg_dir := seg.normalized()
 		if _prev_seg_dir.length_squared() > 0.5:
-			if _skip_jerk_frame:
-				_skip_jerk_frame = false
-			else:
-				var ang := absf(_prev_seg_dir.angle_to(seg_dir))
-				_max_jerk = maxf(_max_jerk, ang)
+			jerk_ang = absf(_prev_seg_dir.angle_to(seg_dir))
+			have_jerk = true
 		_prev_seg_dir = seg_dir
 
+	var was_had_top := had_top
 	if _disp >= _peak_disp:
 		_peak_disp = _disp
 		peak_pos = _smoothed
@@ -539,11 +535,20 @@ func _update(pos: Vector2) -> void:
 		if reversing or peaked:
 			had_top = true
 			_vel_at_top = absf(_vel)
-			_skip_jerk_frame = true
 			_t_top = now
 			_top_flash_until = Time.get_ticks_msec() + 320
 			moment.emit("top")
 			live_changed.emit()
+
+	# The frame where velocity actually reverses direction is guaranteed to show
+	# a sharp accel/jerk value regardless of swing quality — that's just what a
+	# reversal is. Fold both into the running max everywhere EXCEPT that one
+	# frame, so a controlled pause at the top doesn't register as a violent spike.
+	var is_top_frame := not was_had_top and had_top
+	if not is_top_frame:
+		_max_accel = maxf(_max_accel, accel_n)
+		if have_jerk:
+			_max_jerk = maxf(_max_jerk, jerk_ang)
 
 	if had_top and _t_impact < 0.0:
 		if _disp <= _impact_cross() and _vel < 0.0:
