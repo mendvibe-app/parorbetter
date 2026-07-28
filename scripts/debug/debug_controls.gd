@@ -155,12 +155,14 @@ func _process(_delta: float) -> void:
 				str(t.get("note", "")),
 			]
 		else:
-			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms\n%s" % [
+			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms\naccel %.1f (clean<8, maxed@32)  jerk %.2f (clean<0.6, maxed@2.0)\n%s" % [
 				float(t.get("ratio", 0.0)),
 				float(t.get("target", 3.0)),
 				int(float(t.get("balance", 0.0)) * 100.0),
 				int(t.get("backswing_ms", 0)),
 				int(t.get("downswing_ms", 0)),
+				float(t.get("max_accel", 0.0)),
+				float(t.get("max_jerk", 0.0)),
 				str(t.get("note", "")),
 			]
 	if m.is_empty():
