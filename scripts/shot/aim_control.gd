@@ -66,11 +66,31 @@ static func retarget_bearing(from: Vector2, world: Vector2, lock_yards: float) -
 	return point_along_bearing(from, bearing, lock_yards)
 
 
+## Finds where a straight line from external point `p` is tangent to the circle
+## (c, r), picking whichever of the two tangent points sits on the `right`-ward
+## side. A tangent line touches the circle at exactly one point, so a cone flank
+## built this way meets the circle without ever crossing its boundary — no flat
+## cap, no seam. Falls back to the near-axis point on the circle if `p` is
+## already inside/on it (degenerate for very short, wide-dispersion shots).
+static func _tangent_point(p: Vector2, c: Vector2, r: float, right: Vector2) -> Vector2:
+	var d_vec := p - c
+	var d := d_vec.length()
+	if d <= r + 0.001:
+		return c + (d_vec / maxf(d, 0.001)) * r
+	var n := d_vec / d
+	var phi := acos(clampf(r / d, -1.0, 1.0))
+	var t_a := c + n.rotated(phi) * r
+	var t_b := c + n.rotated(-phi) * r
+	if (t_a - c).dot(right) >= (t_b - c).dot(right):
+		return t_a
+	return t_b
+
+
 ## Directional aim wedge: tight at the ball (takeoff direction is easy to read),
-## fanning out at the tip to the dispersion circle's own chord width at that point —
-## the tip corners land exactly on the circle's boundary, not past it, so cone and
-## circle read as one seamless shape instead of the cap cutting a line across the circle.
-## shape_bend −draw / +fade (mid bulge only). Tip stays on from→to so cone meets the circle.
+## flanks run tangent to the dispersion circle so they touch its boundary at a
+## single point each — cone and circle always read as one seamless shape, at
+## any shot length, with no flat cap ever crossing into or past the circle.
+## shape_bend −draw / +fade (mid bulge only).
 ## power_preview sharpens the near end (narrower, denser) once % is live.
 static func make_aim_cone(
 	from: Vector2,
@@ -92,39 +112,52 @@ static func make_aim_cone(
 		length = 8.0
 	var dir := along.normalized()
 	var right := Vector2(-dir.y, dir.x)
-	# Stop just short of the circle so cone + circle read as one composition.
-	var tip_len := length * (0.92 if power_preview else 0.88)
-	# Tip must sit on the aim axis — bending it offline was desyncing the landing circle.
-	var tip := from + dir * tip_len
-	var mid := from + dir * (tip_len * 0.5) + right * (shape_bend * tip_len * 0.08)
 	var near_w := near_half_w * (0.55 if power_preview else 1.0)
-	# Tip sits before the circle's center (see tip_len above), so a flat cap at the
-	# full radius pokes its corners outside the circle while its middle sits inside —
-	# that crossing draws a visible seam through the circle's edge. Use the circle's
-	# own chord width at this offset instead, so the cap corners land exactly on the
-	# circle's boundary.
-	var tip_to_center := length - tip_len
-	var far_w := sqrt(maxf(far_half_w * far_half_w - tip_to_center * tip_to_center, 0.0))
-	var pts := PackedVector2Array([
-		from - right * near_w,
-		from + right * near_w,
-		mid + right * lerpf(near_w, far_w, 0.5),
-		tip + right * far_w,
-		tip - right * far_w,
-		mid - right * lerpf(near_w, far_w, 0.5),
-	])
+	var base_l := from - right * near_w
+	var base_r := from + right * near_w
+	var tip_r := _tangent_point(base_r, to, far_half_w, right)
+	var tip_l := _tangent_point(base_l, to, far_half_w, -right)
+	# Bulge the body toward the suggested shape, not the tangent points themselves —
+	# nudging those off-axis would break tangency and reopen the seam.
+	var axial_r := (tip_r - from).dot(dir)
+	var axial_l := (tip_l - from).dot(dir)
+	var far_axial := (axial_r + axial_l) * 0.5
+	var far_w_r := (tip_r - from).dot(right)
+	var far_w_l := -(tip_l - from).dot(right)
+	var mid_axial := far_axial * 0.5
+	var mid := from + dir * mid_axial + right * (shape_bend * mid_axial * 0.08)
 	# Warm near ball → gold into the circle (matches dispersion marker).
 	var a0 := 0.22 if power_preview else 0.30
 	var a1 := 0.38 if power_preview else 0.18
 	var a2 := 0.55 if power_preview else 0.04
+	var tip_col := Color(1.0, 0.9, 0.35, a2)
+	var pts := PackedVector2Array([
+		base_l,
+		base_r,
+		mid + right * lerpf(near_w, far_w_r, 0.5),
+		tip_r,
+	])
 	var cols := PackedColorArray([
 		Color(0.95, 0.95, 0.9, a0),
 		Color(0.95, 0.95, 0.9, a0),
 		Color(1.0, 0.92, 0.45, a1),
-		Color(1.0, 0.9, 0.35, a2),
-		Color(1.0, 0.9, 0.35, a2),
-		Color(1.0, 0.92, 0.45, a1),
+		tip_col,
 	])
+	# Trace the circle's own near-side arc from tip_r to tip_l instead of a straight
+	# chord — the fill's far edge then hugs the circle's curve exactly, so nothing
+	# (not even a faint low-alpha edge) cuts across the circle's face.
+	var ang_r := (tip_r - to).angle()
+	var ang_l := (tip_l - to).angle()
+	var delta := wrapf(ang_l - ang_r, -PI, PI)
+	var arc_segments := 8
+	for i in range(1, arc_segments):
+		var a := ang_r + delta * (float(i) / float(arc_segments))
+		pts.append(to + Vector2(cos(a), sin(a)) * far_half_w)
+		cols.append(tip_col)
+	pts.append(tip_l)
+	cols.append(tip_col)
+	pts.append(mid - right * lerpf(near_w, far_w_l, 0.5))
+	cols.append(Color(1.0, 0.92, 0.45, a1))
 	return {"points": pts, "colors": cols}
 
 

@@ -88,12 +88,23 @@ def main() -> int:
     assert "Gradient.new()" in HOLE
     assert "_pin_ref_line.gradient = null" in refresh
 
-    # Cone is tight at the ball and widens to exactly match the dispersion circle's
-    # radius at the tip — not a stylized fixed-width taper (real-golf reasoning: takeoff
-    # direction reads easily by eye, landing footprint is the genuinely uncertain part).
+    # Cone is tight at the ball and its flanks run tangent to the dispersion circle
+    # (real-golf reasoning: takeoff direction reads easily by eye, landing footprint
+    # is the genuinely uncertain part) — a flat cap at a fixed fraction of the shot
+    # length would either poke past the circle's edge or collapse to a gap short of
+    # it depending on shot length, so the flank must be solved geometrically instead.
     assert "10.0 * inv_z, radius_px, _power_previewing" in refresh
-    assert "far_w := far_half_w" in AIM
+    assert "func _tangent_point" in AIM
+    assert "far_w := far_half_w" not in AIM
     assert "far_half_w * (0.7 if power_preview else 1.0)" not in AIM
+
+    # The two flanks end tangent to the circle at different points — the outline
+    # must stroke them as separate open polylines, never a straight segment
+    # connecting one tangent point to the other, or that segment redraws the old
+    # seam across the circle's face.
+    assert "_aim_cone_edge_r" in HOLE
+    assert "edge_l.append(pts[n - 1])" in HOLE
+    assert "edge_r.append(pts[3])" in HOLE
 
     print("aim_control_check: ok")
     return 0
