@@ -74,6 +74,9 @@ const RECORDS_PATH := "user://records.cfg"
 var club_coach: ClubCoachLog
 ## Player-facing coach card toggle (start_screen + club_select badges). Defaults off.
 var club_coach_ui_enabled: bool = false
+## Sharpened Dogleg Corners epic — A/B toggle vs the old smooth-bend fairway curve.
+## Defaults off so existing behavior is unchanged until validated in playtesting.
+var sharp_dogleg_enabled: bool = false
 
 
 func _ready() -> void:

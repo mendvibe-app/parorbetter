@@ -26,6 +26,13 @@ const ROLE_ISLAND_RING := "island_ring"
 @export var pin_offset: Vector2 = Vector2.ZERO  ## from green center
 @export var tee_offset_x: float = 0.0
 @export var fairway_bend: float = 0.0  ## lateral dogleg at mid fairway (px)
+## Sharpened Dogleg Corners epic. Only consumed when GameState.sharp_dogleg_enabled
+## is on and layout is DOGLEG_LEFT/DOGLEG_RIGHT (see HoleController._use_sharp_dogleg()).
+## 0.0 = corner sits at the green, 1.0 = corner sits at the tee (same "along"
+## convention as _fairway_center_at / hazard "along" specs).
+@export var corner_position: float = 0.45
+## 0.0 = current smooth 3-point curve, 1.0 = hard two-segment elbow at corner_position.
+@export var corner_tightness: float = 0.0
 @export var layout: LayoutStyle = LayoutStyle.STANDARD
 @export var wind_vector: Vector2 = Vector2.ZERO
 @export var green_slope: Vector2 = Vector2.ZERO
