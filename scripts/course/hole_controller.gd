@@ -80,6 +80,7 @@ var _pinch_start_mult: float = 1.0
 var _user_zoom_mult: float = 1.0  ## manual pinch override on top of the auto-framed zoom
 var _magnify_last_ms: int = -1  ## last InputEventMagnifyGesture time; drives idle-release
 var _practice_btn: Button
+var _change_club_btn: Button
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
 var _aim_radius_base_yd: float = 22.0
@@ -127,7 +128,9 @@ func _ready() -> void:
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
+	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_practice_btn()
+	_setup_change_club_btn()
 	# After practice/wind chrome: keep club picker as the topmost UI modal.
 	ui_layer.move_child(_club_select, -1)
 	_apply_safe_area()
@@ -892,6 +895,8 @@ func _begin_tap_in_stroke(pin_yd: float) -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(true)
@@ -924,6 +929,8 @@ func _begin_club_select() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
@@ -953,6 +960,8 @@ func _begin_range_swing() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
 	var lie := "Tee"
@@ -973,7 +982,7 @@ func _begin_range_swing() -> void:
 	_start_power_swing(false)
 
 
-func _begin_aim_phase() -> void:
+func _begin_aim_phase(restore_aim: bool = false) -> void:
 	_aiming = true
 	_aim_dragging = false
 	_reset_pinch_state()
@@ -988,10 +997,14 @@ func _begin_aim_phase() -> void:
 	_power_previewing = false
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green", club_max)
 	_aim_radius_yd = _aim_radius_base_yd
-	_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
-	_aim_target = AimControl.clamp_aim(_aim_target)
-	# Lock radial distance during aim — player picks line/shape, not yardage yet.
-	_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
+	# restore_aim (the post-Confirm "back" path): keep the last aim point/lock
+	# distance instead of resetting to the default target — the player already
+	# picked a line, they're just backing off the swing, not restarting aim.
+	if not restore_aim:
+		_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
+		_aim_target = AimControl.clamp_aim(_aim_target)
+		# Lock radial distance during aim — player picks line/shape, not yardage yet.
+		_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
 	_set_green_book_visible(show_book)
@@ -999,6 +1012,8 @@ func _begin_aim_phase() -> void:
 		confirm_aim_btn.visible = true
 	if _practice_btn:
 		_practice_btn.visible = true
+	if _change_club_btn:
+		_change_club_btn.visible = not is_putt
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
@@ -1035,6 +1050,10 @@ func _end_aim_phase() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
+	if shot_routine and shot_routine.back_btn:
+		shot_routine.back_btn.visible = false
 
 
 func _setup_practice_btn() -> void:
@@ -1055,6 +1074,43 @@ func _setup_practice_btn() -> void:
 	_practice_btn.pressed.connect(_start_practice_swing)
 
 
+func _setup_change_club_btn() -> void:
+	_change_club_btn = Button.new()
+	_change_club_btn.name = "ChangeClubButton"
+	_change_club_btn.text = "Change Club"
+	_change_club_btn.visible = false
+	_change_club_btn.custom_minimum_size = Vector2(UiScale.TOUCH_MIN * 2.2, UiScale.TOUCH_MIN)
+	if confirm_aim_btn:
+		_change_club_btn.add_theme_font_size_override("font_size", confirm_aim_btn.get_theme_font_size("font_size"))
+		# Sit above Practice Swing, which sits above Confirm Aim.
+		_change_club_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_change_club_btn.offset_left = confirm_aim_btn.offset_left
+		_change_club_btn.offset_right = confirm_aim_btn.offset_right
+		_change_club_btn.offset_top = confirm_aim_btn.offset_top - 280.0
+		_change_club_btn.offset_bottom = confirm_aim_btn.offset_bottom - 280.0
+	ui_layer.add_child(_change_club_btn)
+	_change_club_btn.pressed.connect(_on_change_club_pressed)
+
+
+func _on_change_club_pressed() -> void:
+	if not _aiming or hole_complete:
+		return
+	AudioBus.play_ui()
+	_begin_club_select()
+
+
+func _on_back_requested() -> void:
+	## Re-do window: player backed out after Confirm, before the swing gesture
+	## started moving. shot_routine.cancel_shot() already dropped the aborted
+	## attempt's tempo state; restore_aim=true keeps the last aim point instead
+	## of resetting to the default target.
+	if hole_complete or not GameState.run_active:
+		return
+	shot_routine.cancel_shot()
+	AudioBus.play_ui()
+	_begin_aim_phase(true)
+
+
 func _start_practice_swing() -> void:
 	if not _aiming or hole_complete:
 		return
@@ -1064,6 +1120,8 @@ func _start_practice_swing() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	AudioBus.play_ui()
 	_start_power_swing(true)
@@ -1078,13 +1136,15 @@ func _confirm_aim() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
-	_start_power_swing(false)
+	_start_power_swing(false, true)
 
 
-func _start_power_swing(p_practice: bool = false) -> void:
+func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
@@ -1108,7 +1168,7 @@ func _start_power_swing(p_practice: bool = false) -> void:
 	# Landing preview locked to committed carry (gesture can only subtract).
 	_power_previewing = not p_practice
 	_apply_committed_preview()
-	shot_routine.begin_shot(p_practice)
+	shot_routine.begin_shot(p_practice, p_allow_back)
 	if not shot_routine.practice_result.is_connected(_on_practice_result):
 		shot_routine.practice_result.connect(_on_practice_result)
 	_set_green_book_visible(false)
@@ -1151,6 +1211,8 @@ func _on_practice_result(verdict: Dictionary) -> void:
 		_practice_btn.visible = true
 	_refresh_aim_visuals()
 	var is_putt := ball.get_lie() == "Green"
+	if _change_club_btn:
+		_change_club_btn.visible = not is_putt
 	if is_putt:
 		_refresh_wind_indicator(false)
 	else:

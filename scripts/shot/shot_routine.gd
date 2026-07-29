@@ -8,6 +8,7 @@ signal shot_ready(result: ShotResult)
 signal phase_changed(phase: String)
 signal pure_strike(result: ShotResult)
 signal practice_result(verdict: Dictionary)
+signal back_requested
 
 enum Phase { IDLE, ACTIVE, DONE }
 
@@ -36,13 +37,33 @@ var last_verdict: Dictionary = {}
 @onready var tempo_gesture: TempoGesture = $Controls/TempoGesture
 @onready var hint_label: Label = $HintLabel
 
+## Re-do window: valid from Confirm until the gesture's first real sample
+## (takeaway). Built here (not the .tscn) so it lives in the GlanceRow's
+## already-safe strip above the swing pad, never over the live gesture area.
+var back_btn: Button
+
 
 func _ready() -> void:
 	tempo_gesture.committed.connect(_on_tempo_committed)
 	tempo_gesture.moment.connect(_on_tempo_moment)
 	if meter_display:
 		meter_display.bind(tempo_gesture)
+	_setup_back_btn()
 	set_active(false)
+
+
+func _setup_back_btn() -> void:
+	back_btn = Button.new()
+	back_btn.name = "BackButton"
+	back_btn.text = "‹ Back"
+	back_btn.visible = false
+	back_btn.custom_minimum_size = Vector2(96, 48)
+	back_btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
+	var glance := get_node_or_null("GlanceRow") as Control
+	if glance:
+		glance.add_child(back_btn)
+		glance.move_child(back_btn, 0)
+	back_btn.pressed.connect(func() -> void: back_requested.emit())
 
 
 func configure(
@@ -93,7 +114,7 @@ func configure(
 		club_label.text = club_name
 
 
-func begin_shot(p_practice: bool = false) -> void:
+func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	practice_mode = p_practice
 	phase = Phase.ACTIVE
 	last_verdict.clear()
@@ -143,11 +164,28 @@ func begin_shot(p_practice: bool = false) -> void:
 	var controls := get_node_or_null("Controls") as Control
 	if controls:
 		controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if back_btn:
+		back_btn.visible = p_allow_back and not p_practice
 
 
 func set_active(on: bool) -> void:
 	visible = on
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+
+func cancel_shot() -> void:
+	## Abort a confirmed shot before the swing gesture has started moving —
+	## the re-do window. No verdict was ever computed (that only happens on
+	## commit, well past takeaway), so there's nothing to leak: just drop back
+	## to idle and let the next configure()/begin_shot() rebuild state fresh.
+	phase = Phase.IDLE
+	last_verdict.clear()
+	tempo_gesture.set_enabled(false)
+	tempo_gesture.reset()
+	if back_btn:
+		back_btn.visible = false
+	set_active(false)
+	phase_changed.emit("idle")
 
 
 func force_result(perfect: bool) -> void:
@@ -163,6 +201,9 @@ func _on_tempo_moment(name: String) -> void:
 		meter_display.on_moment(name)
 	match name:
 		"takeaway":
+			# Gesture is now in motion — the re-do window is closed for good.
+			if back_btn:
+				back_btn.visible = false
 			if shot_type == "putt":
 				AudioBus.play_putt_tick(0.35)
 		"marker":
