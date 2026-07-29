@@ -16,6 +16,15 @@ const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 
+## Pinch-to-zoom (aim/green-book only) — multiplies _desired_camera_zoom(), then
+## the result is safety-clamped so a pinch can't push the camera past a readable range.
+const PINCH_MULT_MIN := 0.6
+const PINCH_MULT_MAX := 1.5
+const PINCH_ABS_ZOOM_MIN := 0.5
+const PINCH_ABS_ZOOM_MAX := 8.0
+const PINCH_MIN_SPAN_PX := 40.0  ## floor on finger-span distance to avoid divide-by-near-zero spikes
+const MAGNIFY_IDLE_RELEASE_MS := 400  ## trackpad magnify gesture has no discrete release; time it out
+
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
 const TEX_FAIRWAY := preload("res://assets/terrain/fairway_tile_a.png")
@@ -63,6 +72,13 @@ var _aiming: bool = false
 var _selecting_club: bool = false
 var _power_previewing: bool = false
 var _aim_dragging: bool = false
+var _active_touches: Dictionary = {}  ## touch index -> last screen position, aim phase only
+var _pinch_idx_a: int = -1
+var _pinch_idx_b: int = -1
+var _pinch_start_dist: float = 0.0
+var _pinch_start_mult: float = 1.0
+var _user_zoom_mult: float = 1.0  ## manual pinch override on top of the auto-framed zoom
+var _magnify_last_ms: int = -1  ## last InputEventMagnifyGesture time; drives idle-release
 var _practice_btn: Button
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
@@ -960,6 +976,7 @@ func _begin_range_swing() -> void:
 func _begin_aim_phase() -> void:
 	_aiming = true
 	_aim_dragging = false
+	_reset_pinch_state()
 	_selecting_club = false
 	if _club_select:
 		_club_select.dismiss()
@@ -1314,27 +1331,89 @@ func _nudge_aim(delta: Vector2) -> void:
 	_apply_aim_world(_aim_target + delta)
 
 
+func _begin_pinch(idx_a: int, idx_b: int) -> void:
+	_pinch_idx_a = idx_a
+	_pinch_idx_b = idx_b
+	_pinch_start_dist = maxf(_active_touches[idx_a].distance_to(_active_touches[idx_b]), PINCH_MIN_SPAN_PX)
+	_pinch_start_mult = _user_zoom_mult
+	_aim_dragging = false  # a second finger down means this is a pinch, not an aim drag
+
+
+func _update_pinch() -> void:
+	if not _active_touches.has(_pinch_idx_a) or not _active_touches.has(_pinch_idx_b):
+		return
+	var dist: float = maxf(
+		_active_touches[_pinch_idx_a].distance_to(_active_touches[_pinch_idx_b]), PINCH_MIN_SPAN_PX
+	)
+	_user_zoom_mult = clampf(_pinch_start_mult * (dist / _pinch_start_dist), PINCH_MULT_MIN, PINCH_MULT_MAX)
+
+
+func _end_pinch() -> void:
+	_pinch_idx_a = -1
+	_pinch_idx_b = -1
+	# Release trigger: snap back to the auto-framed zoom immediately — the existing
+	# per-frame camera.zoom lerp in _process() eases the visual transition.
+	_user_zoom_mult = 1.0
+
+
+func _reset_pinch_state() -> void:
+	_active_touches.clear()
+	_pinch_idx_a = -1
+	_pinch_idx_b = -1
+	_user_zoom_mult = 1.0
+	_magnify_last_ms = -1
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _aiming:
+		if not _active_touches.is_empty() or _pinch_idx_a >= 0:
+			_reset_pinch_state()
 		return
 
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
-			_aim_dragging = true
-			var screen := AimControl.touch_aim_screen(touch.position)
-			var world := get_viewport().get_canvas_transform().affine_inverse() * screen
-			_apply_aim_world(world)
+			_active_touches[touch.index] = touch.position
+			if _active_touches.size() == 2:
+				var idxs := _active_touches.keys()
+				_begin_pinch(idxs[0], idxs[1])
+			elif _active_touches.size() == 1:
+				_aim_dragging = true
+				var screen := AimControl.touch_aim_screen(touch.position)
+				var world := get_viewport().get_canvas_transform().affine_inverse() * screen
+				_apply_aim_world(world)
+			# 3rd+ finger: ignore, leave the active pinch/drag undisturbed.
 		else:
-			_aim_dragging = false
+			_active_touches.erase(touch.index)
+			if touch.index == _pinch_idx_a or touch.index == _pinch_idx_b:
+				_end_pinch()
+			if _active_touches.is_empty():
+				_aim_dragging = false
 		get_viewport().set_input_as_handled()
 		return
 
-	if event is InputEventScreenDrag and _aim_dragging:
+	if event is InputEventScreenDrag:
 		var drag := event as InputEventScreenDrag
-		var screen := AimControl.touch_aim_screen(drag.position)
-		var world := get_viewport().get_canvas_transform().affine_inverse() * screen
-		_apply_aim_world(world)
+		if not _active_touches.has(drag.index):
+			return
+		_active_touches[drag.index] = drag.position
+		if _pinch_idx_a >= 0 and (drag.index == _pinch_idx_a or drag.index == _pinch_idx_b):
+			_update_pinch()
+			get_viewport().set_input_as_handled()
+			return
+		if _aim_dragging and _pinch_idx_a < 0:
+			var screen := AimControl.touch_aim_screen(drag.position)
+			var world := get_viewport().get_canvas_transform().affine_inverse() * screen
+			_apply_aim_world(world)
+			get_viewport().set_input_as_handled()
+		return
+
+	if event is InputEventMagnifyGesture and _pinch_idx_a < 0:
+		## Trackpad pinch (e.g. macOS in-editor testing) — no discrete release, so
+		## the override times out via _process()/_magnify_last_ms instead.
+		var mag := event as InputEventMagnifyGesture
+		_user_zoom_mult = clampf(_user_zoom_mult * mag.factor, PINCH_MULT_MIN, PINCH_MULT_MAX)
+		_magnify_last_ms = Time.get_ticks_msec()
 		get_viewport().set_input_as_handled()
 		return
 
@@ -1468,20 +1547,23 @@ func _desired_camera_zoom() -> Vector2:
 	var pin_yd := _pin_yards()
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
+	var z: float
 	if _is_putt_context():
 		# Frame ball→cup; zoom out sooner on lags so 40 ft reads as travel, not a short lag.
 		var dist := ball.global_position.distance_to(_cup_pos)
 		var half_span := maxf(dist * 0.90 + 26.0, 34.0)
-		var z := clampf(view_min * 0.52 / maxf(half_span, 28.0), 2.6, 7.5)
-		return Vector2(z, z)
+		z = clampf(view_min * 0.52 / maxf(half_span, 28.0), 2.6, 7.5)
 	# Approach with green book — frame ball toward green without losing landing circle
-	if _aiming and _should_show_green_book():
-		var z := lerpf(2.0, 1.35, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
-		return Vector2(z, z)
-	if pin_yd <= 90.0:
-		var z := lerpf(1.35, 0.95, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
-		return Vector2(z, z)
-	return Vector2(0.85, 0.85)
+	elif _aiming and _should_show_green_book():
+		z = lerpf(2.0, 1.35, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
+	elif pin_yd <= 90.0:
+		z = lerpf(1.35, 0.95, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
+	else:
+		z = 0.85
+	# Pinch-to-zoom override — aim phase only; auto-framing owns zoom everywhere else.
+	if _aiming and _user_zoom_mult != 1.0:
+		z = clampf(z * _user_zoom_mult, PINCH_ABS_ZOOM_MIN, PINCH_ABS_ZOOM_MAX)
+	return Vector2(z, z)
 
 
 func _desired_camera_look() -> Vector2:
@@ -1546,6 +1628,9 @@ func _process(_delta: float) -> void:
 			z_lerp = 0.35
 		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
+		if _magnify_last_ms >= 0 and Time.get_ticks_msec() - _magnify_last_ms > MAGNIFY_IDLE_RELEASE_MS:
+			_user_zoom_mult = 1.0
+			_magnify_last_ms = -1
 		# Snap-feel aim follow (faster) so book/zoom don't crawl in
 		camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.28)
 		camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.28)
