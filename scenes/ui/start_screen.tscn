@@ -235,7 +235,6 @@ vertical_icon_alignment = 0
 expand_icon = false
 
 [node name="CoachButton" type="Button" parent="Panel/Buttons"]
-visible = false
 custom_minimum_size = Vector2(320, 90)
 layout_mode = 2
 theme_override_styles/normal = SubResource("menu_btn_normal")

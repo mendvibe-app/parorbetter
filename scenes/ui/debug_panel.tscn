@@ -189,46 +189,6 @@ max_value = 2.0
 step = 0.1
 value = 1.0
 
-[node name="EmaRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
-layout_mode = 2
-
-[node name="EmaLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/EmaRow"]
-custom_minimum_size = Vector2(100, 0)
-layout_mode = 2
-text = "EMA alpha"
-
-[node name="EmaSlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/EmaRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-min_value = 0.2
-max_value = 0.6
-step = 0.05
-value = 0.35
-
-[node name="ReleaseRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
-layout_mode = 2
-
-[node name="ReleaseCheck" type="CheckButton" parent="Panel/Margin/Root/Scroll/VBox/ReleaseRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Release = impact"
-
-[node name="GuideRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
-layout_mode = 2
-
-[node name="GuideCheck" type="CheckButton" parent="Panel/Margin/Root/Scroll/VBox/GuideRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Tempo guide (ghost)"
-
-[node name="ClubCoachUiRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
-layout_mode = 2
-
-[node name="ClubCoachUiCheck" type="CheckButton" parent="Panel/Margin/Root/Scroll/VBox/ClubCoachUiRow"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Club Coach UI (player)"
-
 [node name="Buttons" type="GridContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 columns = 2
@@ -254,15 +214,5 @@ text = "Force Mishit"
 [node name="ApplyBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 text = "Apply Tweaks"
-
-[node name="RangeBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Driving Range"
-
-[node name="ExitRangeBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
-layout_mode = 2
-size_flags_horizontal = 3
-text = "Exit Range"
 
 [connection signal="pressed" from="DebugButton" to="." method="_on_debug_button_pressed"]

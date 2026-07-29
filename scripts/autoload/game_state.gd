@@ -72,13 +72,11 @@ const RECORDS_PATH := "user://records.cfg"
 
 ## Per-club tendency aggregate — persists across runs, excluded from reset_run().
 var club_coach: ClubCoachLog
-## Player-facing coach card toggle (start_screen + club_select badges). Defaults off.
-var club_coach_ui_enabled: bool = false
-## Sharpened Dogleg Corners epic — A/B toggle vs the old smooth-bend fairway curve.
-## Defaults off so existing behavior is unchanged until validated in playtesting.
-var sharp_dogleg_enabled: bool = false
-## Rough lie severity — Buried / Average / SittingUp sub-states for Rough only.
-## Live by default after playtest; no F1 toggle.
+## Player-facing coach card (start screen + club-select badges). Always on.
+var club_coach_ui_enabled: bool = true
+## Sharpened dogleg corners — live for dogleg layouts (no F1 A/B).
+var sharp_dogleg_enabled: bool = true
+## Rough lie severity — Buried / Average / SittingUp. Always on.
 var rough_severity_enabled: bool = true
 
 

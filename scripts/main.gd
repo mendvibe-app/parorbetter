@@ -25,9 +25,9 @@ func _ready() -> void:
 	debug_panel.jump_hole.connect(_on_jump)
 	debug_panel.force_perfect.connect(func(): hole_controller.debug_force_shot(true))
 	debug_panel.force_mishit.connect(func(): hole_controller.debug_force_shot(false))
-	debug_panel.reload_hole.connect(func(): hole_controller.load_hole(GameState.current_hole))
-	debug_panel.enter_range.connect(_on_practice_range)
-	debug_panel.exit_range.connect(_return_to_start)
+	debug_panel.reload_hole.connect(_on_debug_reload)
+	if hole_controller.hud and hole_controller.hud.has_signal("menu_pressed"):
+		hole_controller.hud.menu_pressed.connect(_return_to_start)
 	_return_to_start()
 
 
@@ -91,3 +91,13 @@ func _on_coach_dismissed() -> void:
 func _on_jump(index: int) -> void:
 	GameState.jump_to_hole(index)
 	hole_controller.load_hole(index)
+
+
+func _on_debug_reload() -> void:
+	## Apply Tweaks reloads whatever practice/course context is active.
+	if GameState.range_mode:
+		hole_controller.load_range()
+	elif GameState.green_mode:
+		hole_controller.load_practice_green()
+	else:
+		hole_controller.load_hole(GameState.current_hole)

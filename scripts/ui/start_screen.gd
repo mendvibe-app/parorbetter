@@ -35,7 +35,7 @@ func _ready() -> void:
 
 func show_screen() -> void:
 	_refresh_record()
-	coach_btn.visible = GameState.club_coach_ui_enabled
+	coach_btn.visible = true
 	visible = true
 
 

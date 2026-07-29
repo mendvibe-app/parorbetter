@@ -1,9 +1,9 @@
 class_name CoachScreen
 extends Control
 
-## Player-facing per-club tendency breakdown. Reachable from the start screen,
-## gated behind GameState.club_coach_ui_enabled. Icon-first per design principle,
-## but badges are text stubs until tendency art exists (see club_select.gd).
+## Player-facing per-club tendency breakdown. Reachable from the start screen.
+## Icon-first per design principle; badges are text stubs until tendency art
+## exists (see club_select.gd).
 
 signal dismissed
 

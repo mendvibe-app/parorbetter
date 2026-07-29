@@ -137,7 +137,7 @@ def main() -> int:
     # reversal frame (guaranteed sharp regardless of skill) can be excluded.
     assert "is_top_frame" in GESTURE and "was_had_top" in GESTURE
     assert "_skip_jerk_frame" not in GESTURE
-    assert "RELEASE_IS_IMPACT" in GESTURE
+    assert "RELEASE_IS_IMPACT" not in GESTURE
     assert "TempoGesture" in ROUTINE
     assert "PowerStance" not in ROUTINE
     assert "SwingContact" not in ROUTINE

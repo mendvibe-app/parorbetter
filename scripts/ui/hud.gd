@@ -1,5 +1,7 @@
 extends Control
 
+signal menu_pressed
+
 const LIFE_FULL := preload("res://assets/ui/life_full.png")
 const LIFE_EMPTY := preload("res://assets/ui/life_empty.png")
 
@@ -9,6 +11,7 @@ const LIFE_EMPTY := preload("res://assets/ui/life_empty.png")
 @onready var adapt_label: Label = $AdaptLabel
 
 var _strokes: int = 0
+var menu_btn: Button
 
 
 func _ready() -> void:
@@ -18,8 +21,29 @@ func _ready() -> void:
 	if adapt_label:
 		adapt_label.visible = false
 		adapt_label.text = ""
+	_setup_menu_btn()
 	_on_lives(GameState.lives)
 	_on_pure_strikes(GameState.pure_strikes)
+
+
+func _setup_menu_btn() -> void:
+	## Practice modes only — leave range/green without F1.
+	menu_btn = Button.new()
+	menu_btn.name = "MenuButton"
+	menu_btn.text = "Menu"
+	menu_btn.visible = false
+	menu_btn.custom_minimum_size = Vector2(120, 52)
+	menu_btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
+	menu_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	menu_btn.offset_left = -160.0
+	menu_btn.offset_top = 84.0
+	menu_btn.offset_right = -24.0
+	menu_btn.offset_bottom = 136.0
+	menu_btn.pressed.connect(func() -> void:
+		AudioBus.play_ui()
+		menu_pressed.emit()
+	)
+	add_child(menu_btn)
 
 
 func refresh(hole: HoleData, strokes: int) -> void:
@@ -31,20 +55,26 @@ func refresh(hole: HoleData, strokes: int) -> void:
 	]
 	_refresh_score()
 	lives_row.visible = true
+	if menu_btn:
+		menu_btn.visible = false
 
 
 func refresh_range(swings: int) -> void:
 	_strokes = swings
 	hole_label.text = "DRIVING RANGE"
-	score_label.text = "Swings %d · F1 Exit" % swings
+	score_label.text = "Swings %d" % swings
 	lives_row.visible = false
+	if menu_btn:
+		menu_btn.visible = true
 
 
 func refresh_practice_green(putts: int) -> void:
 	_strokes = putts
 	hole_label.text = "PRACTICE GREEN"
-	score_label.text = "Putts %d · F1 Exit" % putts
+	score_label.text = "Putts %d" % putts
 	lives_row.visible = false
+	if menu_btn:
+		menu_btn.visible = true
 
 
 func _refresh_score() -> void:

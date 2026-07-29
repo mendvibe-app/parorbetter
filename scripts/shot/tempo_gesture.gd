@@ -9,9 +9,7 @@ signal moment(name: String)  ## "takeaway" | "top" | "impact"
 signal trail_updated(points: PackedVector2Array)
 signal live_changed  ## ratio / status changed — meter redraws
 
-## Feel-test: if true, finger release after top counts as impact (Golden-Tee flick).
-static var RELEASE_IS_IMPACT: bool = false
-## Touch EMA — lower = snappier/jittery, higher = smoother/laggier. F1 knob.
+## Touch EMA — lower = snappier/jittery, higher = smoother/laggier.
 static var EMA_ALPHA: float = 0.35
 
 const DEADZONE_FRAC := 0.10
@@ -615,9 +613,8 @@ func _end_touch() -> void:
 		return
 
 	if _t_impact < 0.0:
-		if had_top and RELEASE_IS_IMPACT:
-			_finish_impact(now, false)
-		elif had_top:
+		# Release without crossing impact = incomplete (must drag through the ball).
+		if had_top:
 			_finish_impact(now, true)
 		else:
 			_t_top = now

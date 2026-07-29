@@ -579,7 +579,7 @@ func _fairway_center_at(along: float) -> Vector2:
 
 
 func _use_sharp_dogleg() -> bool:
-	## Sharpened Dogleg Corners epic — debug A/B toggle, dogleg layouts only.
+	## Sharpened dogleg corners — live for dogleg layouts.
 	return GameState.sharp_dogleg_enabled and (
 		hole.layout == HoleData.LayoutStyle.DOGLEG_LEFT
 		or hole.layout == HoleData.LayoutStyle.DOGLEG_RIGHT

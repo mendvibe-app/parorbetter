@@ -10,7 +10,7 @@ Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before 
 
 Orchestrated by `HoleController` + `ShotRoutine`.
 
-1. **Club select** (`ClubSelect`) — Off green: 3 clubs near `BallPhysics.pick_club` (★), **Full bag** for the rest (sand → wedges only). Green skips to putter. Confirm commits. **Driving range** (F1 → Driving Range): same club pick, then skip aim.
+1. **Club select** (`ClubSelect`) — Off green: 3 clubs near `BallPhysics.pick_club` (★), **Full bag** for the rest (sand → wedges only). Green skips to putter. Confirm commits. **Driving range** (start screen → Practice Range): same club pick, then skip aim.
 2. **Aim** (`HoleController` aim phase + `AimControl`) — Drag bearing; yellow dispersion circle = form radius from `GameState.get_aim_radius_yards`. Confirm Aim / Space locks target. Optional **Practice Swing** grades tempo with no stroke. Range mode skips this (fixed center aim). On green: aim-drag is line + pace; short flat putts (`GameState.tap_in_yd` / `tap_in_break`) skip aim and go straight to stroke.
 3. **Strike** — Full/pitch: `TempoGesture` + `TempoGrade` (backswing:downswing ratio). Putt: same gesture pad, re-skinned; `PuttStroke` grades **amplitude vs pace marker** (power), **arc path** (line), tempo as miss-explainer. Committed power = `recommended_power`; gesture multiplies. Pure = PERFECT + balance ≥ 0.72.
 4. **Result** — Glance panel (`ShotReport.glance_text`: tempo diagnosis for full; distance/line for putt). Full dump stays in F1. Range: ball resets to tee and loops. Course: settle → next shot / hole-out lives via `Scoring`.
@@ -52,7 +52,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | `systems/` | Scoring, shot report formatting |
 | `ui/` | HUD, shot result panel, game over, `UiScale` (type/touch/safe-area) |
 | `autoload/` | `GameState`, `AudioBus` (ArcMeters lives under `shot/` but is autoloaded) |
-| `debug/` | F1 debug panel — tempo tol / balance / release=impact / **Driving Range** |
+| `debug/` | F1 debug panel — metrics, force perfect/mishit, hole jump, balance sliders |
 
 Scenes under `scenes/`; art under `assets/`.
 
@@ -72,6 +72,6 @@ Engine: **Godot 4.7.x** at `/usr/local/bin/godot` (installed by the update scrip
 
 - **Tests / "lint":** there is no GDScript linter or CI. The test suite is the Python contract checks (`scripts/**/*_check.py`) — each parses the sibling `.gd` and asserts gameplay constants/logic haven't drifted. Run all: `for f in scripts/*/*_check.py; do python3 "$f" || break; done` (Python 3 is preinstalled). Add one check alongside non-trivial gameplay logic (ponytail rule).
 - **Headless sanity check:** `godot --headless --import` (imports assets, generates `.godot/`), then `godot --headless --quit-after 120` runs `main.tscn` for 120 frames and surfaces any GDScript parse/runtime errors. Both exit 0 when clean.
-- **Run the game (GUI):** `DISPLAY=:1 godot --path /workspace`. The VM has no GPU/audio, so Godot logs (harmless, expected) `VK_KHR_surface not found` → falls back to OpenGL/`llvmpipe` software rendering, and ALSA errors → dummy audio driver. The game still renders and plays fine. Use the F1 debug panel + Driving Range for isolated shot testing.
+- **Run the game (GUI):** `DISPLAY=:1 godot --path /workspace`. The VM has no GPU/audio, so Godot logs (harmless, expected) `VK_KHR_surface not found` → falls back to OpenGL/`llvmpipe` software rendering, and ALSA errors → dummy audio driver. The game still renders and plays fine. Use start-screen **Practice Range** for isolated shot testing; F1 for metrics/force shots.
 - Shot loop for manual testing: Club select (pick ★ club → Confirm) → Aim (Space / Confirm Aim) → Tempo swing (LMB drag DOWN then UP through the ball on the pad) → dismiss result with Space.
 - Godot 4.4+ writes `*.gd.uid` files next to scripts; they are committed. Importing may generate a missing one (e.g. for a script added without its `.uid`) — harmless.
