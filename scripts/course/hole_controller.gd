@@ -15,10 +15,11 @@ const FLIGHT_ZOOM_LAND := 1.45
 const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
-## Putt "TV tighten": inside this ball→cup distance during roll, punch zoom in fast
-## and lean the look target harder toward the cup — no air time, so distance-gated
-## instead of the full-swing air_progress() gate above.
-const PUTT_TIGHTEN_RADIUS := 11.25  ## ~15 ft (world units; PX_PER_YARD 2.25 / 3)
+## Putt roll camera: hold stroke-start frame so the ball rolls through a stable shot
+## (no live zoom-in / tight chase as it nears the cup — that felt jarring on short putts).
+const PUTT_ROLL_LOOK_LERP := 0.07
+const PUTT_ROLL_BALL_WEIGHT := 0.15  ## soft drift toward ball from locked mid-frame
+const PUTT_ROLL_ZOOM_LERP := 0.10
 
 ## Pinch-to-zoom (aim/green-book only) — multiplies _desired_camera_zoom(), then
 ## the result is safety-clamped so a pinch can't push the camera past a readable range.
@@ -100,6 +101,10 @@ var _wind_flag: WindFlag
 var _last_report: ShotReport
 var _last_result: ShotResult
 var _club_select: ClubSelect
+## Locked putt framing for the roll (set at stroke start, cleared on settle).
+var _putt_cam_active: bool = false
+var _putt_cam_zoom: Vector2 = Vector2.ONE
+var _putt_cam_look: Vector2 = Vector2.ZERO
 
 @onready var course_root: Node2D = $Course
 @onready var ball: GolfBall = $Ball
@@ -237,6 +242,7 @@ func load_hole(hole_index: int) -> void:
 	GameState.strokes_this_hole = 0
 	hole_complete = false
 	ball_in_flight = false
+	_clear_putt_camera_lock()
 	_build_course()
 	ball.reset_at(_tee_pos, "Tee")
 	camera.global_position = Vector2(_tee_pos.x, _tee_pos.y - 120)
@@ -254,6 +260,7 @@ func load_range() -> void:
 	strokes = 0
 	hole_complete = false
 	ball_in_flight = false
+	_clear_putt_camera_lock()
 	_chosen_club.clear()
 	_build_course()
 	ball.reset_at(_tee_pos, "Tee")
@@ -274,6 +281,7 @@ func load_practice_green() -> void:
 	strokes = 0
 	hole_complete = false
 	ball_in_flight = false
+	_clear_putt_camera_lock()
 	_chosen_club.clear()
 	_build_course()
 	_practice_green_pos = _cup_pos + Vector2(0.0, BallPhysics.yards_to_pixels(12.0))
@@ -1784,12 +1792,28 @@ func _flight_camera_zoom() -> Vector2:
 	return Vector2(z, z)
 
 
+func _lock_putt_camera() -> void:
+	## Capture ball→cup framing before the ball moves; hold it for the whole roll.
+	_putt_cam_active = true
+	_putt_cam_zoom = _desired_camera_zoom()
+	_putt_cam_look = _desired_camera_look()
+
+
+func _clear_putt_camera_lock() -> void:
+	_putt_cam_active = false
+
+
 func _follow_ball() -> void:
 	## Smoothing fights the up-and-in punch — own the transform directly in flight.
 	camera.position_smoothing_enabled = false
-	var z := _desired_camera_zoom()
-	if not _is_putt_context():
-		z = Vector2(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAUNCH)
+	if _is_putt_context():
+		_lock_putt_camera()
+		var tw_p := create_tween()
+		# Ease into locked mid-frame — not ball-only (that yanked short putts).
+		tw_p.tween_property(camera, "global_position", _putt_cam_look, 0.18).set_trans(Tween.TRANS_SINE)
+		tw_p.parallel().tween_property(camera, "zoom", _putt_cam_zoom, 0.2)
+		return
+	var z := Vector2(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAUNCH)
 	var tw := create_tween()
 	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
 	tw.parallel().tween_property(camera, "zoom", z, 0.2)
@@ -1798,29 +1822,24 @@ func _follow_ball() -> void:
 func _process(_delta: float) -> void:
 	_sync_pin_flag_visible()
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
-		var look := ball.global_position
-		if ball.velocity.length() > 20.0:
-			var lead := 40.0
-			if not _is_putt_context():
+		if _is_putt_context() and _putt_cam_active:
+			# Hold stroke-start zoom; soft drift toward the ball so it can leave center.
+			var look := _putt_cam_look.lerp(ball.global_position, PUTT_ROLL_BALL_WEIGHT)
+			camera.global_position = camera.global_position.lerp(look, PUTT_ROLL_LOOK_LERP)
+			camera.zoom = camera.zoom.lerp(_putt_cam_zoom, PUTT_ROLL_ZOOM_LERP)
+		else:
+			var look := ball.global_position
+			if ball.velocity.length() > 20.0:
 				var tight := inverse_lerp(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAND, camera.zoom.x)
-				lead = lerpf(FLIGHT_LOOK_LEAD_WIDE, FLIGHT_LOOK_LEAD_TIGHT, clampf(tight, 0.0, 1.0))
-			look += ball.velocity.normalized() * lead
-		var putt_closing_in := _is_putt_context() and ball.global_position.distance_to(_cup_pos) <= PUTT_TIGHTEN_RADIUS
-		if _is_putt_context():
-			look = look.lerp(_cup_pos, 0.5 if putt_closing_in else 0.35)
-		camera.global_position = camera.global_position.lerp(look, 0.18)
-		var target_zoom := _desired_camera_zoom()
-		if not _is_putt_context():
-			target_zoom = _flight_camera_zoom()
-		# Aggressive zoom lerp on the "in" beat / roll so short flights still punch tight.
-		# Putts get the same TV-style punch once the ball is closing in on the cup — they have
-		# no air time, so gate on distance-to-cup instead of air_progress().
-		var z_lerp := 0.12
-		if not _is_putt_context() and (ball.state == GolfBall.State.ROLL or ball.air_progress() >= FLIGHT_ZOOM_IN_START):
-			z_lerp = 0.35
-		elif putt_closing_in and ball.state == GolfBall.State.ROLL:
-			z_lerp = 0.35
-		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
+				var lead := lerpf(FLIGHT_LOOK_LEAD_WIDE, FLIGHT_LOOK_LEAD_TIGHT, clampf(tight, 0.0, 1.0))
+				look += ball.velocity.normalized() * lead
+			camera.global_position = camera.global_position.lerp(look, 0.18)
+			var target_zoom := _flight_camera_zoom()
+			# Aggressive zoom lerp on the "in" beat / roll so short flights still punch tight.
+			var z_lerp := 0.12
+			if ball.state == GolfBall.State.ROLL or ball.air_progress() >= FLIGHT_ZOOM_IN_START:
+				z_lerp = 0.35
+			camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
 		if _magnify_last_ms >= 0 and Time.get_ticks_msec() - _magnify_last_ms > MAGNIFY_IDLE_RELEASE_MS:
 			_user_zoom_mult = 1.0
@@ -1847,8 +1866,10 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	if hole_complete:
 		return
 	if lie_hint == "Water" or lie_hint == "OOB":
+		_clear_putt_camera_lock()
 		return
 	ball_in_flight = false
+	_clear_putt_camera_lock()
 	_set_green_book_visible(false)
 	var actual := ball.distance_traveled_yards()
 	# Holed shots short-circuit below before _last_report.set_actual — record here so
@@ -1973,6 +1994,7 @@ func _on_hazard(kind: String) -> void:
 	feedback.text = "WATER +1" if kind == "water" else "OOB +1"
 	feedback.modulate = Color(0.4, 0.7, 1.0) if kind == "water" else Color(0.95, 0.5, 0.4)
 	ball_in_flight = false
+	_clear_putt_camera_lock()
 	_set_aim_visuals_visible(false)
 	if GameState.range_mode:
 		feedback.text = "OOB — try again"
