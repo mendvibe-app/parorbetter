@@ -294,6 +294,13 @@ static func generate_hole(
 	var yardage := _pick_yardage(rng, par, t, arch)
 	var green_shape: HoleData.GreenShape = _pick_green_shape(rng, t, arch)
 	var layout := _layout_for_archetype(arch, green_shape, t, rng)
+	# Sharpened Dogleg Corners epic — only meaningful for dogleg layouts; consumed
+	# by HoleController._use_sharp_dogleg() behind the debug A/B flag.
+	var corner_position := 0.5
+	var corner_tightness := 0.0
+	if layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT:
+		corner_position = rng.randf_range(0.34, 0.62)
+		corner_tightness = clampf(rng.randf_range(0.4, 1.0) * lerpf(0.75, 1.1, t), 0.0, 1.0)
 	var want_bunker := rng.randf() < _bunker_chance(t, mods, float(arch.get("bunker", 1.0)))
 	var want_water := rng.randf() < _water_chance(t, mods, float(arch.get("water", 1.0)))
 	if bool(arch.get("force_water", false)):
@@ -353,7 +360,7 @@ static func generate_hole(
 		elif rng.randf() < side_p:
 			hazard_bias = HoleData.HazardBias.LEFT if rng.randf() < 0.5 else HoleData.HazardBias.RIGHT
 
-	var hazards := _build_hazards(want_bunker, want_water, layout, t, hazard_bias, rng)
+	var hazards := _build_hazards(want_bunker, want_water, layout, t, hazard_bias, rng, corner_position)
 	var suggested := _suggested_shape(layout, hazard_bias, rng)
 	var bend := _fairway_bend(layout, t, rng) * float(arch.get("bend", 1.0))
 	var tee_x := rng.randf_range(-18.0, 18.0) * lerpf(0.3, 1.0, t)
@@ -369,6 +376,8 @@ static func generate_hole(
 	d.pin_offset = pin
 	d.tee_offset_x = tee_x
 	d.fairway_bend = bend
+	d.corner_position = corner_position
+	d.corner_tightness = corner_tightness
 	d.layout = layout
 	d.wind_vector = wind
 	d.green_slope = slope
@@ -697,7 +706,8 @@ static func _build_hazards(
 	layout: HoleData.LayoutStyle,
 	t: float,
 	bias: HoleData.HazardBias,
-	rng: RandomNumberGenerator
+	rng: RandomNumberGenerator,
+	corner_position: float = 0.5
 ) -> Array:
 	var side := 1
 	if bias == HoleData.HazardBias.LEFT:
@@ -736,7 +746,9 @@ static func _build_hazards(
 		if (not added_sand or t >= 0.35) and rng.randf() < landing_p:
 			var along := rng.randf_range(0.42, 0.62)
 			if layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT:
-				along = rng.randf_range(0.45, 0.58)
+				# Guard the actual corner/elbow, not just "somewhere along the bend"
+				# (Sharpened Dogleg Corners epic).
+				along = clampf(corner_position + rng.randf_range(-0.05, 0.05), 0.12, 0.88)
 			out.append(_haz("sand", HoleData.ROLE_LANDING, side, along, lerpf(38.0, 52.0, t), 0))
 			added_sand = true
 		if not added_sand:

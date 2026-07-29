@@ -48,6 +48,7 @@ func _ready() -> void:
 	guide_check.button_pressed = GameState.tempo_guide_enabled
 	club_coach_ui_check.button_pressed = GameState.club_coach_ui_enabled
 	_add_tap_in_rows()
+	_add_sharp_dogleg_row()
 	$Panel/Margin/Root/TitleBar/ToggleHint.text = "Debug Menu"
 	$Panel/Margin/Root/TitleBar/CloseBtn.pressed.connect(func():
 		panel.visible = false
@@ -87,6 +88,34 @@ func _ready() -> void:
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
+
+
+func _add_sharp_dogleg_row() -> void:
+	## A/B toggle for the Sharpened Dogleg Corners epic — reloads the current hole
+	## so old smooth-bend vs new sharp-corner geometry can be compared in place.
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	var buttons := $Panel/Margin/Root/Scroll/VBox/Buttons as Control
+	var idx := buttons.get_index()
+
+	var row := HBoxContainer.new()
+	row.name = "SharpDoglegRow"
+	var lab := Label.new()
+	lab.custom_minimum_size = Vector2(100, 0)
+	lab.text = "Sharp dogleg"
+	var check := CheckButton.new()
+	check.button_pressed = GameState.sharp_dogleg_enabled
+	check.toggled.connect(func(on: bool):
+		GameState.sharp_dogleg_enabled = on
+		if GameState.range_mode:
+			enter_range.emit()
+		else:
+			reload_hole.emit()
+		AudioBus.play_ui()
+	)
+	row.add_child(lab)
+	row.add_child(check)
+	vbox.add_child(row)
+	vbox.move_child(row, idx)
 
 
 func _add_tap_in_rows() -> void:

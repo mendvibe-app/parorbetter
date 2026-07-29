@@ -369,7 +369,7 @@ func _build_course() -> void:
 	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, course_len + 220), Color(0.92, 0.98, 0.92), "", TEX_ROUGH, 340.0)
 
 	# Bent / shaped fairway
-	_add_bent_fairway(fairway_w, hole.fairway_bend)
+	_add_bent_fairway(fairway_w)
 
 	# Green sprite (variant per layout) + detection area
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
@@ -408,29 +408,46 @@ func _build_course() -> void:
 	_build_green_book()
 
 
-func _add_bent_fairway(width: float, bend: float) -> void:
+func _add_bent_fairway(width: float) -> void:
 	## Trapezoid / dogleg strip from tee to green.
 	## Stop at the green apron — old top (GREEN_Y - 20) ran fairway texture
 	## through the putting surface as a rectangular mismatched patch.
 	var half := width * 0.5
 	var tee_y := _tee_pos.y
 	var top_y := GREEN_Y + maxf(hole.green_radius_y, 36.0) + 6.0
-	var top := Vector2(540.0 + bend * 0.35, top_y)
-	var mid := Vector2(540.0 + bend, tee_y * 0.45 + GREEN_Y * 0.55)
+	# Corner vertex: smooth-curve midpoint by default (matches the old fixed
+	# 0.45/0.55 y-weight + full-bend x exactly). Sharpened Dogleg Corners epic
+	# moves this to hole.corner_position when active — see _use_sharp_dogleg().
+	var corner_along := 0.5
+	var mid_y := tee_y * 0.45 + GREEN_Y * 0.55
+	if _use_sharp_dogleg():
+		corner_along = clampf(hole.corner_position, 0.05, 0.95)
+		mid_y = _y_at(corner_along)
+	var top := Vector2(_fairway_center_x(0.0), top_y)
+	var mid := Vector2(_fairway_center_x(corner_along), mid_y)
 	var bot := Vector2(_tee_pos.x, tee_y - 20.0)
 	var poly := Polygon2D.new()
 	poly.color = Color(1, 1, 1)
 	poly.texture = TEX_FAIRWAY
 	poly.texture_scale = Vector2.ONE * (float(TEX_FAIRWAY.get_width()) / 300.0)
 	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	poly.polygon = PackedVector2Array([
-		bot + Vector2(-half, 0),
-		mid + Vector2(-half * 0.85, 0),
-		top + Vector2(-half * 0.7, 0),
-		top + Vector2(half * 0.7, 0),
-		mid + Vector2(half * 0.85, 0),
-		bot + Vector2(half, 0),
-	])
+	var pts := PackedVector2Array()
+	pts.append(bot + Vector2(-half, 0))
+	pts.append(mid + Vector2(-half * 0.85, 0))
+	# Phase 1 fairway collar (Fairway True Collar epic): OVAL/KIDNEY greens taper
+	# the last stretch into the green's actual silhouette instead of a flat
+	# cutoff line. TIERED / L_SHAPED / COMPLEX intentionally keep the old flat
+	# cutoff for now — Phase 2 extends collar coverage once this is validated in
+	# playtesting. PENINSULA is permanently excluded: its "fairway" edge is
+	# water, not rough, so collaring it isn't meaningful.
+	if hole.green_shape == HoleData.GreenShape.OVAL or hole.green_shape == HoleData.GreenShape.KIDNEY:
+		pts.append_array(_collar_arc_points(half * 0.7))
+	else:
+		pts.append(top + Vector2(-half * 0.7, 0))
+		pts.append(top + Vector2(half * 0.7, 0))
+	pts.append(mid + Vector2(half * 0.85, 0))
+	pts.append(bot + Vector2(half, 0))
+	poly.polygon = pts
 	course_root.add_child(poly)
 	var area := Area2D.new()
 	area.collision_layer = 2
@@ -441,6 +458,63 @@ func _add_bent_fairway(width: float, bend: float) -> void:
 	area.monitoring = false
 	area.monitorable = true
 	course_root.add_child(area)
+
+
+func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:
+	## Traces the green's south-facing (fairway-approach) silhouette from the left
+	## flank to the right, replacing the flat top edge for OVAL/KIDNEY greens.
+	## Sampled around the true green center (not the bent fairway "top" point) so
+	## it matches the rendered green sprite regardless of dogleg bend/corner.
+	var theta_edge := _theta_for_collar_x(edge_half_width)
+	var n := 9
+	var out := PackedVector2Array()
+	for i in n:
+		var t := float(i) / float(n - 1)
+		var theta := lerpf(PI - theta_edge, theta_edge, t)
+		var r := _green_boundary_radius(theta)
+		out.append(_green_center + Vector2(cos(theta), sin(theta)) * r)
+	return out
+
+
+func _theta_for_collar_x(target_x: float) -> float:
+	## Bisects the polar angle (front-right quadrant, 0..PI/2) whose green-boundary
+	## point has this local x offset from the green center. Monotonic in that
+	## quadrant for both OVAL and KIDNEY — the kidney indent sits on the back side
+	## (see _green_boundary_radius) so it never affects this search.
+	var rx := (hole.green_radius_x + 14.0) / 0.85
+	var clamped_x := minf(target_x, rx * 0.96)
+	var lo := 0.0
+	var hi := PI * 0.5
+	for _i in 24:
+		var mid_theta := (lo + hi) * 0.5
+		var x := _green_boundary_radius(mid_theta) * cos(mid_theta)
+		if x > clamped_x:
+			lo = mid_theta
+		else:
+			hi = mid_theta
+	return (lo + hi) * 0.5
+
+
+func _green_boundary_radius(angle: float) -> float:
+	## Distance from the green center to the green's rendered silhouette edge at
+	## `angle` (standard math radians; angle = PI/2 faces south / the fairway
+	## approach, since screen +y is south). Effective radii include the sprite's
+	## fringe padding (see _add_green's surface_frac) so the collar traces the
+	## actual drawn edge, not just the smaller putting-surface detection radius.
+	## OVAL is an exact ellipse. KIDNEY approximates the same ellipse with a
+	## shallow indent on the back (non-approach) side — the current kidney art is
+	## a placeholder oval with no real concave edge, so keeping the indent off the
+	## collared front arc avoids the fairway polygon undershooting the rendered
+	## edge and leaving a seam; revisit once kidney art gets a true indented
+	## silhouette. Phase 1 only — see _add_bent_fairway for shapes still flat-cut.
+	var rx := (hole.green_radius_x + 14.0) / 0.85
+	var ry := (hole.green_radius_y + 14.0) / 0.85
+	var base := (rx * ry) / sqrt(pow(ry * cos(angle), 2.0) + pow(rx * sin(angle), 2.0))
+	if hole.green_shape != HoleData.GreenShape.KIDNEY:
+		return base
+	var notch_d := absf(angle_difference(angle, -PI * 0.5))
+	var notch := 1.0 - 0.18 * clampf(1.0 - notch_d / (PI * 0.4), 0.0, 1.0)
+	return base * notch
 
 
 func _add_green(rx: float, ry: float) -> void:
@@ -488,17 +562,51 @@ func _y_at(frac: float) -> float:
 
 
 func _fairway_center_at(along: float) -> Vector2:
-	## along 0 = green end, 1 = tee. Follows bent fairway mid control point.
-	var y := _y_at(along)
+	## along 0 = green end, 1 = tee. Smooth 3-point curve normally; two-segment
+	## elbow blended by corner_tightness in sharp-dogleg mode — see
+	## _use_sharp_dogleg() / _fairway_center_x(). All fairway-relative placement
+	## (hazards, carries, lie classification) should read through this function
+	## rather than re-deriving fairway x, so it stays correct for both modes.
+	return Vector2(_fairway_center_x(along), _y_at(along))
+
+
+func _use_sharp_dogleg() -> bool:
+	## Sharpened Dogleg Corners epic — debug A/B toggle, dogleg layouts only.
+	return GameState.sharp_dogleg_enabled and (
+		hole.layout == HoleData.LayoutStyle.DOGLEG_LEFT
+		or hole.layout == HoleData.LayoutStyle.DOGLEG_RIGHT
+	)
+
+
+func _fairway_center_x(along: float) -> float:
+	var smooth_x := _smooth_fairway_x(along)
+	if not _use_sharp_dogleg():
+		return smooth_x
+	var tightness := clampf(hole.corner_tightness, 0.0, 1.0)
+	return lerpf(smooth_x, _elbow_fairway_x(along), tightness)
+
+
+func _smooth_fairway_x(along: float) -> float:
+	## Original 3-point (top/mid/bot) smooth-bend curve. Still the STANDARD /
+	## non-dogleg path, and the corner_tightness=0 end of the sharp-dogleg blend.
 	var top_x := 540.0 + hole.fairway_bend * 0.35
 	var mid_x := 540.0 + hole.fairway_bend
 	var bot_x := _tee_pos.x
-	var x: float
 	if along < 0.5:
-		x = lerpf(top_x, mid_x, along * 2.0)
-	else:
-		x = lerpf(mid_x, bot_x, (along - 0.5) * 2.0)
-	return Vector2(x, y)
+		return lerpf(top_x, mid_x, along * 2.0)
+	return lerpf(mid_x, bot_x, (along - 0.5) * 2.0)
+
+
+func _elbow_fairway_x(along: float) -> float:
+	## Two straight segments meeting at corner_position — the corner_tightness=1
+	## end of the sharp-dogleg blend (Sharpened Dogleg Corners epic).
+	var top_x := 540.0 + hole.fairway_bend * 0.35
+	var corner_x := 540.0 + hole.fairway_bend
+	var bot_x := _tee_pos.x
+	var cp := clampf(hole.corner_position, 0.05, 0.95)
+	if along < cp:
+		return lerpf(top_x, corner_x, along / cp)
+	return lerpf(corner_x, bot_x, (along - cp) / (1.0 - cp))
 
 
 func _clears_green(center: Vector2, radius: float) -> bool:
@@ -1817,7 +1925,11 @@ func _classify_lie(pos: Vector2) -> String:
 			return "Sand"
 	if _on_painted_green(pos):
 		return "Green"
-	var fx := absf(pos.x - (540.0 + hole.fairway_bend * 0.35))
+	# Was a fixed green-end x offset regardless of the ball's y — read through
+	# _fairway_center_at() instead so this tracks the real centerline (matters
+	# for bent fairways in general, and is load-bearing for sharp-dogleg mode).
+	var along := clampf(inverse_lerp(GREEN_Y, _tee_pos.y, pos.y), 0.0, 1.0)
+	var fx := absf(pos.x - _fairway_center_at(along).x)
 	if fx <= _fairway_half + 20.0:
 		return "Fairway"
 	if fx <= _fairway_half + 80.0:
