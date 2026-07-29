@@ -9,19 +9,20 @@ signal enter_range
 signal exit_range
 
 @onready var panel: PanelContainer = $Panel
-@onready var metrics: Label = $Panel/VBox/Metrics
-@onready var club_coach_label: Label = $Panel/VBox/ClubCoachLabel
-@onready var club_coach_ui_check: CheckButton = $Panel/VBox/ClubCoachUiRow/ClubCoachUiCheck
-@onready var hole_spin: SpinBox = $Panel/VBox/HoleRow/HoleSpin
-@onready var lives_spin: SpinBox = $Panel/VBox/LivesRow/LivesSpin
-@onready var timing_slider: HSlider = $Panel/VBox/TimingRow/TimingSlider
-@onready var wind_slider: HSlider = $Panel/VBox/WindRow/WindSlider
-@onready var fairway_slider: HSlider = $Panel/VBox/FairwayRow/FairwaySlider
-@onready var tol_slider: HSlider = $Panel/VBox/TolRow/TolSlider
-@onready var bal_slider: HSlider = $Panel/VBox/BalRow/BalSlider
-@onready var ema_slider: HSlider = $Panel/VBox/EmaRow/EmaSlider
-@onready var release_check: CheckButton = $Panel/VBox/ReleaseRow/ReleaseCheck
-@onready var guide_check: CheckButton = $Panel/VBox/GuideRow/GuideCheck
+@onready var panel_margin: MarginContainer = $Panel/Margin
+@onready var metrics: Label = $Panel/Margin/Root/Scroll/VBox/Metrics
+@onready var club_coach_label: Label = $Panel/Margin/Root/Scroll/VBox/ClubCoachLabel
+@onready var club_coach_ui_check: CheckButton = $Panel/Margin/Root/Scroll/VBox/ClubCoachUiRow/ClubCoachUiCheck
+@onready var hole_spin: SpinBox = $Panel/Margin/Root/Scroll/VBox/HoleRow/HoleSpin
+@onready var lives_spin: SpinBox = $Panel/Margin/Root/Scroll/VBox/LivesRow/LivesSpin
+@onready var timing_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/TimingRow/TimingSlider
+@onready var wind_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/WindRow/WindSlider
+@onready var fairway_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/FairwayRow/FairwaySlider
+@onready var tol_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/TolRow/TolSlider
+@onready var bal_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/BalRow/BalSlider
+@onready var ema_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/EmaRow/EmaSlider
+@onready var release_check: CheckButton = $Panel/Margin/Root/Scroll/VBox/ReleaseRow/ReleaseCheck
+@onready var guide_check: CheckButton = $Panel/Margin/Root/Scroll/VBox/GuideRow/GuideCheck
 
 var tap_yd_slider: HSlider
 var tap_break_slider: HSlider
@@ -47,29 +48,33 @@ func _ready() -> void:
 	guide_check.button_pressed = GameState.tempo_guide_enabled
 	club_coach_ui_check.button_pressed = GameState.club_coach_ui_enabled
 	_add_tap_in_rows()
-	$Panel/VBox/ToggleHint.text = "F1 / Debug — toggle"
-	$Panel/VBox/Buttons/SkipBtn.pressed.connect(func(): skip_hole.emit())
-	$Panel/VBox/Buttons/JumpBtn.pressed.connect(func(): jump_hole.emit(int(hole_spin.value)))
-	$Panel/VBox/Buttons/PerfectBtn.pressed.connect(func():
+	$Panel/Margin/Root/TitleBar/ToggleHint.text = "Debug Menu"
+	$Panel/Margin/Root/TitleBar/CloseBtn.pressed.connect(func():
+		panel.visible = false
+		AudioBus.play_ui()
+	)
+	$Panel/Margin/Root/Scroll/VBox/Buttons/SkipBtn.pressed.connect(func(): skip_hole.emit())
+	$Panel/Margin/Root/Scroll/VBox/Buttons/JumpBtn.pressed.connect(func(): jump_hole.emit(int(hole_spin.value)))
+	$Panel/Margin/Root/Scroll/VBox/Buttons/PerfectBtn.pressed.connect(func():
 		GameState.force_perfect = true
 		force_perfect.emit()
 		GameState.force_perfect = false
 	)
-	$Panel/VBox/Buttons/MishitBtn.pressed.connect(func():
+	$Panel/Margin/Root/Scroll/VBox/Buttons/MishitBtn.pressed.connect(func():
 		GameState.force_mishit = true
 		force_mishit.emit()
 		GameState.force_mishit = false
 	)
-	$Panel/VBox/Buttons/ApplyBtn.pressed.connect(_apply_tweaks)
-	$Panel/VBox/Buttons/RangeBtn.pressed.connect(func():
+	$Panel/Margin/Root/Scroll/VBox/Buttons/ApplyBtn.pressed.connect(_apply_tweaks)
+	$Panel/Margin/Root/Scroll/VBox/Buttons/RangeBtn.pressed.connect(func():
 		enter_range.emit()
 		AudioBus.play_ui()
 	)
-	$Panel/VBox/Buttons/ExitRangeBtn.pressed.connect(func():
+	$Panel/Margin/Root/Scroll/VBox/Buttons/ExitRangeBtn.pressed.connect(func():
 		exit_range.emit()
 		AudioBus.play_ui()
 	)
-	$Panel/VBox/LivesRow/SetLivesBtn.pressed.connect(func():
+	$Panel/Margin/Root/Scroll/VBox/LivesRow/SetLivesBtn.pressed.connect(func():
 		GameState.set_lives(int(lives_spin.value))
 	)
 	release_check.toggled.connect(func(on: bool): TempoGesture.RELEASE_IS_IMPACT = on)
@@ -86,8 +91,8 @@ func _ready() -> void:
 
 func _add_tap_in_rows() -> void:
 	## Playtest knobs for putt ceremony skip — inserted above the button grid.
-	var vbox := $Panel/VBox as VBoxContainer
-	var buttons := $Panel/VBox/Buttons as Control
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	var buttons := $Panel/Margin/Root/Scroll/VBox/Buttons as Control
 	var idx := buttons.get_index()
 
 	var yd_row := HBoxContainer.new()
@@ -126,11 +131,14 @@ func _add_tap_in_rows() -> void:
 func _park_below_hud() -> void:
 	## Sit under the HUD strip (incl. safe-area top) so Debug never shares AdaptLabel's band.
 	var btn := $DebugButton as Control
-	var top := UiScale.viewport_safe_margins(get_viewport()).y
+	var margins := UiScale.viewport_safe_margins(get_viewport())
+	var top := margins.y
 	var y0 := UiScale.HUD_HEIGHT + top + 8.0
 	btn.offset_top = y0
 	btn.offset_bottom = y0 + 60.0
-	panel.offset_top = y0 + 68.0
+	## Full-page panel: pad for the notch/home-indicator instead of docking to a corner.
+	panel_margin.add_theme_constant_override("margin_top", int(24.0 + top))
+	panel_margin.add_theme_constant_override("margin_bottom", int(24.0 + margins.w))
 
 
 func _unhandled_input(event: InputEvent) -> void:
