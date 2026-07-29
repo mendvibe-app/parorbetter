@@ -1,6 +1,9 @@
-[gd_scene load_steps=2 format=3 uid="uid://debug001"]
+[gd_scene load_steps=3 format=3 uid="uid://debug001"]
 
 [ext_resource type="Script" path="res://scripts/debug/debug_controls.gd" id="1"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_bg"]
+bg_color = Color(0.045, 0.075, 0.055, 0.98)
 
 [node name="DebugPanel" type="Control"]
 layout_mode = 3
@@ -27,67 +30,94 @@ text = "Debug"
 [node name="Panel" type="PanelContainer" parent="."]
 visible = false
 layout_mode = 1
-anchors_preset = 1
-anchor_left = 1.0
+anchors_preset = 15
 anchor_right = 1.0
-offset_left = -520.0
-offset_top = 276.0
-offset_right = -16.0
-offset_bottom = 1080.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_bg")
 
-[node name="VBox" type="VBoxContainer" parent="Panel"]
+[node name="Margin" type="MarginContainer" parent="Panel"]
 layout_mode = 2
+theme_override_constants/margin_left = 24
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 24
+theme_override_constants/margin_bottom = 24
+
+[node name="Root" type="VBoxContainer" parent="Panel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="TitleBar" type="HBoxContainer" parent="Panel/Margin/Root"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="ToggleHint" type="Label" parent="Panel/Margin/Root/TitleBar"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 26
+text = "Debug Menu"
+
+[node name="CloseBtn" type="Button" parent="Panel/Margin/Root/TitleBar"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 22
+text = "Close"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Margin/Root"]
+layout_mode = 2
+size_flags_vertical = 3
+horizontal_scroll_mode = 0
+
+[node name="VBox" type="VBoxContainer" parent="Panel/Margin/Root/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
 theme_override_constants/separation = 10
 
-[node name="ToggleHint" type="Label" parent="Panel/VBox"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 20
-text = "F1 / Debug — toggle"
-
-[node name="Metrics" type="Label" parent="Panel/VBox"]
+[node name="Metrics" type="Label" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 18
 text = "Metrics"
 autowrap_mode = 2
 
-[node name="ClubCoachLabel" type="Label" parent="Panel/VBox"]
+[node name="ClubCoachLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 16
 text = "Club Coach — no shots yet"
 autowrap_mode = 2
 
-[node name="HoleRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="HoleRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="HoleSpin" type="SpinBox" parent="Panel/VBox/HoleRow"]
+[node name="HoleSpin" type="SpinBox" parent="Panel/Margin/Root/Scroll/VBox/HoleRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 1.0
 max_value = 6.0
 value = 1.0
 
-[node name="LivesRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="LivesRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="LivesSpin" type="SpinBox" parent="Panel/VBox/LivesRow"]
+[node name="LivesSpin" type="SpinBox" parent="Panel/Margin/Root/Scroll/VBox/LivesRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 max_value = 5.0
 value = 3.0
 
-[node name="SetLivesBtn" type="Button" parent="Panel/VBox/LivesRow"]
+[node name="SetLivesBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/LivesRow"]
 layout_mode = 2
 text = "Set Lives"
 
-[node name="TimingRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="TimingRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="TLabel" type="Label" parent="Panel/VBox/TimingRow"]
+[node name="TLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/TimingRow"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Timing"
 
-[node name="TimingSlider" type="HSlider" parent="Panel/VBox/TimingRow"]
+[node name="TimingSlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/TimingRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.4
@@ -95,15 +125,15 @@ max_value = 1.4
 step = 0.05
 value = 1.0
 
-[node name="WindRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="WindRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="WLabel" type="Label" parent="Panel/VBox/WindRow"]
+[node name="WLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/WindRow"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Wind"
 
-[node name="WindSlider" type="HSlider" parent="Panel/VBox/WindRow"]
+[node name="WindSlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/WindRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.0
@@ -111,15 +141,15 @@ max_value = 2.0
 step = 0.1
 value = 1.0
 
-[node name="FairwayRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="FairwayRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="FLabel" type="Label" parent="Panel/VBox/FairwayRow"]
+[node name="FLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/FairwayRow"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Fairway"
 
-[node name="FairwaySlider" type="HSlider" parent="Panel/VBox/FairwayRow"]
+[node name="FairwaySlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/FairwayRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.5
@@ -127,15 +157,15 @@ max_value = 1.8
 step = 0.05
 value = 1.0
 
-[node name="TolRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="TolRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="TolLabel" type="Label" parent="Panel/VBox/TolRow"]
+[node name="TolLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/TolRow"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Tempo tol"
 
-[node name="TolSlider" type="HSlider" parent="Panel/VBox/TolRow"]
+[node name="TolSlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/TolRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.4
@@ -143,15 +173,15 @@ max_value = 1.8
 step = 0.05
 value = 1.0
 
-[node name="BalRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="BalRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="BalLabel" type="Label" parent="Panel/VBox/BalRow"]
+[node name="BalLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/BalRow"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "Bal tight"
 
-[node name="BalSlider" type="HSlider" parent="Panel/VBox/BalRow"]
+[node name="BalSlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/BalRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.2
@@ -159,15 +189,15 @@ max_value = 2.0
 step = 0.1
 value = 1.0
 
-[node name="EmaRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="EmaRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="EmaLabel" type="Label" parent="Panel/VBox/EmaRow"]
+[node name="EmaLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox/EmaRow"]
 custom_minimum_size = Vector2(100, 0)
 layout_mode = 2
 text = "EMA alpha"
 
-[node name="EmaSlider" type="HSlider" parent="Panel/VBox/EmaRow"]
+[node name="EmaSlider" type="HSlider" parent="Panel/Margin/Root/Scroll/VBox/EmaRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 min_value = 0.2
@@ -175,62 +205,62 @@ max_value = 0.6
 step = 0.05
 value = 0.35
 
-[node name="ReleaseRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="ReleaseRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="ReleaseCheck" type="CheckButton" parent="Panel/VBox/ReleaseRow"]
+[node name="ReleaseCheck" type="CheckButton" parent="Panel/Margin/Root/Scroll/VBox/ReleaseRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Release = impact"
 
-[node name="GuideRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="GuideRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="GuideCheck" type="CheckButton" parent="Panel/VBox/GuideRow"]
+[node name="GuideCheck" type="CheckButton" parent="Panel/Margin/Root/Scroll/VBox/GuideRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Tempo guide (ghost)"
 
-[node name="ClubCoachUiRow" type="HBoxContainer" parent="Panel/VBox"]
+[node name="ClubCoachUiRow" type="HBoxContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 
-[node name="ClubCoachUiCheck" type="CheckButton" parent="Panel/VBox/ClubCoachUiRow"]
+[node name="ClubCoachUiCheck" type="CheckButton" parent="Panel/Margin/Root/Scroll/VBox/ClubCoachUiRow"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Club Coach UI (player)"
 
-[node name="Buttons" type="GridContainer" parent="Panel/VBox"]
+[node name="Buttons" type="GridContainer" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
 columns = 2
 
-[node name="SkipBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="SkipBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Skip Hole"
 
-[node name="JumpBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="JumpBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Jump Hole"
 
-[node name="PerfectBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="PerfectBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 text = "Force Perfect"
 
-[node name="MishitBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="MishitBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 text = "Force Mishit"
 
-[node name="ApplyBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="ApplyBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 text = "Apply Tweaks"
 
-[node name="RangeBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="RangeBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Driving Range"
 
-[node name="ExitRangeBtn" type="Button" parent="Panel/VBox/Buttons"]
+[node name="ExitRangeBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 size_flags_horizontal = 3
 text = "Exit Range"
