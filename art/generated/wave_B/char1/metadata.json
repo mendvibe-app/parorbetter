@@ -1,0 +1,32 @@
+{
+  "group_id": "778c8f0f-787f-47df-8517-d862b45e2da6",
+  "states": [
+    {
+      "character": {
+        "id": "65ce1e56-4a8f-4932-8a45-d76abb595380",
+        "name": "ParOrBetter Golfer",
+        "prompt": "chunky pixel art male golfer for mobile golf game, green baseball cap, beige skin simple face, white shirt with small dark dots, dark gray pants, holding black golf club grounded address pose, hard single black outline, flat shading, side view facing right, simple blocky proportions readable at small size, transparent background, not anime not chibi not realistic",
+        "size": {
+          "width": 92,
+          "height": 92
+        },
+        "template_id": "mannequin",
+        "directions": 4,
+        "view": "side",
+        "created_at": "2026-07-29T21:33:34.209184+00:00"
+      },
+      "folder": "ParOrBetter_Golfer",
+      "frames": {
+        "rotations": {
+          "south": "ParOrBetter_Golfer/rotations/south.png",
+          "west": "ParOrBetter_Golfer/rotations/west.png",
+          "east": "ParOrBetter_Golfer/rotations/east.png",
+          "north": "ParOrBetter_Golfer/rotations/north.png"
+        },
+        "animations": {}
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-07-29T21:35:31.037386"
+}

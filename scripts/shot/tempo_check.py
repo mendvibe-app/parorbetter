@@ -23,11 +23,15 @@ BAND_THIN_FAT = 1.85
 PURE_BALANCE = 0.72
 PITCH_YD = 50.0
 PITCH_POWER_CAP = 0.42
+CHIP_YD = 20.0
 
 
 def shot_type_for(lie: str, remaining_yd: float, club_max_yards: float = 0.0) -> str:
+    """Mirror TempoGrade.shot_type_for — chip <20, pitch below gated yd, else full."""
     if lie == "Green":
         return "putt"
+    if remaining_yd < CHIP_YD:
+        return "chip"
     gate = PITCH_YD
     if club_max_yards > 1.0:
         gate = min(PITCH_YD, club_max_yards * PITCH_POWER_CAP)
@@ -146,6 +150,7 @@ def main() -> int:
     assert "PURE_BALANCE" in ROUTINE
     assert "PITCH_YD := 50.0" in GRADE
     assert "PITCH_POWER_CAP" in GRADE
+    assert "CHIP_YD := 20.0" in GRADE
     assert 'club_name.contains("Wedge")' not in GRADE
     assert "club_max_yards" in GRADE
     # Pitch vs full is swing size, not club identity — but gate caps by club % so Gap
@@ -153,7 +158,8 @@ def main() -> int:
     assert shot_type_for("Fairway", 90.0) == "full"
     assert shot_type_for("Fairway", 70.0) == "full"
     assert shot_type_for("Fairway", 49.0) == "pitch"  # no club → absolute PITCH_YD
-    assert shot_type_for("Fairway", 10.0) == "pitch"
+    assert shot_type_for("Fairway", 10.0) == "chip"  # inside CHIP_YD
+    assert shot_type_for("Fairway", 25.0) == "pitch"  # between chip and pitch gate
     assert shot_type_for("Green", 90.0) == "putt"
     assert shot_type_for("Sand", 80.0) == "full"
     # Gap 85 yd: pitch gate = min(50, 85*0.42) ≈ 35.7 — 40 yd stays full like an iron
@@ -353,7 +359,7 @@ def main() -> int:
 
     # Ghost guide: through ends at ≈ address (impact at the ball).
     assert "GUIDE_BACK_FULL := 0.75" in GESTURE
-    assert "GUIDE_BACK_SHORT := 0.50" in GESTURE
+    assert "GUIDE_BACK_SHORT := 0.64" in GESTURE
     assert "func _impact_cross" in GESTURE
     assert "func _ghost_impact_pos" in GESTURE
     assert "_ghost_impact_pos" in GESTURE.split("func _ideal_ghost_pos")[1].split("func ")[0]
@@ -366,11 +372,17 @@ def main() -> int:
     assert "address on gold" not in ROUTINE
     assert "blue ghost is pace" not in ROUTINE
     assert "match the ratio, not the clock" not in ROUTINE
-    # Tick interval equals ghost backswing for both shot types
+    # Tick interval equals ghost backswing for both shot types (2:1 uses SHORT).
     GUIDE_BACK_FULL = 0.75
-    GUIDE_BACK_SHORT = 0.50
-    assert (GUIDE_BACK_SHORT if TARGET_SHORT < 2.5 else GUIDE_BACK_FULL) == 0.50
+    GUIDE_BACK_SHORT = 0.64
+    assert abs(GUIDE_BACK_SHORT / (GUIDE_BACK_SHORT / TARGET_SHORT) - TARGET_SHORT) < 1e-6
+    assert abs(GUIDE_BACK_FULL / (GUIDE_BACK_FULL / TARGET_FULL) - TARGET_FULL) < 1e-6
+    assert (GUIDE_BACK_SHORT if TARGET_SHORT < 2.5 else GUIDE_BACK_FULL) == 0.64
     assert (GUIDE_BACK_SHORT if TARGET_FULL < 2.5 else GUIDE_BACK_FULL) == 0.75
+    # Pitch lane is shorter than full (ghost must not race a driver-length path at 2:1).
+    assert "_is_pitch()" in GESTURE.split("func address_hint")[1].split("func ")[0]
+    assert "_is_pitch()" in GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert "0.70" in GESTURE.split("func top_hint")[1].split("func ")[0]
     # Impact ≈ address (small early band); old 12% shortfall is gone
     IMPACT_CROSS_FRAC = 0.02
     IMPACT_CROSS_FLOOR_PX = 6.0
@@ -398,14 +410,11 @@ def main() -> int:
     assert "match the ghost through" not in GRADE
     assert "ghost down" not in GRADE
     assert "%dms back / %dms thru" in GRADE
-    assert (
-        'y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.30)'
-        in GESTURE.split("func address_hint")[1].split("func ")[0]
-    )
-    assert (
-        'y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.92)'
-        in GESTURE.split("func top_hint")[1].split("func ")[0]
-    )
+    addr_fn = GESTURE.split("func address_hint")[1].split("func ")[0]
+    top_fn = GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert "_is_putt()" in addr_fn and "_is_chip()" in addr_fn and "_is_pitch()" in addr_fn
+    assert "_is_putt()" in top_fn and "_is_chip()" in top_fn and "_is_pitch()" in top_fn
+    assert "0.70" in top_fn  # pitch shorter top than full 0.92
     # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
     assert "func _lane_project" not in GESTURE
     assert "_address = address_hint()" in GESTURE
@@ -420,7 +429,7 @@ def main() -> int:
     assert "draw_line(start, _lane_peak_pos()" in pull
     assert ", false)" in pull, "progress line AA skews the bright spine off the impact mark"
     putt_draw = GESTURE.split("func _draw_putt")[1].split("func _draw_putt_lane_tex")[0]
-    assert "draw_circle(_smoothed" in putt_draw
+    assert "_draw_drag_club_head" in putt_draw or "_draw_drag_club_head()" in GESTURE
 
     for name in (
         "ui_tempo_landmark_start.png",
@@ -460,19 +469,19 @@ def main() -> int:
     assert (DIR.parent.parent / "assets" / "ball" / "fx_pure_burst.png").is_file()
     assert (DIR.parent.parent / "art" / "prompts" / "putt_pad.md").is_file()
 
-    for kind in ("full", "putt", "chip"):
-        addr_y = 0.22 if kind == "putt" else (0.20 if kind == "chip" else 0.30)
-        top_y = 0.92 if kind == "putt" else (0.85 if kind == "chip" else 0.92)
-        assert addr_y < top_y, "address above top (toward target)"
-        assert (addr_y - top_y) < 0.0  # through = address - top → −Y (up)
-        if kind in ("putt", "chip"):
-            # Address leaves pad room above for a matched follow cue
-            assert addr_y > 0.12, "%s through room on-pad" % kind
-    # Full/pitch moved 0.18→0.30 address, 0.78→0.92 top (playtest): reclaims dead pad
-    # space below the old backswing landmark and gives the follow-through floor
-    # marker real room. Full now sits deepest on address and ties putt's edge on top.
-    assert 0.20 < 0.22 < 0.30, "full address now deepest (playtest move)"
-    assert 0.85 < 0.92, "chip top sits inside putt/full's shared 0.92 edge"
+    # Pad geometry: address above top; pitch lane shorter so 2:1 ghost is trackable.
+    lanes = {
+        "putt": (0.22, 0.92),
+        "chip": (0.20, 0.85),
+        "pitch": (0.32, 0.70),
+        "full": (0.30, 0.92),
+    }
+    for kind, (addr_y, top_y) in lanes.items():
+        assert addr_y < top_y, "%s address above top" % kind
+        assert addr_y > 0.12, "%s through room on-pad" % kind
+    assert (lanes["pitch"][1] - lanes["pitch"][0]) < (lanes["full"][1] - lanes["full"][0])
+    assert 0.20 < 0.22 < 0.30
+    assert 0.70 < 0.85 < 0.92
 
     # Edge rejection math — 4% floor 24px on a 1080-wide viewport
     EDGE_FRAC = 0.04
@@ -504,8 +513,11 @@ def main() -> int:
     golfer_draw = GESTURE.split("func _draw_golfer")[1].split("func ")[0]
     assert "address_hint()" not in golfer_draw  # top-left, not mid-lane
     assert "_draw_golfer()" in GESTURE.split("func _draw()")[1].split("func ")[0]
-    assert "_is_putt()" in GESTURE.split("func _golfer_pose_pair")[1].split("func ")[0]
-    assert "_is_chip()" in GESTURE.split("func _golfer_pose_pair")[1].split("func ")[0]
+    # Pose frames branch: putt / chip+pitch / full — pitch shares chip set.
+    keyframes = GESTURE.split("func _golfer_keyframes")[1].split("func ")[0]
+    assert "_is_putt()" in keyframes
+    assert "_uses_chip_golfer()" in keyframes
+    assert "func _golfer_pose_pair" in GESTURE
     root = DIR.parents[1]
     for pose in ("address", "mid", "top", "impact", "follow"):
         for prefix in ("ui_golfer_", "ui_golfer_putt_", "ui_golfer_chip_"):

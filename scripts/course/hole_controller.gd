@@ -8,10 +8,11 @@ const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
 ## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
 const CUP_RADIUS := 2.4
-## Full-shot "up and in" camera — wide launch, tighten hard on descent. Putt path untouched.
-const FLIGHT_ZOOM_LAUNCH := 0.55
-const FLIGHT_ZOOM_APEX := 0.58
-const FLIGHT_ZOOM_LAND := 1.45
+## Full-shot "up and in" camera — fractions of pre-shot / corridor base (not absolute).
+## Aim framing got tighter (corridor); absolute 0.55 launch was zooming *out* on hit.
+const FLIGHT_LAUNCH_FRAC := 0.90  ## mild open from aim at launch
+const FLIGHT_APEX_FRAC := 0.95
+const FLIGHT_LAND_FRAC := 1.28  ## ends tighter than aim ("up and in")
 const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
@@ -33,6 +34,7 @@ const MAGNIFY_IDLE_RELEASE_MS := 400  ## trackpad magnify gesture has no discret
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
 const TEX_FAIRWAY := preload("res://assets/terrain/fairway_tile_a.png")
+const TEX_TEE := preload("res://assets/terrain/tee_tile.png")
 const TEX_WATER := preload("res://assets/terrain/water_tile.png")
 const TEX_WATER_CREEK := preload("res://assets/hazards/water_creek.png")
 const TEX_WATER_POND := preload("res://assets/hazards/water_pond.png")
@@ -57,17 +59,31 @@ const TREE_TEXTURES := [
 	preload("res://assets/background/tree_round.png"),
 	preload("res://assets/background/tree_pine.png"),
 	preload("res://assets/background/tree_cluster.png"),
+	preload("res://assets/background/tree_oak.png"),
+	preload("res://assets/background/tree_airy.png"),
+	preload("res://assets/background/tree_dark.png"),
+	preload("res://assets/background/tree_broad.png"),
+	preload("res://assets/background/tree_tall.png"),
 ]
+## Portrait course framing: dark rough belt just outside fairway + tree line on it.
+## Camera aims to keep this corridor ~half of screen width (not oceans of mid-rough).
+const SIDE_BELT_W := 58.0
+const CORRIDOR_SCREEN_FRAC := 0.50  ## fairway + belts ≈ this fraction of viewport width
 var hole: HoleData
 var strokes: int = 0
 var ball_in_flight: bool = false
 var hole_complete: bool = false
 var _cup_pos: Vector2 = Vector2.ZERO
 var _green_center: Vector2 = Vector2.ZERO
-var _tee_pos: Vector2 = Vector2(540, 860.0)
+var _tee_pos: Vector2 = Vector2(540, 860.0)  ## active teeing ground (ball start)
+var _tee_back_pos: Vector2 = Vector2(540, 860.0)  ## Blue (longest) — fairway end
+var _tee_pads: Array = []  ## {set, pos, rect} for all three colors
+var _active_tee: HoleData.TeeSet = HoleData.TeeSet.WHITE
 var _practice_green_pos: Vector2 = Vector2.ZERO
 var _fairway_half: float = 70.0
+var _flight_zoom_base: float = 1.2  ## captured at full-shot start; flight fracs scale from this
 var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
+var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
 var _pin_flag: Sprite2D  ## hidden while putting (pin out — kills scale lie)
 var _green_sprite: Sprite2D
@@ -118,6 +134,8 @@ var _putt_cam_look: Vector2 = Vector2.ZERO
 @onready var confirm_aim_btn: BaseButton = $UILayer/ConfirmAimButton
 @onready var wind_banner: Label = $UILayer/WindBanner
 @onready var ui_layer: CanvasLayer = $UILayer
+const _HOLE_MAP_SCR := preload("res://scripts/ui/hole_map.gd")
+var _hole_map: Control  ## HoleMap instance
 
 
 func _ready() -> void:
@@ -142,8 +160,17 @@ func _ready() -> void:
 	_setup_change_club_btn()
 	# After practice/wind chrome: keep club picker as the topmost UI modal.
 	ui_layer.move_child(_club_select, -1)
+	_setup_hole_map()
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
+
+
+func _setup_hole_map() -> void:
+	## Cart-GPS overview under Debug — whole hole + ball.
+	_hole_map = _HOLE_MAP_SCR.new()
+	_hole_map.name = "HoleMap"
+	ui_layer.add_child(_hole_map)
+	_hole_map.park_under_debug(get_viewport())
 
 
 func _apply_safe_area() -> void:
@@ -152,6 +179,8 @@ func _apply_safe_area() -> void:
 	)
 	if wind_banner:
 		wind_banner.visible = false
+	if _hole_map:
+		_hole_map.park_under_debug(get_viewport())
 
 
 func _setup_club_select() -> void:
@@ -352,6 +381,8 @@ func _build_course() -> void:
 		_green_book.queue_free()
 		_green_book = null
 	_bunkers.clear()
+	_trees.clear()
+	_tee_pads.clear()
 
 	var fairway_w: float = hole.fairway_width
 	if GameState.debug_fairway_scale != null:
@@ -367,17 +398,19 @@ func _build_course() -> void:
 	course_root.set_meta("wind", wind)
 	course_root.set_meta("slope", hole.green_slope)
 
-	var tee_y := GREEN_Y + BallPhysics.yards_to_pixels(maxf(hole.yardage, 80.0))
-	_tee_pos = Vector2(540.0 + hole.tee_offset_x, tee_y)
 	_green_center = Vector2(540.0, GREEN_Y)
 	_cup_pos = _green_center + hole.pin_offset
-	var course_len := (tee_y - GREEN_Y) + 180.0
+	_setup_tee_positions()
+	var course_len := (_tee_back_pos.y - GREEN_Y) + 180.0
 
-	# Rough apron
+	# Rough apron (mid rough — camera + side belts keep this from dominating the frame)
 	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, course_len + 220), Color(0.92, 0.98, 0.92), "", TEX_ROUGH, 340.0)
 
 	# Bent / shaped fairway
 	_add_bent_fairway(fairway_w)
+
+	# Deep-rough belts just outside fairway (follow bend) — hole edge, not empty field
+	_add_side_belts()
 
 	# Green sprite (variant per layout) + detection area
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
@@ -409,19 +442,42 @@ func _build_course() -> void:
 
 	_add_rect(course_root, Rect2(-80, GREEN_Y - 140, 70, course_len + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
 	_add_rect(course_root, Rect2(1090, GREEN_Y - 140, 70, course_len + 240), Color(0.62, 0.5, 0.42), "oob", TEX_ROUGH_DARK, 220.0)
-	_scatter_trees()
+	_add_tee_boxes()
 	_add_fog_band()
-	_add_circle(course_root, _tee_pos, 8.0, Color(0.95, 0.95, 0.2), "")
 
 	_build_green_book()
+	_refresh_hole_map()
+
+
+func _setup_tee_positions() -> void:
+	## Three tees: White = hole.yardage; Blue longer; Red shorter. Slight x stagger for read.
+	var cx := 540.0 + hole.tee_offset_x
+	var y_blue := GREEN_Y + BallPhysics.yards_to_pixels(hole.tee_yards(HoleData.TeeSet.BLUE))
+	var y_white := GREEN_Y + BallPhysics.yards_to_pixels(hole.tee_yards(HoleData.TeeSet.WHITE))
+	var y_red := GREEN_Y + BallPhysics.yards_to_pixels(hole.tee_yards(HoleData.TeeSet.RED))
+	# Ensure order Blue (back) > White > Red (forward) even if offsets inverted
+	y_blue = maxf(y_blue, y_white + BallPhysics.yards_to_pixels(6.0))
+	y_red = minf(y_red, y_white - BallPhysics.yards_to_pixels(6.0))
+	_tee_back_pos = Vector2(cx, y_blue)
+	var pads := [
+		{"set": HoleData.TeeSet.BLUE, "pos": Vector2(cx - 16.0, y_blue)},
+		{"set": HoleData.TeeSet.WHITE, "pos": Vector2(cx, y_white)},
+		{"set": HoleData.TeeSet.RED, "pos": Vector2(cx + 16.0, y_red)},
+	]
+	_active_tee = GameState.active_tee_set_for_hole(hole.hole_number)
+	for p in pads:
+		_tee_pads.append(p)
+		if p["set"] == _active_tee:
+			_tee_pos = p["pos"]
 
 
 func _add_bent_fairway(width: float) -> void:
 	## Trapezoid / dogleg strip from tee to green.
 	## Stop at the green apron — old top (GREEN_Y - 20) ran fairway texture
 	## through the putting surface as a rectangular mismatched patch.
+	## Fairway reaches Blue (back) tee so all three pads sit on the corridor.
 	var half := width * 0.5
-	var tee_y := _tee_pos.y
+	var tee_y := _tee_back_pos.y
 	var top_y := GREEN_Y + maxf(hole.green_radius_y, 36.0) + 6.0
 	# Corner vertex: smooth-curve midpoint by default (matches the old fixed
 	# 0.45/0.55 y-weight + full-bend x exactly). Sharpened Dogleg Corners epic
@@ -433,7 +489,7 @@ func _add_bent_fairway(width: float) -> void:
 		mid_y = _y_at(corner_along)
 	var top := Vector2(_fairway_center_x(0.0), top_y)
 	var mid := Vector2(_fairway_center_x(corner_along), mid_y)
-	var bot := Vector2(_tee_pos.x, tee_y - 20.0)
+	var bot := Vector2(_tee_back_pos.x, tee_y - 20.0)
 	var poly := Polygon2D.new()
 	poly.color = Color(1, 1, 1)
 	poly.texture = TEX_FAIRWAY
@@ -565,8 +621,8 @@ func _green_texture_for_hole() -> Texture2D:
 
 
 func _y_at(frac: float) -> float:
-	## 0 = green, 1 = tee.
-	return lerpf(GREEN_Y, _tee_pos.y, frac)
+	## 0 = green, 1 = back (Blue) tee — full corridor length.
+	return lerpf(GREEN_Y, _tee_back_pos.y, frac)
 
 
 func _fairway_center_at(along: float) -> Vector2:
@@ -599,7 +655,7 @@ func _smooth_fairway_x(along: float) -> float:
 	## non-dogleg path, and the corner_tightness=0 end of the sharp-dogleg blend.
 	var top_x := 540.0 + hole.fairway_bend * 0.35
 	var mid_x := 540.0 + hole.fairway_bend
-	var bot_x := _tee_pos.x
+	var bot_x := _tee_back_pos.x
 	if along < 0.5:
 		return lerpf(top_x, mid_x, along * 2.0)
 	return lerpf(mid_x, bot_x, (along - 0.5) * 2.0)
@@ -610,7 +666,7 @@ func _elbow_fairway_x(along: float) -> float:
 	## end of the sharp-dogleg blend (Sharpened Dogleg Corners epic).
 	var top_x := 540.0 + hole.fairway_bend * 0.35
 	var corner_x := 540.0 + hole.fairway_bend
-	var bot_x := _tee_pos.x
+	var bot_x := _tee_back_pos.x
 	var cp := clampf(hole.corner_position, 0.05, 0.95)
 	if along < cp:
 		return lerpf(top_x, corner_x, along / cp)
@@ -644,27 +700,36 @@ func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
 			HoleData.ROLE_ISLAND_RING:
 				_place_island_ring()
 			HoleData.ROLE_GREENSIDE:
-				var c := _greenside_center(side if side != 0 else 1, size)
-				if kind == "sand" and _clears_green(c, size):
-					_add_bunker(c, size, art if art > 0 else 1)
+				if kind == "tree":
+					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
+				else:
+					var c := _greenside_center(side if side != 0 else 1, size)
+					if kind == "sand" and _clears_green(c, size):
+						_add_bunker(c, size, art if art > 0 else 1)
 			HoleData.ROLE_LANDING:
-				var fc := _fairway_center_at(along)
-				var c2 := Vector2(fc.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.35), fc.y)
-				if kind == "sand" and _clears_green(c2, size):
-					_add_bunker(c2, size, art)
+				if kind == "tree":
+					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
+				else:
+					var fc := _fairway_center_at(along)
+					var c2 := Vector2(fc.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.35), fc.y)
+					if kind == "sand" and _clears_green(c2, size):
+						_add_bunker(c2, size, art)
 			HoleData.ROLE_CARRY:
 				if kind == "water":
 					_place_carry_creek(along, size)
 			HoleData.ROLE_EDGE:
-				var fc2 := _fairway_center_at(along)
-				var edge_c := Vector2(
-					fc2.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.55),
-					fc2.y
-				)
-				if kind == "water":
-					_place_edge_pond(edge_c, size)
-				elif kind == "sand" and _clears_green(edge_c, size):
-					_add_bunker(edge_c, size, art)
+				if kind == "tree":
+					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
+				else:
+					var fc2 := _fairway_center_at(along)
+					var edge_c := Vector2(
+						fc2.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.55),
+						fc2.y
+					)
+					if kind == "water":
+						_place_edge_pond(edge_c, size)
+					elif kind == "sand" and _clears_green(edge_c, size):
+						_add_bunker(edge_c, size, art)
 
 
 func _greenside_center(side: int, size: float) -> Vector2:
@@ -751,6 +816,27 @@ func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D) -> void:
 	course_root.add_child(area)
 
 
+func _add_tee_boxes() -> void:
+	## Blue / White / Red pads — all visible; active set is larger + bright marker.
+	const MARK := {
+		HoleData.TeeSet.BLUE: Color(0.23, 0.43, 0.65, 1.0),
+		HoleData.TeeSet.WHITE: Color(0.91, 0.94, 0.91, 1.0),
+		HoleData.TeeSet.RED: Color(0.77, 0.23, 0.23, 1.0),
+	}
+	for p in _tee_pads:
+		var set: HoleData.TeeSet = p["set"]
+		var pos: Vector2 = p["pos"]
+		var active: bool = set == _active_tee
+		var w := 56.0 if active else 44.0
+		var h := 62.0 if active else 50.0
+		var rect := Rect2(pos.x - w * 0.5, pos.y - h * 0.4, w, h)
+		p["rect"] = rect
+		var fill := Color(0.96, 1.0, 0.9) if active else Color(0.88, 0.92, 0.84)
+		_add_rect(course_root, rect, fill, "tee", TEX_TEE, 180.0)
+		var mark_r := 4.5 if active else 3.2
+		_add_circle(course_root, pos, mark_r, MARK[set], "")
+
+
 func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
 	var tex: Texture2D = BUNKER_TEXTURES[variant % BUNKER_TEXTURES.size()]
 	var spr := Sprite2D.new()
@@ -763,22 +849,110 @@ func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
 	_add_circle(course_root, center, radius, Color(0, 0, 0, 0), "sand")
 
 
-func _scatter_trees() -> void:
+func _along_from_y(y: float) -> float:
+	## Match _y_at: 0 = green, 1 = Blue tee.
+	return clampf((y - GREEN_Y) / maxf(_tee_back_pos.y - GREEN_Y, 1.0), 0.0, 1.0)
+
+
+func _play_corridor_width() -> float:
+	## Fairway + deep-rough belts on both sides — the visual "hole channel".
+	return maxf(_fairway_half * 2.0 + SIDE_BELT_W * 2.0, 140.0)
+
+
+func _corridor_zoom_level() -> float:
+	var view := get_viewport().get_visible_rect().size
+	return clampf(view.x * CORRIDOR_SCREEN_FRAC / _play_corridor_width(), 1.05, 1.95)
+
+
+func _flight_z_launch() -> float:
+	return _flight_zoom_base * FLIGHT_LAUNCH_FRAC
+
+
+func _flight_z_apex() -> float:
+	return _flight_zoom_base * FLIGHT_APEX_FRAC
+
+
+func _flight_z_land() -> float:
+	return _flight_zoom_base * FLIGHT_LAND_FRAC
+
+
+func _add_side_belts() -> void:
+	## Dark rough strips hugging the fairway edge (follow bend). Not gameplay OOB.
+	var step := 36.0
+	var y := GREEN_Y - 50.0
+	var y_end := _tee_back_pos.y + 70.0
+	while y < y_end:
+		var h := minf(step, y_end - y)
+		var along := _along_from_y(y + h * 0.5)
+		var cx := _fairway_center_x(along)
+		var half := _fairway_half
+		# Left / right deep rough just outside fairway
+		_add_rect(
+			course_root,
+			Rect2(cx - half - SIDE_BELT_W, y, SIDE_BELT_W, h),
+			Color(0.85, 0.9, 0.85),
+			"",
+			TEX_ROUGH_DARK,
+			280.0
+		)
+		_add_rect(
+			course_root,
+			Rect2(cx + half, y, SIDE_BELT_W, h),
+			Color(0.85, 0.9, 0.85),
+			"",
+			TEX_ROUGH_DARK,
+			280.0
+		)
+		y += step
+
+
+func _place_tree_group(
+	role: String, side: int, along: float, size: float, art: int, count: int
+) -> void:
+	## Stamp 1..n canopies for a designed tree feature (edge line, landing clump, greenside).
 	var rng := RandomNumberGenerator.new()
-	rng.seed = hash("trees_%d" % hole.hole_number)
-	for strip_x in [-45.0, 1125.0]:
-		var y := GREEN_Y - 100.0
-		while y < _tee_pos.y + 60.0:
-			var tex: Texture2D = TREE_TEXTURES[rng.randi_range(0, TREE_TEXTURES.size() - 1)]
-			var spr := Sprite2D.new()
-			spr.texture = tex
-			var size_px := rng.randf_range(95.0, 150.0)
-			spr.scale = Vector2.ONE * (size_px / float(tex.get_width()))
-			spr.position = Vector2(strip_x + rng.randf_range(-18.0, 18.0), y)
-			spr.rotation = rng.randf_range(-0.25, 0.25)
-			spr.z_index = 1
-			course_root.add_child(spr)
-			y += rng.randf_range(110.0, 190.0)
+	rng.seed = hash("tree_%s_%d_%d" % [role, hole.hole_number, int(along * 100.0)])
+	var n := maxi(count, 1)
+	var s := float(side if side != 0 else 1)
+	for i in n:
+		var a: float = along
+		if role == HoleData.ROLE_EDGE:
+			# Stretch along the corridor — gaps between individuals, not a hedge
+			a = clampf(along + (float(i) - float(n - 1) * 0.5) * 0.055, 0.08, 0.92)
+		elif n > 1:
+			a = clampf(along + rng.randf_range(-0.03, 0.03), 0.05, 0.95)
+		var c: Vector2
+		if role == HoleData.ROLE_GREENSIDE:
+			c = _greenside_center(int(s), size)
+			c += Vector2(rng.randf_range(-18.0, 18.0), rng.randf_range(-12.0, 12.0))
+			c.x += s * float(i) * 14.0
+		else:
+			var fc := _fairway_center_at(a)
+			var lat := _fairway_half + size * rng.randf_range(0.25, 0.55) + SIDE_BELT_W * 0.35
+			if role == HoleData.ROLE_LANDING and n > 1:
+				lat += float(i) * 8.0
+			c = Vector2(fc.x + s * lat + rng.randf_range(-10.0, 10.0), fc.y + rng.randf_range(-14.0, 14.0))
+		if not _clears_green(c, size * 0.55):
+			continue
+		var r := size * rng.randf_range(0.72, 1.05)
+		var art_i := art if art >= 0 else rng.randi_range(0, TREE_TEXTURES.size() - 1)
+		if n > 1:
+			art_i = (art_i + i * 2 + rng.randi_range(0, 2)) % TREE_TEXTURES.size()
+		_add_tree(c, r, art_i)
+
+
+func _add_tree(center: Vector2, radius: float, variant: int) -> void:
+	var tex: Texture2D = TREE_TEXTURES[variant % TREE_TEXTURES.size()]
+	var spr := Sprite2D.new()
+	spr.texture = tex
+	spr.position = center
+	var max_dim := maxf(float(tex.get_width()), float(tex.get_height()))
+	spr.scale = Vector2.ONE * (radius * 2.15 / max_dim)
+	spr.rotation = randf_range(-0.12, 0.12)
+	spr.z_index = 1
+	course_root.add_child(spr)
+	_trees.append({"c": center, "r": radius * 0.72})  # collision tighter than canopy art
+	_add_circle(course_root, center, radius * 0.72, Color(0, 0, 0, 0), "tree")
 
 
 func _add_fog_band() -> void:
@@ -1745,7 +1919,7 @@ func _pin_yards() -> float:
 
 
 func _desired_camera_zoom() -> Vector2:
-	## Higher zoom = closer. Fit green into portrait for putts; moderate for approach book.
+	## Higher zoom = closer. Fit green into portrait for putts; corridor-owned for full shots.
 	var pin_yd := _pin_yards()
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
@@ -1757,13 +1931,18 @@ func _desired_camera_zoom() -> Vector2:
 		var dist := ball.global_position.distance_to(_cup_pos)
 		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
 		z = clampf(view_min * 0.52 / half_span, 2.6, 42.0)
-	# Approach with green book — frame ball toward green without losing landing circle
-	elif _aiming and _should_show_green_book():
-		z = lerpf(2.0, 1.35, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
-	elif pin_yd <= 90.0:
-		z = lerpf(1.35, 0.95, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
 	else:
-		z = 0.85
+		# Full / approach: zoom so fairway + side belts own ~half the portrait width
+		# (not a needle fairway in an ocean of mid-rough).
+		var z_cor := _corridor_zoom_level()
+		if _aiming and _should_show_green_book():
+			# Slightly wider so book + landing stay readable
+			z = lerpf(z_cor * 0.92, z_cor * 0.78, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
+		elif pin_yd <= 90.0:
+			z = lerpf(z_cor * 1.08, z_cor, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
+		else:
+			# Long tee: a touch wider for aim cone, still corridor-first
+			z = z_cor * 0.88
 	# Pinch-to-zoom override — aim phase only; auto-framing owns zoom everywhere else.
 	if _aiming and _user_zoom_mult != 1.0:
 		z = clampf(z * _user_zoom_mult, PINCH_ABS_ZOOM_MIN, PINCH_ABS_ZOOM_MAX)
@@ -1786,16 +1965,17 @@ func _desired_camera_look() -> Vector2:
 
 
 func _flight_camera_zoom() -> Vector2:
-	## Wide through apex; snap tight once the ball starts down (TV "up and in").
+	## Mild open through apex; snap tighter than aim on descent (TV "up and in").
+	## Scales from _flight_zoom_base so corridor aim never jumps to an old absolute wide shot.
 	var t := ball.air_progress()
 	var z: float
 	if ball.state == GolfBall.State.ROLL or t >= 1.0:
-		z = FLIGHT_ZOOM_LAND
+		z = _flight_z_land()
 	elif t < FLIGHT_ZOOM_IN_START:
-		z = lerpf(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_APEX, t / FLIGHT_ZOOM_IN_START)
+		z = lerpf(_flight_z_launch(), _flight_z_apex(), t / FLIGHT_ZOOM_IN_START)
 	else:
 		var u := (t - FLIGHT_ZOOM_IN_START) / maxf(1.0 - FLIGHT_ZOOM_IN_START, 0.01)
-		z = lerpf(FLIGHT_ZOOM_APEX, FLIGHT_ZOOM_LAND, u)
+		z = lerpf(_flight_z_apex(), _flight_z_land(), u)
 	return Vector2(z, z)
 
 
@@ -1820,14 +2000,45 @@ func _follow_ball() -> void:
 		tw_p.tween_property(camera, "global_position", _putt_cam_look, 0.18).set_trans(Tween.TRANS_SINE)
 		tw_p.parallel().tween_property(camera, "zoom", _putt_cam_zoom, 0.2)
 		return
-	var z := Vector2(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAUNCH)
+	# Capture pre-shot framing; flight fracs open slightly then land tighter than aim.
+	_flight_zoom_base = maxf(camera.zoom.x, _corridor_zoom_level() * 0.9)
+	var z := Vector2(_flight_z_launch(), _flight_z_launch())
 	var tw := create_tween()
 	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
 	tw.parallel().tween_property(camera, "zoom", z, 0.2)
 
 
+func _refresh_hole_map() -> void:
+	if _hole_map == null or hole == null:
+		return
+	var cl := PackedVector2Array()
+	for i in 17:
+		var a := float(i) / 16.0
+		cl.append(_fairway_center_at(a))
+	var tees: Array = []
+	for p in _tee_pads:
+		tees.append({
+			"pos": p["pos"],
+			"set": p["set"],
+			"active": p["set"] == _active_tee,
+		})
+	_hole_map.configure(
+		hole,
+		_green_center,
+		_cup_pos,
+		_fairway_half,
+		cl,
+		_bunkers,
+		_trees,
+		tees,
+		ball.global_position if ball else _tee_pos
+	)
+
+
 func _process(_delta: float) -> void:
 	_sync_pin_flag_visible()
+	if _hole_map and ball:
+		_hole_map.set_ball(ball.global_position)
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
 		if _is_putt_context() and _putt_cam_active:
 			# Hold stroke-start zoom; soft drift toward the ball so it can leave center.
@@ -1837,7 +2048,7 @@ func _process(_delta: float) -> void:
 		else:
 			var look := ball.global_position
 			if ball.velocity.length() > 20.0:
-				var tight := inverse_lerp(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAND, camera.zoom.x)
+				var tight := inverse_lerp(_flight_z_launch(), _flight_z_land(), camera.zoom.x)
 				var lead := lerpf(FLIGHT_LOOK_LEAD_WIDE, FLIGHT_LOOK_LEAD_TIGHT, clampf(tight, 0.0, 1.0))
 				look += ball.velocity.normalized() * lead
 			camera.global_position = camera.global_position.lerp(look, 0.18)
@@ -1863,7 +2074,8 @@ func _process(_delta: float) -> void:
 		# Hold land framing while the glance/result panel is up so the "in" punch isn't undone.
 		if shot_result_panel and shot_result_panel.visible and not _is_putt_context():
 			camera.global_position = camera.global_position.lerp(ball.global_position, 0.12)
-			camera.zoom = camera.zoom.lerp(Vector2(FLIGHT_ZOOM_LAND, FLIGHT_ZOOM_LAND), 0.16)
+			var z_land := _flight_z_land()
+			camera.zoom = camera.zoom.lerp(Vector2(z_land, z_land), 0.16)
 		else:
 			camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.08)
 			camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.08)
@@ -1961,15 +2173,26 @@ func _on_practice_green_holed() -> void:
 
 
 func _classify_lie(pos: Vector2) -> String:
+	for tr in _trees:
+		if pos.distance_to(tr["c"]) <= float(tr["r"]):
+			return "Trees"
 	for b in _bunkers:
 		if pos.distance_to(b["c"]) <= float(b["r"]):
 			return "Sand"
 	if _on_painted_green(pos):
 		return "Green"
+	# Any teeing ground (Blue / White / Red pads)
+	for p in _tee_pads:
+		var r: Rect2 = p.get("rect", Rect2())
+		if r.size != Vector2.ZERO and r.has_point(pos):
+			return "Tee"
+		var tp: Vector2 = p["pos"]
+		if absf(pos.x - tp.x) <= 26.0 and absf(pos.y - tp.y) <= 28.0:
+			return "Tee"
 	# Was a fixed green-end x offset regardless of the ball's y — read through
 	# _fairway_center_at() instead so this tracks the real centerline (matters
 	# for bent fairways in general, and is load-bearing for sharp-dogleg mode).
-	var along := clampf(inverse_lerp(GREEN_Y, _tee_pos.y, pos.y), 0.0, 1.0)
+	var along := clampf(inverse_lerp(GREEN_Y, _tee_back_pos.y, pos.y), 0.0, 1.0)
 	var fx := absf(pos.x - _fairway_center_at(along).x)
 	if fx <= _fairway_half + 20.0:
 		return "Fairway"
@@ -2038,14 +2261,19 @@ func _on_holed_out() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	ball.reset_at(_cup_pos, "Green")
-	# Sink juice — keep a tight cup close-up
+	# Soft hole-out: ease into a modest cup hold, then ease out — no jarring 6× punch.
 	AudioBus.play_putt_drop()
+	var close_z := Vector2(3.15, 3.15)
+	var hold_z := Vector2(2.55, 2.55)
 	var cam_tw := create_tween()
-	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.2)
-	cam_tw.parallel().tween_property(camera, "zoom", Vector2(6.0, 6.0), 0.15)
-	cam_tw.tween_property(flash_rect, "modulate:a", 0.4, 0.06)
-	cam_tw.tween_property(flash_rect, "modulate:a", 0.0, 0.25)
-	cam_tw.tween_property(camera, "zoom", Vector2(4.5, 4.5), 0.35)
+	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.38)
+	cam_tw.parallel().tween_property(camera, "zoom", close_z, 0.42)
+	cam_tw.tween_property(flash_rect, "modulate:a", 0.18, 0.12)
+	cam_tw.tween_property(flash_rect, "modulate:a", 0.0, 0.45)
+	cam_tw.tween_interval(0.35)
+	cam_tw.set_ease(Tween.EASE_IN_OUT)
+	cam_tw.tween_property(camera, "zoom", hold_z, 0.55)
 	var diff := strokes - hole.par
 	var result := Scoring.result_from_diff(diff)
 	GameState.add_score_to_par(diff)
@@ -2068,7 +2296,8 @@ func _on_holed_out() -> void:
 		or GameState.current_hole >= GameState.HOLE_COUNT
 	if ending:
 		AudioBus.play_water_hazard()
-	await get_tree().create_timer(1.1).timeout
+	# Let the soft cam settle before advancing (was 1.1 with snappy zoom).
+	await get_tree().create_timer(1.55).timeout
 	if not GameState.run_active or GameState.lives <= 0:
 		request_game_over.emit()
 		return

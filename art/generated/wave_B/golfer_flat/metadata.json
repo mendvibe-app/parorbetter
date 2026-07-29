@@ -1,0 +1,32 @@
+{
+  "group_id": null,
+  "states": [
+    {
+      "character": {
+        "id": "5dac1f3e-942c-4f42-9a97-972e80e4420c",
+        "name": "ParOrBetter Golfer Flat",
+        "prompt": "tall flat 2D pixel art golfer sprite like old SNES sports game, NOT chibi NOT anime NOT RPG, adult male proportions head small, green flat baseball cap not hair, beige skin simple dots for eyes, white polo with black speckles, dark charcoal pants, black shoes, golf club in hands, single color black outline, lineless face, side view facing right, hard pixels, transparent background",
+        "size": {
+          "width": 112,
+          "height": 112
+        },
+        "template_id": "mannequin",
+        "directions": 4,
+        "view": "side",
+        "created_at": "2026-07-29T21:35:23.820010+00:00"
+      },
+      "folder": "ParOrBetter_Golfer_Flat",
+      "frames": {
+        "rotations": {
+          "south": "ParOrBetter_Golfer_Flat/rotations/south.png",
+          "west": "ParOrBetter_Golfer_Flat/rotations/west.png",
+          "east": "ParOrBetter_Golfer_Flat/rotations/east.png",
+          "north": "ParOrBetter_Golfer_Flat/rotations/north.png"
+        },
+        "animations": {}
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-07-29T21:37:58.097564"
+}

@@ -1,7 +1,7 @@
 # Prompt Skill: Chip Pad
 
 **Status**: Active
-**Depends on**: art/STYLE.md (**Crunchy Pixel**), art/prompts/tempo_pad.md, art/prompts/putt_pad.md
+**Depends on**: art/STYLE.md (**Pixel Kit Golf**), art/prompts/tempo_pad.md, art/prompts/putt_pad.md
 **Purpose**: Visual elements for the chip stroke pad — same amplitude-gesture family as putt (`PuttStroke` grading, shorter lane), warm sand/wedge palette skin.
 
 Any agent generating chip pad art must follow this file and art/STYLE.md.

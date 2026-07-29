@@ -9,6 +9,8 @@ enum LayoutStyle { STANDARD, DOGLEG_LEFT, DOGLEG_RIGHT, ISLAND, CHUTE, BI_TIER }
 enum GreenShape { OVAL, KIDNEY, TIERED, L_SHAPED, PENINSULA, COMPLEX }
 enum CourseTheme { PARKLAND, LINKS, DESERT }
 enum ContourProfile { FLAT, SIDE_SLOPE, BOWL, RIDGE, FALSE_FRONT, BI_TIER }
+## Teeing grounds — Blue back (long), White middle, Red forward (short).
+enum TeeSet { RED, WHITE, BLUE }
 
 ## Hazard role strings used in `hazards` specs.
 const ROLE_GREENSIDE := "greenside"
@@ -19,12 +21,15 @@ const ROLE_ISLAND_RING := "island_ring"
 
 @export var hole_number: int = 1
 @export var par: int = 4
-@export var yardage: float = 400.0  ## tee→green yards (drives layout length)
+@export var yardage: float = 400.0  ## White (middle) tee→green yards (layout length)
 @export var fairway_width: float = 140.0
 @export var green_radius_x: float = 36.0
 @export var green_radius_y: float = 36.0
 @export var pin_offset: Vector2 = Vector2.ZERO  ## from green center
 @export var tee_offset_x: float = 0.0
+## Yards from White: + toward tee (longer), − toward green (shorter).
+@export var tee_blue_offset_yd: float = 20.0
+@export var tee_red_offset_yd: float = -18.0
 @export var fairway_bend: float = 0.0  ## lateral dogleg at mid fairway (px)
 ## Sharpened Dogleg Corners epic. Only consumed when GameState.sharp_dogleg_enabled
 ## is on and layout is DOGLEG_LEFT/DOGLEG_RIGHT (see HoleController._use_sharp_dogleg()).
@@ -45,7 +50,9 @@ const ROLE_ISLAND_RING := "island_ring"
 @export var green_shape: GreenShape = GreenShape.OVAL
 @export var green_size: float = 0.7  ## 0 = tiny target, 1 = generous
 @export var contour_profile: ContourProfile = ContourProfile.SIDE_SLOPE
-## Specs: {kind, role, side, along, size, art}. kind=sand|water; role=greenside|landing|carry|edge|island_ring
+## Specs: {kind, role, side, along, size, art, count?}.
+## kind=sand|water|tree; role=greenside|landing|carry|edge|island_ring
+## tree count = how many canopies to stamp around that role site (default 1).
 @export var hazards: Array = []
 @export var complexity: float = 0.0  ## 0–1 difficulty composite
 @export var archetype: String = ""  ## generator identity (e.g. short_sharp)
@@ -63,6 +70,34 @@ func has_water() -> bool:
 		if str(h.get("kind", "")) == "water":
 			return true
 	return false
+
+
+func has_trees() -> bool:
+	for h in hazards:
+		if str(h.get("kind", "")) == "tree":
+			return true
+	return false
+
+
+func tee_yards(set: TeeSet) -> float:
+	## Effective tee→green yards for a color set (White = yardage).
+	match set:
+		TeeSet.BLUE:
+			return maxf(yardage + tee_blue_offset_yd, 60.0)
+		TeeSet.RED:
+			return maxf(yardage + tee_red_offset_yd, 50.0)
+		_:
+			return maxf(yardage, 50.0)
+
+
+static func tee_set_label(set: TeeSet) -> String:
+	match set:
+		TeeSet.BLUE:
+			return "Blue"
+		TeeSet.RED:
+			return "Red"
+		_:
+			return "White"
 
 
 ## Elevation at local pos (world − green_center). Book heat samples this.

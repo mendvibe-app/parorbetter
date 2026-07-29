@@ -25,7 +25,7 @@ offset_left = 24.0
 offset_top = 20.0
 offset_right = 780.0
 offset_bottom = 76.0
-theme_override_font_sizes/font_size = 48
+theme_override_font_sizes/font_size = 56
 text = "HOLE 1 · PAR 4 · 400 YDS"
 
 [node name="ScoreLabel" type="Label" parent="."]
@@ -34,7 +34,7 @@ offset_left = 24.0
 offset_top = 84.0
 offset_right = 560.0
 offset_bottom = 136.0
-theme_override_font_sizes/font_size = 40
+theme_override_font_sizes/font_size = 48
 text = "Strokes 0"
 
 [node name="LivesRow" type="HBoxContainer" parent="."]
@@ -61,6 +61,6 @@ offset_top = 84.0
 offset_right = -24.0
 offset_bottom = 136.0
 theme_override_colors/font_color = Color(0.92, 0.95, 0.88, 1)
-theme_override_font_sizes/font_size = 32
+theme_override_font_sizes/font_size = 40
 text = ""
 horizontal_alignment = 2

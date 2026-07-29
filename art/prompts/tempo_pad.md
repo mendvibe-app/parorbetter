@@ -1,7 +1,7 @@
 # Prompt Skill: Tempo Pad (Full Swing)
 
 **Status**: Active  
-**Depends on**: art/STYLE.md (**Crunchy Pixel**)  
+**Depends on**: art/STYLE.md (**Pixel Kit Golf**)  
 **Purpose**: Generate all visual elements for the full-swing tempo pad — the core skill surface of the game.
 
 Any agent generating tempo pad art must follow both this file and art/STYLE.md.
@@ -30,7 +30,7 @@ These are UI overlay elements, not top-down terrain tiles.
 
 ## 2. Technical Constraints
 
-- Style: Strictly follow art/STYLE.md (Crunchy Pixel — visible pixels, hard outlines, dither OK)
+- Style: Strictly follow art/STYLE.md (Pixel Kit Golf — visible pixels, hard outlines, dither OK)
 
 - View: Flat UI / overlay (not perspective, not top-down course view)
 - Resolution: Prefer 64×64 or 128×128 for individual landmarks. Larger combined pad elements up to 256×256 if needed.
@@ -57,7 +57,10 @@ These are UI overlay elements, not top-down terrain tiles.
 - THROUGH should feel like the moment of contact / power.
 
 ### Pull Lane
-- Clear directional path.
+- **White swing corridor**, not grass and not a thin neon hairline.
+- Fat mobile-readable path (drawn ~64–72px wide): bright white body, dark rim,
+  motion chevrons along the stroke. Family tint only as a whisper on the edge.
+- Landmarks keep green/blue/sand color language; the lane itself stays white-first.
 - Should guide the eye from START → TOP → THROUGH → FOLLOW.
 - Keep it simple so it doesn’t compete with the landmarks.
 

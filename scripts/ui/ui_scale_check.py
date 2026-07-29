@@ -37,14 +37,20 @@ def screen_insets_to_viewport(
 
 
 def main() -> int:
-    assert _const("CAPTION") == 32
-    assert _const("BODY") == 40
-    assert _const("TITLE") == 48
+    assert _const("CAPTION") == 40
+    assert _const("BODY") == 48
+    assert _const("TITLE") == 56
     assert _const("TOUCH_MIN") == 120
     assert "TEXT_SECONDARY" in SRC
-    assert 'preload("res://assets/fonts/PixelifySans-Variable.ttf")' in SRC
-    assert (Path(__file__).resolve().parents[2] / "assets" / "fonts" / "PixelifySans-Variable.ttf").is_file()
-    assert (Path(__file__).resolve().parents[2] / "assets" / "fonts" / "OFL.txt").is_file()
+    assert 'preload("res://assets/fonts/PixelOperator.ttf")' in SRC
+    fonts = Path(__file__).resolve().parents[2] / "assets" / "fonts"
+    assert (fonts / "PixelOperator.ttf").is_file()
+    assert (fonts / "CC0-PixelOperator.txt").is_file()
+    # Theme points at the same face
+    theme = (Path(__file__).resolve().parents[2] / "assets" / "ui" / "game_theme.tres").read_text(
+        encoding="utf-8"
+    )
+    assert "PixelOperator.ttf" in theme
     assert (Path(__file__).resolve().parents[2] / "assets" / "ui" / "game_theme.tres").is_file()
     project = (Path(__file__).resolve().parents[2] / "project.godot").read_text(encoding="utf-8")
     assert 'theme/custom="res://assets/ui/game_theme.tres"' in project

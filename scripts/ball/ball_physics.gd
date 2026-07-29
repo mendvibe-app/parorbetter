@@ -101,6 +101,9 @@ static func clubs_for_lie(lie: String) -> Array[Dictionary]:
 			continue
 		if lie == "Sand" and not is_wedge_family(name):
 			continue
+		# Trees: punch-out — no driver/woods (irons + hybrids + wedges ok).
+		if lie == "Trees" and (name == "Driver" or name.contains("Wood")):
+			continue
 		out.append(club)
 	return out
 
@@ -139,6 +142,8 @@ static func shot_need_yards(remaining_yd: float, lie: String, severity: String =
 		):
 			need *= ROUGH_MUL_AVERAGE / ROUGH_MUL_BURIED
 		return need
+	if lie == "Trees":
+		return remaining_yd * 1.35  # punch-out reality: more club than open rough
 	return remaining_yd * 1.08
 
 
@@ -213,6 +218,8 @@ static func lie_multiplier(lie: String, severity: String = "") -> float:
 					return ROUGH_MUL_AVERAGE
 		"Sand":
 			return 0.7
+		"Trees":
+			return 0.58  # punch-out — shorter than average rough
 		"Green":
 			return 1.0
 		_:
@@ -234,6 +241,8 @@ static func lie_timing_scale(lie: String, severity: String = "") -> float:
 					return ROUGH_TIMING_AVERAGE
 		"Sand":
 			return 0.66
+		"Trees":
+			return 0.62
 		_:
 			return 1.0
 

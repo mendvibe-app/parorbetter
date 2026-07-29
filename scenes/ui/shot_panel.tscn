@@ -46,7 +46,7 @@ mouse_filter = 2
 [node name="InfoLabel" type="Label" parent="GlanceRow"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 36
+theme_override_font_sizes/font_size = 44
 text = "145 yd"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -60,7 +60,7 @@ mouse_filter = 2
 
 [node name="ClubLabel" type="Label" parent="GlanceRow"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 36
 theme_override_colors/font_color = Color(0.92, 0.95, 0.88, 1)
 text = "Wedge"
 vertical_alignment = 1
@@ -85,7 +85,7 @@ offset_top = 152.0
 offset_right = -16.0
 offset_bottom = 200.0
 theme_override_colors/font_color = Color(0.92, 0.95, 0.88, 1)
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 36
 text = "START · pull to FULL · THROUGH the gold"
 horizontal_alignment = 1
 autowrap_mode = 2

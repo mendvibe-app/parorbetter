@@ -50,8 +50,10 @@ func refresh(hole: HoleData, strokes: int) -> void:
 	if hole == null:
 		return
 	_strokes = strokes
-	hole_label.text = "HOLE %d · PAR %d · %d YDS" % [
-		hole.hole_number, hole.par, int(hole.yardage)
+	var tee := GameState.active_tee_set_for_hole(hole.hole_number)
+	var yds := int(hole.tee_yards(tee))
+	hole_label.text = "HOLE %d · PAR %d · %s · %d YDS" % [
+		hole.hole_number, hole.par, HoleData.tee_set_label(tee), yds
 	]
 	_refresh_score()
 	lives_row.visible = true

@@ -12,9 +12,18 @@ signal perfect_flash
 enum State { IDLE, FLIGHT, ROLL, SETTLED }
 
 ## Screen-up loft multiplier for tracer (matches old ghost-arc language).
+## Lift is divided by camera zoom so close-up chips don't paint a huge screen arc.
 const TRACER_LIFT := 0.35
+## Target on-screen trail thickness (px). World width = screen / zoom.
+const TRACER_SCREEN_W := 3.2
+const TRACER_SCREEN_W_PURE := 4.0
 const TRACER_CAP := 128
 const TRACER_CAP_PURE := 160
+## Wet-marker dry: 0 = fresh tip, 1 = fully faded. Advances on roll after flight.
+const TRACER_DRY_RATE := 0.95
+## Landing target circle (screen px). Faint in air, lights up on first bounce.
+const LAND_R_SCREEN := 15.0
+const LAND_RING_W_SCREEN := 1.6
 
 var state: State = State.IDLE
 var spin: float = 0.0
@@ -30,6 +39,13 @@ var _lie: String = "Tee"
 ## Rough severity: Buried / Average / SittingUp when toggle on; else "".
 var _lie_severity: String = ""
 var _trail: Line2D
+var _trail_grad: Gradient
+var _trail_dry: float = 0.0  ## 0 wet … 1 dry (fade from launch toward ball)
+var _land_mark: Node2D
+var _land_fill: Polygon2D
+var _land_ring: Line2D
+## 0 = soft pre-land / faded; 1 = impact flash. Only spikes on land, decays on roll.
+var _land_pulse: float = 0.0
 var _is_perfect_shot: bool = false
 
 var _shot_origin: Vector2 = Vector2.ZERO
@@ -64,15 +80,19 @@ var _glow_scale: float = 1.0
 func _ready() -> void:
 	_apply_lie_visual()
 	_trail = Line2D.new()
-	# World width stays readable at launch zoom ~0.55 (≈3–4 screen px at launch,
-	# thicker as the camera zooms toward landing). Overwritten per-shot in launch().
-	_trail.width = 6.0
+	# Width is screen-constant via _sync_trail_visual() (zoom-aware).
+	_trail.width = TRACER_SCREEN_W
 	_trail.default_color = Color(0.55, 0.95, 1.0, 0.92)
+	# Wet-marker gradient: oldest points transparent, tip (at ball) opaque.
+	_trail_grad = Gradient.new()
+	_trail.gradient = _trail_grad
+	_sync_trail_gradient()
 	# Solid ribbon reads better as Trackman than the soft trail tex at distance.
 	_trail.z_index = 20
 	_trail.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.end_cap_mode = Line2D.LINE_CAP_ROUND
 	_trail.joint_mode = Line2D.LINE_JOINT_ROUND
+	_build_land_mark()
 	# Host on hole root so points are true world coords (top_level under ball was flaky).
 	call_deferred("_mount_trail")
 	area.area_entered.connect(_on_area_entered)
@@ -80,17 +100,36 @@ func _ready() -> void:
 	set_physics_process(false)
 
 
+func _build_land_mark() -> void:
+	## Soft white target disc + ring at planned/actual first bounce.
+	_land_mark = Node2D.new()
+	_land_mark.z_index = 19
+	_land_mark.visible = false
+	_land_fill = Polygon2D.new()
+	_land_fill.color = Color(1, 1, 1, 0.14)
+	_land_ring = Line2D.new()
+	_land_ring.default_color = Color(1, 1, 1, 0.55)
+	_land_ring.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_land_ring.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_land_ring.joint_mode = Line2D.LINE_JOINT_ROUND
+	_land_ring.closed = true
+	_land_mark.add_child(_land_fill)
+	_land_mark.add_child(_land_ring)
+
+
 func _mount_trail() -> void:
 	var host := get_parent()
 	if host == null or _trail == null:
 		return
-	if _trail.get_parent() == host:
-		_trail.position = Vector2.ZERO
-		return
-	if _trail.get_parent():
-		_trail.get_parent().remove_child(_trail)
-	host.add_child(_trail)
+	if _trail.get_parent() != host:
+		if _trail.get_parent():
+			_trail.get_parent().remove_child(_trail)
+		host.add_child(_trail)
 	_trail.position = Vector2.ZERO
+	if _land_mark and _land_mark.get_parent() != host:
+		if _land_mark.get_parent():
+			_land_mark.get_parent().remove_child(_land_mark)
+		host.add_child(_land_mark)
 
 
 ## Clears the flight tracer independent of a full ball reset — call this as soon as
@@ -98,6 +137,93 @@ func _mount_trail() -> void:
 ## the next shot's read/club/aim routine.
 func clear_trail() -> void:
 	_trail.clear_points()
+	_trail_dry = 0.0
+	_trail.modulate.a = 1.0
+	_sync_trail_gradient()
+	_hide_land_mark()
+
+
+func _camera_zoom() -> float:
+	var cam := get_viewport().get_camera_2d() if get_viewport() else null
+	return cam.zoom.x if cam else 1.0
+
+
+func _sync_trail_visual() -> void:
+	## Keep ribbon ~constant on screen; fixed world width blows up when zoomed in (chips).
+	if _trail == null:
+		return
+	var z := maxf(_camera_zoom(), 0.35)
+	var sw := TRACER_SCREEN_W_PURE if _is_perfect_shot else TRACER_SCREEN_W
+	_trail.width = sw / z
+	_sync_trail_gradient()
+	_sync_land_mark_visual()
+
+
+func _sync_trail_gradient() -> void:
+	## Wet marker: launch end dries first; tip stays wet until _trail_dry rises on land.
+	## RGB from default_color (strike quality); gradient only owns the alpha falloff.
+	if _trail_grad == null or _trail == null:
+		return
+	var c := _trail.default_color
+	var peak := clampf(1.0 - _trail_dry, 0.0, 1.0)
+	# As dry rises, opaque band shrinks toward the ball (offset 1.0).
+	var mid_a := lerpf(0.22, 0.0, _trail_dry) * c.a
+	var mid_b := lerpf(0.62, 0.05, _trail_dry) * c.a
+	var tip := peak * c.a
+	_trail_grad.offsets = PackedFloat32Array([0.0, 0.35, 0.72, 1.0])
+	_trail_grad.colors = PackedColorArray([
+		Color(c.r, c.g, c.b, 0.0),
+		Color(c.r, c.g, c.b, mid_a * peak),
+		Color(c.r, c.g, c.b, mid_b * peak),
+		Color(c.r, c.g, c.b, tip),
+	])
+
+
+func _planned_land_pos() -> Vector2:
+	return _shot_origin + _launch_dir * (_planned_distance_px * _air_fraction)
+
+
+func _circle_pts(r: float, n: int = 36) -> PackedVector2Array:
+	var pts := PackedVector2Array()
+	pts.resize(n)
+	for i in n:
+		var a := TAU * float(i) / float(n)
+		pts[i] = Vector2(cos(a), sin(a)) * r
+	return pts
+
+
+func _hide_land_mark() -> void:
+	_land_pulse = 0.0
+	if _land_mark:
+		_land_mark.visible = false
+		_land_mark.modulate.a = 1.0
+
+
+func _show_land_mark(pos: Vector2, flash: bool) -> void:
+	if _land_mark == null or _is_putt:
+		return
+	_land_mark.position = pos
+	_land_mark.visible = true
+	_land_mark.modulate.a = 1.0
+	# Bright only on impact; flight keeps pulse at 0 (soft ring).
+	_land_pulse = 1.0 if flash else 0.0
+	_sync_land_mark_visual()
+
+
+func _sync_land_mark_visual() -> void:
+	if _land_mark == null or not _land_mark.visible:
+		return
+	var z := maxf(_camera_zoom(), 0.35)
+	var p := _land_pulse
+	var r_screen := LAND_R_SCREEN * (1.0 + p * 0.35)
+	var r := r_screen / z
+	var pts := _circle_pts(r)
+	_land_fill.polygon = pts
+	_land_ring.points = pts
+	_land_ring.width = LAND_RING_W_SCREEN * (1.0 + p * 0.5) / z
+	# Soft target in air (p=0); bright only while impact pulse is up.
+	_land_fill.color = Color(1.0, 1.0, 1.0, lerpf(0.10, 0.58, p))
+	_land_ring.default_color = Color(1.0, 1.0, 1.0, lerpf(0.42, 1.0, p))
 
 
 func reset_at(pos: Vector2, lie: String = "Tee") -> void:
@@ -112,7 +238,10 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	state = State.IDLE
 	_planned_distance_px = 0.0
 	_trail.clear_points()
+	_trail_dry = 0.0
 	_trail.modulate.a = 1.0
+	_sync_trail_gradient()
+	_hide_land_mark()
 	visual.rotation = 0.0
 	visual.self_modulate = Color(1, 1, 1)
 	shadow.position = Vector2.ZERO
@@ -161,12 +290,13 @@ func launch(
 	_trail.clear_points()
 	_trail.position = Vector2.ZERO
 	_trail.modulate.a = 1.0
+	_trail_dry = 0.0
+	_hide_land_mark()
 	_is_perfect_shot = result.is_perfect() and result.stance_stability >= 0.72
 	if _is_perfect_shot:
 		perfect_flash.emit()
 		visual.self_modulate = Color(1.0, 0.95, 0.55)
 		_trail.default_color = Color(1.0, 0.85, 0.25, 0.95)  # gold — reserved for pure strikes
-		_trail.width = 7.0
 	else:
 		visual.self_modulate = Color(1, 1, 1)
 		# Same good/ok/bad palette already used by the swing-trail color and tempo
@@ -178,13 +308,15 @@ func launch(
 				_trail.default_color = Color(0.95, 0.85, 0.25, 0.92)  # amber
 			_:  # THIN, FAT, MISS
 				_trail.default_color = Color(0.95, 0.35, 0.3, 0.92)  # red
-		_trail.width = 6.0
+	_sync_trail_visual()
 
 	if _is_putt or _air_fraction <= 0.001:
 		state = State.ROLL
 		velocity = _launch_dir * _landing_speed
 	else:
 		state = State.FLIGHT
+		# Soft target where first bounce is planned; lights up in _begin_roll.
+		_show_land_mark(_planned_land_pos(), false)
 	set_physics_process(true)
 
 
@@ -258,14 +390,30 @@ func _physics_process(delta: float) -> void:
 			_process_roll(delta)
 		_:
 			pass
-	# Flight: lofted Trackman tracer. Full-shot roll: freeze arc. No tracer on putts —
-	# the ball never leaves the ground on a putt, so there's nothing a real tracer
-	# would be showing that the player can't already see directly.
-	if state == State.FLIGHT and not _is_putt:
-		_trail.add_point(global_position + Vector2(0.0, -_height * TRACER_LIFT))
-		var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
-		if _trail.get_point_count() > cap:
-			_trail.remove_point(0)
+	# Flight: lofted Trackman tracer. Roll: freeze points and dry the ribbon (wet marker)
+	# into the land circle. Impact flash on land mark decays during roll only.
+	if not _is_putt:
+		if state == State.FLIGHT:
+			_sync_trail_visual()
+			var lift := TRACER_LIFT / maxf(_camera_zoom(), 0.35)
+			_trail.add_point(global_position + Vector2(0.0, -_height * lift))
+			var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
+			if _trail.get_point_count() > cap:
+				_trail.remove_point(0)
+		elif state == State.ROLL:
+			if _trail.get_point_count() > 0:
+				# Dry from launch end toward the land circle; drop fully-faded head points.
+				_trail_dry = minf(_trail_dry + delta * TRACER_DRY_RATE, 1.0)
+				if _trail_dry > 0.28 and _trail.get_point_count() > 6:
+					_trail.remove_point(0)
+			if _land_mark and _land_mark.visible:
+				# Flash only at bounce; ease back to soft then fade out with the roll.
+				_land_pulse = maxf(_land_pulse - delta * 2.4, 0.0)
+				if _land_pulse <= 0.0:
+					_land_mark.modulate.a = maxf(_land_mark.modulate.a - delta * 1.25, 0.0)
+					if _land_mark.modulate.a <= 0.02:
+						_hide_land_mark()
+			_sync_trail_visual()
 	_spin_vis += spin * delta * 4.0 + velocity.length() * 0.002
 	visual.rotation = _spin_vis
 	var s := 1.0 + _height * 0.006
@@ -317,6 +465,8 @@ func _begin_roll() -> void:
 	if speed <= 1.0:
 		speed = maxf(velocity.length() * 0.35, 20.0)
 	velocity = _launch_dir * speed
+	# Snap target to actual first bounce and illuminate — tracer tip dries into this.
+	_show_land_mark(global_position, true)
 	# Flight ignores ground under the arc; re-check hazards, then sample lie.
 	for other in area.get_overlapping_areas():
 		_on_area_entered(other)
@@ -411,13 +561,39 @@ func _finish_settle() -> void:
 	state = State.SETTLED
 	set_physics_process(false)
 	AudioBus.set_roll_intensity(0.0)
-	# Keep Trackman arc up through the result glance; next launch/reset clears it.
+	# Finish drying the marker into the land circle after stop (linger under result glance).
+	if not _is_putt and (_trail.get_point_count() > 0 or (_land_mark and _land_mark.visible)):
+		var tw := create_tween()
+		tw.tween_method(_set_trail_dry, _trail_dry, 1.0, 0.85)
+		tw.parallel().tween_property(_trail, "modulate:a", 0.0, 1.1)
+		if _land_mark and _land_mark.visible:
+			tw.parallel().tween_property(_land_mark, "modulate:a", 0.0, 1.15)
+	# Keep Trackman arc + land disc until fully dry; next launch/reset clears it.
 	if _lie != "Water" and _lie != "OOB":
 		_last_safe_pos = global_position
 	settled.emit(global_position, _lie)
 
 
+func _set_trail_dry(v: float) -> void:
+	_trail_dry = clampf(v, 0.0, 1.0)
+	_sync_trail_gradient()
+	# Trim the dried launch end while settling
+	if _trail and _trail_dry > 0.4 and _trail.get_point_count() > 4:
+		_trail.remove_point(0)
+
+
 func _on_area_entered(other: Area2D) -> void:
+	# Trees block air and roll — designed hazards, not ground-only surfaces.
+	if other.is_in_group("tree"):
+		if state == State.SETTLED or state == State.IDLE:
+			return
+		_apply_lie_string("Trees", false)
+		velocity = Vector2.ZERO
+		state = State.SETTLED
+		set_physics_process(false)
+		AudioBus.set_roll_intensity(0.0)
+		settled.emit(global_position, _lie)
+		return
 	# Loft is visual-only — ground groups (water/sand/fairway/…) only count on ROLL.
 	if state != State.ROLL:
 		return
@@ -456,8 +632,12 @@ func _on_area_entered(other: Area2D) -> void:
 		return
 	if other.is_in_group("sand"):
 		_apply_lie_string("Sand", false)
+	elif other.is_in_group("tree"):
+		_apply_lie_string("Trees", false)
 	elif other.is_in_group("green"):
 		_apply_lie_string("Green", false)
+	elif other.is_in_group("tee"):
+		_apply_lie_string("Tee", false)
 	elif other.is_in_group("fairway"):
 		_apply_lie_string("Fairway", false)
 	elif other.is_in_group("rough"):

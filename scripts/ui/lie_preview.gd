@@ -35,8 +35,8 @@ func set_state(lie: String, severity: String = "") -> void:
 
 func _ground_tex() -> Texture2D:
 	match _lie:
-		"Rough":
-			return TEX_ROUGH
+		"Rough", "Trees":
+			return TEX_ROUGH  # ponytail: dedicated tree widget later
 		"Sand":
 			return TEX_SAND
 		"Green":

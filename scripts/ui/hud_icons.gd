@@ -20,6 +20,8 @@ const CLUB_PUTTER := preload("res://assets/ui/club_putter.png")
 
 
 static func lie_texture(lie: String) -> Texture2D:
+	if lie == "Trees":
+		return LIE["Rough"]  # ponytail: tree-specific icon later
 	return LIE.get(lie, LIE["Fairway"])
 
 

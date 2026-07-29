@@ -1,7 +1,7 @@
 # Prompt Skill: Putt Pad
 
 **Status**: Active  
-**Depends on**: art/STYLE.md (**Crunchy Pixel**), art/prompts/tempo_pad.md  
+**Depends on**: art/STYLE.md (**Pixel Kit Golf**), art/prompts/tempo_pad.md  
 **Purpose**: Visual elements for the putt stroke pad — same gesture family as full swing, cool water palette skin.
 
 Any agent generating putt pad art must follow this file and art/STYLE.md.

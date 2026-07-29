@@ -174,7 +174,7 @@ def main() -> int:
     assert "ARC_SCALE := 0.16" in PUTT
     assert "0.22 if _is_putt()" in GESTURE or "y := 0.22 if _is_putt()" in GESTURE
     assert "0.92 if _is_putt()" in GESTURE or "y := 0.92 if _is_putt()" in GESTURE
-    assert "56.0 / maxf(tex_size.x" in GESTURE
+    assert "72.0 / maxf(tex_size.x" in GESTURE
 
     assert "MATCH_TOL" in PUTT
     assert "power_mul = minf(power_mul, 0.50)" not in PUTT

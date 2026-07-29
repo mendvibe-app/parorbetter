@@ -51,6 +51,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.45, 0.25, 0.15, 0.08, 0.04, 0.03],
 			"bunker": 0.95,
 			"water": 0.7,
+			"trees": 0.55,
 			"fairway": 1.05,
 			"green_size_bias": 0.08,
 			"bend": 0.35,
@@ -63,6 +64,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.25, 0.2, 0.2, 0.15, 0.08, 0.12],
 			"bunker": 1.25,
 			"water": 0.55,
+			"trees": 0.85,
 			"fairway": 0.9,
 			"green_size_bias": -0.18,
 			"bend": 0.4,
@@ -75,6 +77,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.05, 0.05, 0.1, 0.05, 0.65, 0.1],
 			"bunker": 0.55,
 			"water": 1.8,
+			"trees": 0.25,
 			"fairway": 0.95,
 			"green_size_bias": -0.12,
 			"bend": 0.5,
@@ -92,6 +95,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.4, 0.3, 0.12, 0.1, 0.04, 0.04],
 			"bunker": 1.15,
 			"water": 0.7,
+			"trees": 1.25,
 			"fairway": 0.72,
 			"green_size_bias": -0.22,
 			"bend": 0.55,
@@ -105,6 +109,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.28, 0.42, 0.12, 0.08, 0.05, 0.05],
 			"bunker": 1.1,
 			"water": 0.9,
+			"trees": 0.95,
 			"fairway": 0.95,
 			"green_size_bias": 0.0,
 			"bend": 1.25,
@@ -118,6 +123,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.5, 0.28, 0.1, 0.06, 0.03, 0.03],
 			"bunker": 0.65,
 			"water": 0.45,
+			"trees": 0.3,
 			"fairway": 1.28,
 			"green_size_bias": 0.1,
 			"bend": 0.35,
@@ -131,6 +137,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.22, 0.22, 0.12, 0.12, 0.18, 0.14],
 			"bunker": 1.45,
 			"water": 1.55,
+			"trees": 0.7,
 			"fairway": 0.88,
 			"green_size_bias": -0.08,
 			"bend": 1.45,
@@ -144,6 +151,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.12, 0.15, 0.35, 0.18, 0.08, 0.12],
 			"bunker": 1.05,
 			"water": 0.75,
+			"trees": 0.8,
 			"fairway": 1.18,
 			"green_size_bias": -0.26,
 			"bend": 0.5,
@@ -159,6 +167,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.25, 0.25, 0.15, 0.1, 0.12, 0.13],
 			"bunker": 1.3,
 			"water": 1.2,
+			"trees": 0.75,
 			"fairway": 0.95,
 			"green_size_bias": -0.1,
 			"bend": 0.9,
@@ -171,6 +180,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.45, 0.3, 0.12, 0.08, 0.03, 0.02],
 			"bunker": 0.75,
 			"water": 0.5,
+			"trees": 0.35,
 			"fairway": 1.22,
 			"green_size_bias": 0.08,
 			"bend": 0.4,
@@ -184,6 +194,7 @@ const ARCHETYPES: Dictionary = {
 			"green": [0.18, 0.2, 0.15, 0.12, 0.2, 0.15],
 			"bunker": 1.4,
 			"water": 1.65,
+			"trees": 1.15,
 			"fairway": 0.85,
 			"green_size_bias": -0.06,
 			"bend": 1.15,
@@ -361,6 +372,9 @@ static func generate_hole(
 			hazard_bias = HoleData.HazardBias.LEFT if rng.randf() < 0.5 else HoleData.HazardBias.RIGHT
 
 	var hazards := _build_hazards(want_bunker, want_water, layout, t, hazard_bias, rng, corner_position)
+	# Trees are hole design, not decoration — density by archetype (links open vs parkland chute).
+	for tr in _build_trees(layout, t, hazard_bias, rng, arch, corner_position):
+		hazards.append(tr)
 	var suggested := _suggested_shape(layout, hazard_bias, rng)
 	var bend := _fairway_bend(layout, t, rng) * float(arch.get("bend", 1.0))
 	var tee_x := rng.randf_range(-18.0, 18.0) * lerpf(0.3, 1.0, t)
@@ -375,6 +389,16 @@ static func generate_hole(
 	d.green_radius_y = radii.y
 	d.pin_offset = pin
 	d.tee_offset_x = tee_x
+	# Multi-tee: White = yardage; Blue back / Red forward by par spread.
+	if par <= 3:
+		d.tee_blue_offset_yd = rng.randf_range(10.0, 15.0)
+		d.tee_red_offset_yd = -rng.randf_range(8.0, 14.0)
+	elif par >= 5:
+		d.tee_blue_offset_yd = rng.randf_range(18.0, 28.0)
+		d.tee_red_offset_yd = -rng.randf_range(16.0, 24.0)
+	else:
+		d.tee_blue_offset_yd = rng.randf_range(15.0, 22.0)
+		d.tee_red_offset_yd = -rng.randf_range(14.0, 20.0)
 	d.fairway_bend = bend
 	d.corner_position = corner_position
 	d.corner_tightness = corner_tightness
@@ -779,6 +803,83 @@ static func _haz(kind: String, role: String, side: int, along: float, size: floa
 		"size": size,
 		"art": art,
 	}
+
+
+static func _haz_tree(
+	role: String, side: int, along: float, size: float, art: int, count: int
+) -> Dictionary:
+	var h := _haz("tree", role, side, along, size, art)
+	h["count"] = maxi(count, 1)
+	return h
+
+
+static func _build_trees(
+	layout: HoleData.LayoutStyle,
+	t: float,
+	bias: HoleData.HazardBias,
+	rng: RandomNumberGenerator,
+	arch: Dictionary,
+	corner_position: float
+) -> Array:
+	## Real-hole tree design: some holes open (few), some framed/choked (many).
+	var dens := float(arch.get("trees", 0.65))
+	# Chance of a nearly treeless hole (links / long open).
+	if dens < 0.4 and rng.randf() < 0.55:
+		return []
+	if dens < 0.75 and rng.randf() > lerpf(0.55, 0.92, dens):
+		return []
+
+	var side := 1
+	if bias == HoleData.HazardBias.LEFT:
+		side = -1
+	elif bias == HoleData.HazardBias.RIGHT:
+		side = 1
+	elif rng.randf() < 0.5:
+		side = -1
+
+	var out: Array = []
+	var is_dogleg := (
+		layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT
+	)
+	if is_dogleg:
+		side = -1 if layout == HoleData.LayoutStyle.DOGLEG_LEFT else 1
+
+	# Edge line — one side, stretched along a fairway segment (not a continuous hedge).
+	var edge_count := int(round(lerpf(2.0, 5.0, dens * rng.randf_range(0.7, 1.0))))
+	var edge_along := rng.randf_range(0.28, 0.55)
+	out.append(_haz_tree(
+		HoleData.ROLE_EDGE, side, edge_along, lerpf(26.0, 36.0, dens), rng.randi_range(0, 7), edge_count
+	))
+	# Occasional opposite-side scatter (lighter).
+	if dens >= 0.7 and rng.randf() < 0.45:
+		out.append(_haz_tree(
+			HoleData.ROLE_EDGE, -side, rng.randf_range(0.4, 0.7), 28.0, rng.randi_range(0, 7),
+			maxi(2, edge_count - 2)
+		))
+
+	# Landing / corner clump — guards the elbow or drive zone.
+	if dens >= 0.5 and rng.randf() < lerpf(0.35, 0.8, dens):
+		var along := rng.randf_range(0.42, 0.62)
+		if is_dogleg:
+			along = clampf(corner_position + rng.randf_range(-0.04, 0.04), 0.15, 0.85)
+		out.append(_haz_tree(
+			HoleData.ROLE_LANDING, side, along, lerpf(30.0, 42.0, dens), rng.randi_range(0, 7),
+			int(round(lerpf(2.0, 4.0, dens)))
+		))
+
+	# Greenside trees — frame the green on mid/hard holes (clear of cup via placement).
+	if dens >= 0.55 and rng.randf() < lerpf(0.25, 0.65, dens):
+		out.append(_haz_tree(
+			HoleData.ROLE_GREENSIDE, side if rng.randf() < 0.65 else -side, 0.06,
+			lerpf(24.0, 34.0, dens), rng.randi_range(0, 7), int(round(lerpf(1.0, 3.0, dens)))
+		))
+
+	# Chute: extra walls of trees both sides mid-hole.
+	if layout == HoleData.LayoutStyle.CHUTE and dens >= 0.8:
+		out.append(_haz_tree(HoleData.ROLE_EDGE, -1, 0.45, 30.0, rng.randi_range(0, 7), 4))
+		out.append(_haz_tree(HoleData.ROLE_EDGE, 1, 0.5, 30.0, rng.randi_range(0, 7), 4))
+
+	return out
 
 
 static func _cull_hazards(items: Array, max_n: int) -> Array:

@@ -1,7 +1,7 @@
 # Prompt Skill: Tempo Feedback (Meter + Pure FX)
 
 **Status**: Active  
-**Depends on**: art/STYLE.md (**Crunchy Pixel**)  
+**Depends on**: art/STYLE.md (**Pixel Kit Golf**)  
 **Purpose**: Meter chrome and pure-strike juice that match the tempo pad landmark family.
 
 Any agent generating these assets must follow both this file and art/STYLE.md.

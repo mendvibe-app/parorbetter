@@ -4,7 +4,7 @@ Godot 4 mobile golf prototype. One run = generated 18-hole course, lives, form-d
 
 Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before changing code. Shortest correct diff; reuse existing helpers; no new deps/abstractions unless asked. Non-trivial logic leaves one lightweight self-check (assert/demo/`*_check.py`).
 
-**Art**: Locked direction in `art/STYLE.md` (**Crunchy Pixel**) + `art/references/` for course surfaces. Briefs under `art/prompts/`. Raw → `art/generated/`; finals → `assets/`. UI typeface: **Pixelify Sans** (OFL) via `assets/ui/game_theme.tres` / `UiScale.FONT`.
+**Art**: Locked direction in `art/STYLE.md` (**Pixel Kit Golf**) — PixelLab-native kit (tilesets/character/props), not photo-ref clones. Pipeline: `art/prompts/kit.md`. Mood refs optional under `art/references/`. Briefs under `art/prompts/`. Raw → `art/generated/`; finals → `assets/` after wave gate. UI typeface: **Pixel Operator** (CC0) via `assets/ui/game_theme.tres` / `UiScale.FONT`.
 
 ## Shot loop (end to end)
 
@@ -38,7 +38,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
 | Lives | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |
 | Pure strikes (round) | `GameState.pure_strikes` / `record_pure_strike()` |
-| UI type scale | `UiScale.CAPTION/BODY/TITLE` (32 / 40 / 48); celebration 56–64 in scenes |
+| UI type scale | `UiScale.CAPTION/BODY/TITLE` (40 / 48 / 56); celebration ~64–72 in scenes |
 | Touch target min | `UiScale.TOUCH_MIN` (120 px on 1080-wide canvas ≈ 44–48pt) |
 | Safe-area insets | `UiScale.viewport_safe_margins` / `apply_hole_safe_area` |
 

@@ -1,21 +1,25 @@
-# Prompt Skill: Title Screen
+# Prompt Skill: Title / Start Screen
 
-**Status**: Active  
-**Depends on**: art/STYLE.md (**Crunchy Pixel**)  
-**Purpose**: Start-screen dusk landscape background (no baked UI).
+**Status**: Live (kit redo)  
+**Depends on**: `art/STYLE.md` + Wave A terrain/trees  
 
----
+## Live
+
+| | |
+|--|--|
+| Plate | `assets/background/title_dusk.png` (kit procedural) |
+| Gen | `art/generated/wave_D/gen_title_bg.py` |
+| Shell | `scenes/ui/start_screen.tscn` — square kit buttons, golfer accent |
 
 ## Constraints
 
-- Full-bleed portrait landscape only — **no text, buttons, title, or HUD**
-- Dusk / overcast mood: dark greens, tree silhouette, olive-grey sky
-- Palette anchors: `#3D5228` / `#30412E` / `#1A2418` greens; muted sky; near-black trees
-- Crunchy true pixel, hard edges, dither OK, Filter Off in Godot
-- Final: `assets/background/title_dusk.png` (raw → `art/generated/title_dusk.png`)
+- Full-bleed portrait, **no baked UI text** on the plate  
+- STYLE palette + live fairway/tree/pin assets  
+- Hard pixels, Filter Off (`texture_filter = 0` on rects)  
+- Buttons match `game_theme` (no rounded soft chrome)
 
-## Master append
+## Regen
 
-Crunchy true pixel art, visible square pixels, limited palette, dithered fills,
-no anti-aliasing, mobile golf game asset, full-bleed dusk course landscape,
-no UI, [specific subject]
+```bash
+python art/generated/wave_D/gen_title_bg.py
+```

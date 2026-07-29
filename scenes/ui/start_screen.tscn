@@ -4,78 +4,71 @@
 [ext_resource type="Texture2D" path="res://assets/background/title_dusk.png" id="2"]
 [ext_resource type="Texture2D" path="res://assets/ball/ball.png" id="3"]
 [ext_resource type="Texture2D" path="res://assets/greens/pin_flag.png" id="4"]
+[ext_resource type="Texture2D" path="res://assets/ui/ui_golfer_address.png" id="5"]
 
 [sub_resource type="StyleBoxFlat" id="menu_btn_normal"]
-bg_color = Color(0.18, 0.26, 0.14, 0.96)
+bg_color = Color(0.239, 0.322, 0.157, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
-border_color = Color(0.42, 0.55, 0.28, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-shadow_color = Color(0.05, 0.08, 0.04, 0.7)
-shadow_size = 2
-shadow_offset = Vector2(0, 5)
+border_color = Color(0.102, 0.122, 0.102, 1)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
 anti_aliasing = false
-content_margin_left = 20.0
-content_margin_top = 18.0
-content_margin_right = 20.0
-content_margin_bottom = 16.0
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 18.0
 
 [sub_resource type="StyleBoxFlat" id="menu_btn_hover"]
-bg_color = Color(0.26, 0.36, 0.18, 0.98)
+bg_color = Color(0.329, 0.408, 0.208, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
-border_color = Color(0.55, 0.68, 0.35, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-shadow_color = Color(0.05, 0.08, 0.04, 0.65)
-shadow_size = 2
-shadow_offset = Vector2(0, 5)
+border_color = Color(0.102, 0.122, 0.102, 1)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
 anti_aliasing = false
-content_margin_left = 20.0
-content_margin_top = 18.0
-content_margin_right = 20.0
-content_margin_bottom = 16.0
+content_margin_left = 24.0
+content_margin_top = 20.0
+content_margin_right = 24.0
+content_margin_bottom = 18.0
 
 [sub_resource type="StyleBoxFlat" id="menu_btn_pressed"]
-bg_color = Color(0.12, 0.18, 0.09, 1)
+bg_color = Color(0.157, 0.208, 0.102, 1)
 border_width_left = 3
 border_width_top = 3
 border_width_right = 3
 border_width_bottom = 3
-border_color = Color(0.22, 0.3, 0.14, 1)
-corner_radius_top_left = 18
-corner_radius_top_right = 18
-corner_radius_bottom_right = 18
-corner_radius_bottom_left = 18
-shadow_color = Color(0, 0, 0, 0.4)
-shadow_size = 1
-shadow_offset = Vector2(0, 2)
+border_color = Color(0.071, 0.082, 0.071, 1)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
 anti_aliasing = false
-content_margin_left = 20.0
-content_margin_top = 20.0
-content_margin_right = 20.0
-content_margin_bottom = 14.0
+content_margin_left = 24.0
+content_margin_top = 22.0
+content_margin_right = 24.0
+content_margin_bottom = 16.0
 
 [sub_resource type="StyleBoxFlat" id="record_panel"]
-bg_color = Color(0.04, 0.05, 0.04, 0.92)
-border_width_left = 2
-border_width_top = 2
-border_width_right = 2
-border_width_bottom = 2
-border_color = Color(0.28, 0.32, 0.26, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
+bg_color = Color(0.102, 0.122, 0.102, 0.94)
+border_width_left = 3
+border_width_top = 3
+border_width_right = 3
+border_width_bottom = 3
+border_color = Color(0.392, 0.494, 0.239, 1)
+corner_radius_top_left = 0
+corner_radius_top_right = 0
+corner_radius_bottom_right = 0
+corner_radius_bottom_left = 0
+anti_aliasing = false
 content_margin_left = 28.0
 content_margin_top = 14.0
 content_margin_right = 28.0
@@ -99,6 +92,7 @@ mouse_filter = 2
 texture = ExtResource("2")
 expand_mode = 1
 stretch_mode = 6
+texture_filter = 0
 
 [node name="Dim" type="ColorRect" parent="."]
 layout_mode = 1
@@ -106,7 +100,7 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 mouse_filter = 2
-color = Color(0.02, 0.04, 0.03, 0.45)
+color = Color(0.04, 0.06, 0.04, 0.38)
 
 [node name="Panel" type="VBoxContainer" parent="."]
 layout_mode = 1
@@ -114,30 +108,42 @@ anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_left = 48.0
-offset_top = 120.0
+offset_top = 100.0
 offset_right = -48.0
-offset_bottom = -100.0
-theme_override_constants/separation = 28
+offset_bottom = -90.0
+theme_override_constants/separation = 24
 alignment = 1
 
 [node name="Title" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
-theme_override_constants/separation = -20
+theme_override_constants/separation = -12
 
 [node name="Line1" type="Label" parent="Panel/Title"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 128
+theme_override_colors/font_color = Color(0.95, 0.96, 0.9, 1)
+theme_override_font_sizes/font_size = 176
 text = "PAR OR"
 horizontal_alignment = 1
 
 [node name="Line2" type="Label" parent="Panel/Title"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 128
+theme_override_colors/font_color = Color(0.85, 0.95, 0.55, 1)
+theme_override_font_sizes/font_size = 176
 text = "BETTER"
 horizontal_alignment = 1
 
+[node name="GolferHint" type="TextureRect" parent="Panel"]
+custom_minimum_size = Vector2(128, 192)
+layout_mode = 2
+size_flags_horizontal = 4
+mouse_filter = 2
+texture = ExtResource("5")
+expand_mode = 1
+stretch_mode = 5
+texture_filter = 0
+
 [node name="RecordBox" type="PanelContainer" parent="Panel"]
-custom_minimum_size = Vector2(260, 0)
+custom_minimum_size = Vector2(320, 0)
 layout_mode = 2
 size_flags_horizontal = 4
 theme_override_styles/panel = SubResource("record_panel")
@@ -159,28 +165,31 @@ alignment = 1
 
 [node name="RecordLabel" type="Label" parent="Panel/RecordBox/Inner/ScoreRow/RecordCol"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_override_colors/font_color = Color(0.75, 0.85, 0.65, 1)
+theme_override_font_sizes/font_size = 44
 text = "Record"
 horizontal_alignment = 1
 
 [node name="ScoreLabel" type="Label" parent="Panel/RecordBox/Inner/ScoreRow/RecordCol"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 52
+theme_override_colors/font_color = Color(0.95, 0.97, 0.9, 1)
+theme_override_font_sizes/font_size = 72
 text = "—"
 horizontal_alignment = 1
 
 [node name="FlagIcon" type="TextureRect" parent="Panel/RecordBox/Inner/ScoreRow"]
-custom_minimum_size = Vector2(44, 56)
+custom_minimum_size = Vector2(64, 80)
 layout_mode = 2
 size_flags_vertical = 4
 texture = ExtResource("4")
 expand_mode = 1
 stretch_mode = 5
+texture_filter = 0
 
 [node name="DeepestLabel" type="Label" parent="Panel/RecordBox/Inner"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
-theme_override_colors/font_color = Color(0.75, 0.8, 0.7, 1)
+theme_override_font_sizes/font_size = 36
+theme_override_colors/font_color = Color(0.85, 0.9, 0.8, 1)
 text = "Hole —"
 horizontal_alignment = 1
 
@@ -190,14 +199,14 @@ theme_override_constants/separation = 16
 alignment = 1
 
 [node name="StartButton" type="Button" parent="Panel/Buttons"]
-custom_minimum_size = Vector2(320, 110)
+custom_minimum_size = Vector2(400, 128)
 layout_mode = 2
 theme_override_styles/normal = SubResource("menu_btn_normal")
 theme_override_styles/hover = SubResource("menu_btn_hover")
 theme_override_styles/pressed = SubResource("menu_btn_pressed")
 theme_override_styles/focus = SubResource("menu_btn_hover")
-theme_override_constants/icon_max_width = 40
-theme_override_font_sizes/font_size = 36
+theme_override_constants/icon_max_width = 56
+theme_override_font_sizes/font_size = 52
 text = "Start Round"
 icon = ExtResource("3")
 icon_alignment = 1
@@ -205,14 +214,14 @@ vertical_icon_alignment = 0
 expand_icon = false
 
 [node name="GreenButton" type="Button" parent="Panel/Buttons"]
-custom_minimum_size = Vector2(320, 110)
+custom_minimum_size = Vector2(400, 128)
 layout_mode = 2
 theme_override_styles/normal = SubResource("menu_btn_normal")
 theme_override_styles/hover = SubResource("menu_btn_hover")
 theme_override_styles/pressed = SubResource("menu_btn_pressed")
 theme_override_styles/focus = SubResource("menu_btn_hover")
-theme_override_constants/icon_max_width = 40
-theme_override_font_sizes/font_size = 32
+theme_override_constants/icon_max_width = 56
+theme_override_font_sizes/font_size = 48
 text = "Practice Green"
 icon = ExtResource("4")
 icon_alignment = 1
@@ -220,26 +229,26 @@ vertical_icon_alignment = 0
 expand_icon = false
 
 [node name="RangeButton" type="Button" parent="Panel/Buttons"]
-custom_minimum_size = Vector2(320, 110)
+custom_minimum_size = Vector2(400, 128)
 layout_mode = 2
 theme_override_styles/normal = SubResource("menu_btn_normal")
 theme_override_styles/hover = SubResource("menu_btn_hover")
 theme_override_styles/pressed = SubResource("menu_btn_pressed")
 theme_override_styles/focus = SubResource("menu_btn_hover")
-theme_override_constants/icon_max_width = 40
-theme_override_font_sizes/font_size = 32
+theme_override_constants/icon_max_width = 56
+theme_override_font_sizes/font_size = 48
 text = "Practice Range"
-icon = ExtResource("4")
+icon = ExtResource("3")
 icon_alignment = 1
 vertical_icon_alignment = 0
 expand_icon = false
 
 [node name="CoachButton" type="Button" parent="Panel/Buttons"]
-custom_minimum_size = Vector2(320, 90)
+custom_minimum_size = Vector2(400, 112)
 layout_mode = 2
 theme_override_styles/normal = SubResource("menu_btn_normal")
 theme_override_styles/hover = SubResource("menu_btn_hover")
 theme_override_styles/pressed = SubResource("menu_btn_pressed")
 theme_override_styles/focus = SubResource("menu_btn_hover")
-theme_override_font_sizes/font_size = 28
+theme_override_font_sizes/font_size = 44
 text = "Club Coach"

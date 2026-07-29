@@ -22,8 +22,10 @@ const MIN_BACKSWING_FRAC := 0.14
 const EDGE_DEADZONE_FRAC := 0.04
 const EDGE_DEADZONE_MIN_PX := 24.0
 ## Ideal Tour-Tempo-ish pacing for the pad ghost (seconds).
+## Full 3:1 → 0.75 / 0.25. Short 2:1 → 0.64 / 0.32 (was 0.50/0.25 — same
+## through as full while racing a full-length lane; unreadable on pitch).
 const GUIDE_BACK_FULL := 0.75
-const GUIDE_BACK_SHORT := 0.50
+const GUIDE_BACK_SHORT := 0.64
 const BALL_TEX := preload("res://assets/ball/ball.png")
 const TEX_START := preload("res://assets/ui/ui_tempo_landmark_start.png")
 const TEX_TOP := preload("res://assets/ui/ui_tempo_landmark_top.png")
@@ -35,14 +37,21 @@ const TEX_PUTT_TOP := preload("res://assets/ui/ui_putt_landmark_top.png")
 const TEX_PUTT_THROUGH := preload("res://assets/ui/ui_putt_landmark_through.png")
 const TEX_PUTT_LANE := preload("res://assets/ui/ui_putt_lane.png")
 const TEX_PUTT_COACH := preload("res://assets/ui/ui_putt_coach_idle.png")
+## Full-swing keyframes (stroke order): address → takeaway → mid → late → top → early_down → impact → follow
 const TEX_GOLFER_ADDRESS := preload("res://assets/ui/ui_golfer_address.png")
+const TEX_GOLFER_TAKEAWAY := preload("res://assets/ui/ui_golfer_takeaway.png")
 const TEX_GOLFER_MID := preload("res://assets/ui/ui_golfer_mid.png")
+const TEX_GOLFER_LATE := preload("res://assets/ui/ui_golfer_late.png")
 const TEX_GOLFER_TOP := preload("res://assets/ui/ui_golfer_top.png")
+const TEX_GOLFER_EARLY_DOWN := preload("res://assets/ui/ui_golfer_early_down.png")
 const TEX_GOLFER_IMPACT := preload("res://assets/ui/ui_golfer_impact.png")
 const TEX_GOLFER_FOLLOW := preload("res://assets/ui/ui_golfer_follow.png")
 const TEX_GOLFER_PUTT_ADDRESS := preload("res://assets/ui/ui_golfer_putt_address.png")
+const TEX_GOLFER_PUTT_TAKEAWAY := preload("res://assets/ui/ui_golfer_putt_takeaway.png")
 const TEX_GOLFER_PUTT_MID := preload("res://assets/ui/ui_golfer_putt_mid.png")
+const TEX_GOLFER_PUTT_LATE := preload("res://assets/ui/ui_golfer_putt_late.png")
 const TEX_GOLFER_PUTT_TOP := preload("res://assets/ui/ui_golfer_putt_top.png")
+const TEX_GOLFER_PUTT_EARLY_DOWN := preload("res://assets/ui/ui_golfer_putt_early_down.png")
 const TEX_GOLFER_PUTT_IMPACT := preload("res://assets/ui/ui_golfer_putt_impact.png")
 const TEX_GOLFER_PUTT_FOLLOW := preload("res://assets/ui/ui_golfer_putt_follow.png")
 const TEX_CHIP_START := preload("res://assets/ui/ui_chip_landmark_start.png")
@@ -50,9 +59,20 @@ const TEX_CHIP_TOP := preload("res://assets/ui/ui_chip_landmark_top.png")
 const TEX_CHIP_THROUGH := preload("res://assets/ui/ui_chip_landmark_through.png")
 const TEX_CHIP_LANE := preload("res://assets/ui/ui_chip_lane.png")
 const TEX_CHIP_COACH := preload("res://assets/ui/ui_chip_coach_idle.png")
+## Pad drag cursor = club head (not a yellow dot). Head-only kit sprites.
+const TEX_HEAD_DRIVER := preload("res://assets/ui/ui_club_head_driver.png")
+const TEX_HEAD_WOOD := preload("res://assets/ui/ui_club_head_wood.png")
+const TEX_HEAD_HYBRID := preload("res://assets/ui/ui_club_head_hybrid.png")
+const TEX_HEAD_IRON := preload("res://assets/ui/ui_club_head_iron.png")
+const TEX_HEAD_WEDGE := preload("res://assets/ui/ui_club_head_wedge.png")
+const TEX_HEAD_PUTTER := preload("res://assets/ui/ui_club_head_putter.png")
+const DRAG_HEAD_PX := 42.0
 const TEX_GOLFER_CHIP_ADDRESS := preload("res://assets/ui/ui_golfer_chip_address.png")
+const TEX_GOLFER_CHIP_TAKEAWAY := preload("res://assets/ui/ui_golfer_chip_takeaway.png")
 const TEX_GOLFER_CHIP_MID := preload("res://assets/ui/ui_golfer_chip_mid.png")
+const TEX_GOLFER_CHIP_LATE := preload("res://assets/ui/ui_golfer_chip_late.png")
 const TEX_GOLFER_CHIP_TOP := preload("res://assets/ui/ui_golfer_chip_top.png")
+const TEX_GOLFER_CHIP_EARLY_DOWN := preload("res://assets/ui/ui_golfer_chip_early_down.png")
 const TEX_GOLFER_CHIP_IMPACT := preload("res://assets/ui/ui_golfer_chip_impact.png")
 const TEX_GOLFER_CHIP_FOLLOW := preload("res://assets/ui/ui_golfer_chip_follow.png")
 ## Chip pad palette — warm sand/wedge tones (art/STYLE.md Sand anchors), so chip
@@ -67,7 +87,6 @@ const CHIP_FOLLOW_RING := Color(0.9, 0.78, 0.55)
 const CHIP_ADDRESS_GLOW := Color(0.85, 0.68, 0.42)
 const CHIP_MARKER_BAND := Color(0.7, 0.55, 0.3, 0.35)
 const CHIP_MARKER_TICK := Color(0.95, 0.85, 0.55, 0.95)
-const CHIP_DRAG_DOT := Color(1.0, 0.85, 0.55, 0.9)
 const BALL_POP_MS := 120.0
 const LANDMARK_DIAM := 36.0
 const GOLFER_DRAW_H := 120.0
@@ -175,23 +194,40 @@ func _is_chip() -> bool:
 	return shot_type == "chip"
 
 
+func _is_pitch() -> bool:
+	return shot_type == "pitch"
+
+
+func _uses_chip_golfer() -> bool:
+	## Chip + pitch share short-game golfer (wedge posture); putt and full are distinct.
+	return shot_type == "chip" or shot_type == "pitch"
+
+
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
-	## Putt uses more vertical span so 15 vs 30 ft is finger-resolvable. Chip sits
-	## between putt and full — shorter reach than putt (no fine ft resolving needed)
-	## but shorter than full swing's lane. Starting values for playtesting (Phase 4).
-	## Full/pitch moved 0.18→0.30 (playtest): reclaims dead pad space below the old
-	## backswing landmark and gives the follow-through floor marker real room
-	## instead of overlapping the ball.
-	var y := 0.22 if _is_putt() else (0.20 if _is_chip() else 0.30)
+	## Putt: long vertical span for ft resolution. Chip: short amplitude pad.
+	## Pitch: mid lane (not full) so 2:1 ghost isn't a full-length race.
+	## Full: longest lane for 3:1.
+	var y := 0.30
+	if _is_putt():
+		y = 0.22
+	elif _is_chip():
+		y = 0.20
+	elif _is_pitch():
+		y = 0.32
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
-	## Full/pitch moved 0.78→0.92 (playtest) to match address_hint()'s move — keeps
-	## the same lane length while shifting the whole lane down the pad.
-	var y := 0.92 if _is_putt() else (0.85 if _is_chip() else 0.92)
+	## Pitch top sits higher than full — shorter path matches 2:1 tour pace.
+	var y := 0.92
+	if _is_putt():
+		y = 0.92
+	elif _is_chip():
+		y = 0.85
+	elif _is_pitch():
+		y = 0.70
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
@@ -681,7 +717,7 @@ func _draw() -> void:
 		_draw_tempo_ghost(false)
 		_draw_trail()
 		if dragging:
-			draw_circle(_smoothed, 11.0, Color(0.95, 0.9, 0.35, 0.9))
+			_draw_drag_club_head()
 	_draw_golfer()
 
 
@@ -701,7 +737,7 @@ func _draw_golfer() -> void:
 	# Subtle severity cue on full-swing address (primary read is LiePreview).
 	if (
 		not _is_putt()
-		and not _is_chip()
+		and not _uses_chip_golfer()
 		and GameState.rough_severity_enabled
 		and lie_severity != ""
 		and t < 0.15
@@ -748,31 +784,43 @@ func _draw_golfer_stage(stage: Rect2) -> void:
 	draw_rect(stage, GOLFER_STAGE_EDGE, false, 2.0)
 
 
-func _golfer_pose_pair() -> Array:
-	## Returns [tex_a, tex_b, blend 0..1]. Putt/chip use short-stroke frames.
-	var addr: Texture2D
-	var mid: Texture2D
-	var top: Texture2D
-	var impact: Texture2D
-	var follow: Texture2D
+func _golfer_keyframes() -> Array:
+	## Three visual identities: full (long club), putt (crouch/short), chip+pitch (wedge/open).
+	## Ordered: address → takeaway → mid → late → top → early_down → impact → follow
 	if _is_putt():
-		addr = TEX_GOLFER_PUTT_ADDRESS
-		mid = TEX_GOLFER_PUTT_MID
-		top = TEX_GOLFER_PUTT_TOP
-		impact = TEX_GOLFER_PUTT_IMPACT
-		follow = TEX_GOLFER_PUTT_FOLLOW
-	elif _is_chip():
-		addr = TEX_GOLFER_CHIP_ADDRESS
-		mid = TEX_GOLFER_CHIP_MID
-		top = TEX_GOLFER_CHIP_TOP
-		impact = TEX_GOLFER_CHIP_IMPACT
-		follow = TEX_GOLFER_CHIP_FOLLOW
-	else:
-		addr = TEX_GOLFER_ADDRESS
-		mid = TEX_GOLFER_MID
-		top = TEX_GOLFER_TOP
-		impact = TEX_GOLFER_IMPACT
-		follow = TEX_GOLFER_FOLLOW
+		return [
+			TEX_GOLFER_PUTT_ADDRESS, TEX_GOLFER_PUTT_TAKEAWAY, TEX_GOLFER_PUTT_MID, TEX_GOLFER_PUTT_LATE,
+			TEX_GOLFER_PUTT_TOP, TEX_GOLFER_PUTT_EARLY_DOWN, TEX_GOLFER_PUTT_IMPACT, TEX_GOLFER_PUTT_FOLLOW,
+		]
+	if _uses_chip_golfer():
+		return [
+			TEX_GOLFER_CHIP_ADDRESS, TEX_GOLFER_CHIP_TAKEAWAY, TEX_GOLFER_CHIP_MID, TEX_GOLFER_CHIP_LATE,
+			TEX_GOLFER_CHIP_TOP, TEX_GOLFER_CHIP_EARLY_DOWN, TEX_GOLFER_CHIP_IMPACT, TEX_GOLFER_CHIP_FOLLOW,
+		]
+	return [
+		TEX_GOLFER_ADDRESS, TEX_GOLFER_TAKEAWAY, TEX_GOLFER_MID, TEX_GOLFER_LATE,
+		TEX_GOLFER_TOP, TEX_GOLFER_EARLY_DOWN, TEX_GOLFER_IMPACT, TEX_GOLFER_FOLLOW,
+	]
+
+
+func _golfer_blend_strip(frames: Array, t01: float) -> Array:
+	## Crossfade along frames for t in [0,1]. Returns [tex_a, tex_b, blend].
+	var n: int = frames.size()
+	if n <= 1:
+		return [frames[0], frames[0], 0.0]
+	var x := clampf(t01, 0.0, 1.0) * float(n - 1)
+	var i := clampi(int(floor(x)), 0, n - 2)
+	var t := clampf(x - float(i), 0.0, 1.0)
+	return [frames[i], frames[i + 1], t]
+
+
+func _golfer_pose_pair() -> Array:
+	## Returns [tex_a, tex_b, blend 0..1]. 8 keyframes + crossfade for smoother stroke.
+	var frames: Array = _golfer_keyframes()
+	var addr: Texture2D = frames[0]
+	var top: Texture2D = frames[4]
+	var impact: Texture2D = frames[6]
+	var follow: Texture2D = frames[7]
 	var u := live_stroke_u()
 	## Idle sentinel -1 (no takeaway yet) → address. Post-top negatives → follow.
 	if u < 0.0:
@@ -781,12 +829,10 @@ func _golfer_pose_pair() -> Array:
 			return [impact, follow, f]
 		return [addr, addr, 0.0]
 	if not had_top:
-		## Backswing 0→1: address → mid → top.
-		if u <= 0.5:
-			return [addr, mid, clampf(u * 2.0, 0.0, 1.0)]
-		return [mid, top, clampf((u - 0.5) * 2.0, 0.0, 1.0)]
-	## Downswing 1→0: top → impact.
-	return [top, impact, clampf(1.0 - u, 0.0, 1.0)]
+		## Backswing 0→1: address → takeaway → mid → late → top (indices 0..4).
+		return _golfer_blend_strip(frames.slice(0, 5), clampf(u, 0.0, 1.0))
+	## Downswing 1→0: top → early_down → impact (indices 4..6).
+	return _golfer_blend_strip(frames.slice(4, 7), clampf(1.0 - u, 0.0, 1.0))
 
 
 func _draw_putt() -> void:
@@ -829,15 +875,15 @@ func _draw_putt() -> void:
 
 	_draw_trail()
 	if dragging:
-		draw_circle(_smoothed, 10.0, Color(0.7, 0.95, 1.0, 0.9))
+		_draw_drag_club_head()
 
 
 func _draw_putt_lane_tex(start: Vector2, top: Vector2, tex: Texture2D = TEX_PUTT_LANE) -> void:
 	var mid := (start + top) * 0.5
 	var dist := start.distance_to(top)
 	var tex_size := tex.get_size()
-	# Match mid-stroke arc width (~2 × arc_allowance(0.5) × pad) so the strip isn't thinner than the grade.
-	var sx := 56.0 / maxf(tex_size.x, 1.0)
+	# Fat white swing corridor — match mobile thumb width (same order as full lane).
+	var sx := 72.0 / maxf(tex_size.x, 1.0)
 	var sy := dist / maxf(tex_size.y, 1.0)
 	draw_set_transform(mid, (top - start).angle() - PI * 0.5, Vector2(sx, sy))
 	draw_texture(tex, -tex_size * 0.5)
@@ -944,7 +990,7 @@ func _draw_putt_scale_tick(start: Vector2, top: Vector2, ft: int, labeled: bool)
 	draw_line(mark, edge, c, thick, true)
 	if labeled:
 		## Was 22 — the smallest text in the game and the hardest to read (5/7/S
-		## blur together in Pixelify Sans without AA). Ticks are ~75px+ apart on
+		## stay readable on Pixel Operator). Ticks are ~75px+ apart on
 		## the log-spaced scale, so there's room to go bigger without stacking.
 		const LABEL_PX := 28
 		var s := str(ft)
@@ -1064,7 +1110,45 @@ func _draw_chip() -> void:
 
 	_draw_trail()
 	if dragging:
-		draw_circle(_smoothed, 10.0, CHIP_DRAG_DOT)
+		_draw_drag_club_head()
+
+
+func _drag_club_head_tex() -> Texture2D:
+	## Match bag family to head art (thresholds track BallPhysics.BAG max_yards).
+	if _is_putt():
+		return TEX_HEAD_PUTTER
+	# Chip/pitch always wedge head (short-game loft).
+	if _uses_chip_golfer():
+		return TEX_HEAD_WEDGE
+	var yd := club_max_yards
+	if yd >= 245.0:
+		return TEX_HEAD_DRIVER  # Driver ~260
+	if yd >= 220.0:
+		return TEX_HEAD_WOOD  # 3-Wood ~235
+	if yd >= 200.0:
+		return TEX_HEAD_HYBRID  # Hybrid ~210
+	if yd >= 115.0:
+		return TEX_HEAD_IRON  # 5–9 iron ~130–190
+	return TEX_HEAD_WEDGE  # PW / gap-sand
+
+
+func _draw_drag_club_head() -> void:
+	## Club head follows the thumb — faces along recent motion (else lane axis).
+	var tex := _drag_club_head_tex()
+	var ts := tex.get_size()
+	var s := DRAG_HEAD_PX / maxf(ts.x, 1.0)
+	var along := _smoothed - address_hint()
+	if trail.size() >= 2:
+		var seg: Vector2 = trail[trail.size() - 1] - trail[trail.size() - 2]
+		if seg.length_squared() > 4.0:
+			along = seg
+	if along.length_squared() < 4.0:
+		along = top_hint() - address_hint()
+	# Art faces +X; rotate so sole trails the pull.
+	var ang := along.angle()
+	draw_set_transform(_smoothed, ang, Vector2(s, s))
+	draw_texture(tex, -ts * 0.5)
+	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 
 func _draw_tempo_ghost(looping: bool) -> void:
@@ -1096,12 +1180,15 @@ func _draw_tempo_ghost(looping: bool) -> void:
 	draw_circle(pos, 18.0, Color(col.r, col.g, col.b, col.a * 0.35))
 	draw_arc(pos, 20.0, 0.0, TAU, 28, col, 3.0, true)
 	draw_circle(pos, 7.0, col)
-	# Beat pips while looping so the 3:1 spacing is visible
+	# Beat pips along the pull — count matches target ratio (3:1 → two mids, 2:1 → one).
 	if looping:
 		var start := address_hint()
 		var top := top_hint()
-		draw_circle(start.lerp(top, 0.33), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
-		draw_circle(start.lerp(top, 0.66), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
+		var target := TempoGrade.target_ratio(shot_type)
+		var mid_n := 2 if target >= 2.5 else 1
+		for i in range(1, mid_n + 1):
+			var u := float(i) / float(mid_n + 1)
+			draw_circle(start.lerp(top, u), 4.0, Color(0.5, 0.85, 1.0, a * 0.5))
 		draw_circle(top, 5.0, Color(0.5, 1.0, 0.6, a * 0.6))
 
 
@@ -1134,14 +1221,16 @@ func _draw_pull_lane(show_progress: bool) -> void:
 	var mid := (start + top) * 0.5
 	var dist := start.distance_to(top)
 	var tex_size := TEX_LANE.get_size()
-	var sx := 28.0 / maxf(tex_size.x, 1.0)
+	# Fat white swing corridor — mobile thumb needs width, not a hairline.
+	var sx := 64.0 / maxf(tex_size.x, 1.0)
 	var sy := dist / maxf(tex_size.y, 1.0)
 	draw_set_transform(mid, (top - start).angle() - PI * 0.5, Vector2(sx, sy))
 	draw_texture(TEX_LANE, -tex_size * 0.5)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	if show_progress and dragging and _axis_locked:
+		## Soft white progress — fluid with the translucent corridor, not a chalk bar.
 		## No AA — Godot thick antialiased lines skew the bright spine a px or two.
-		draw_line(start, _lane_peak_pos(), Color(0.45, 0.95, 0.55, 0.85), 10.0, false)
+		draw_line(start, _lane_peak_pos(), Color(1.0, 1.0, 0.97, 0.55), 12.0, false)
 
 
 func _ft_floor_len(addr: Vector2) -> float:

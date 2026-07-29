@@ -1,6 +1,6 @@
 [gd_resource type="Theme" load_steps=6 format=3]
 
-[ext_resource type="FontFile" uid="uid://bpixelifysans01" path="res://assets/fonts/PixelifySans-Variable.ttf" id="1_font"]
+[ext_resource type="FontFile" uid="uid://bpixeloperator01" path="res://assets/fonts/PixelOperator.ttf" id="1_font"]
 
 [sub_resource type="StyleBoxFlat" id="panel"]
 bg_color = Color(0.102, 0.122, 0.102, 0.94)
@@ -56,7 +56,7 @@ content_margin_bottom = 10.0
 
 [resource]
 default_font = ExtResource("1_font")
-default_font_size = 40
+default_font_size = 48
 Button/colors/font_color = Color(0.91, 0.94, 0.9, 1)
 Button/colors/font_hover_color = Color(0.91, 0.94, 0.9, 1)
 Button/colors/font_pressed_color = Color(0.82, 0.88, 0.8, 1)

@@ -78,6 +78,8 @@ var club_coach_ui_enabled: bool = true
 var sharp_dogleg_enabled: bool = true
 ## Rough lie severity — Buried / Average / SittingUp. Always on.
 var rough_severity_enabled: bool = true
+## Force tee set (null = progress-based Red→White→Blue). HoleData.TeeSet or null.
+var debug_tee_set: Variant = null
 
 
 func _ready() -> void:
@@ -105,6 +107,7 @@ func reset_run() -> void:
 	debug_fairway_scale = null
 	debug_tempo_tol = null
 	debug_balance_tighten = null
+	debug_tee_set = null
 	force_perfect = false
 	force_mishit = false
 	tempo_guide_forced = false
@@ -232,6 +235,21 @@ func record_shot_form(contact: ShotResult.ContactQuality, stance: float) -> void
 	if form_history.size() > FORM_HISTORY_MAX:
 		form_history.pop_front()
 	form_changed.emit(get_form())
+
+
+func active_tee_set_for_hole(hole_index: int) -> HoleData.TeeSet:
+	## Round progress → harder tees: early Red, mid White, late Blue.
+	## Range / green practice: White. Optional debug_tee_set override.
+	if debug_tee_set != null:
+		return debug_tee_set as HoleData.TeeSet
+	if range_mode or green_mode:
+		return HoleData.TeeSet.WHITE
+	var t := HoleGenerator.difficulty_t(hole_index, HOLE_COUNT)
+	if t < 0.33:
+		return HoleData.TeeSet.RED
+	if t < 0.66:
+		return HoleData.TeeSet.WHITE
+	return HoleData.TeeSet.BLUE
 
 
 func get_form() -> float:

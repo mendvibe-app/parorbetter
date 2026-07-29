@@ -24,7 +24,7 @@ offset_left = -160.0
 offset_top = 208.0
 offset_right = -24.0
 offset_bottom = 268.0
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 26
 text = "Debug"
 
 [node name="Panel" type="PanelContainer" parent="."]
@@ -56,12 +56,12 @@ theme_override_constants/separation = 12
 [node name="ToggleHint" type="Label" parent="Panel/Margin/Root/TitleBar"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 26
+theme_override_font_sizes/font_size = 32
 text = "Debug Menu"
 
 [node name="CloseBtn" type="Button" parent="Panel/Margin/Root/TitleBar"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 22
+theme_override_font_sizes/font_size = 26
 text = "Close"
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/Margin/Root"]
@@ -76,13 +76,13 @@ theme_override_constants/separation = 10
 
 [node name="Metrics" type="Label" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_override_font_sizes/font_size = 22
 text = "Metrics"
 autowrap_mode = 2
 
 [node name="ClubCoachLabel" type="Label" parent="Panel/Margin/Root/Scroll/VBox"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
+theme_override_font_sizes/font_size = 20
 text = "Club Coach — no shots yet"
 autowrap_mode = 2
 

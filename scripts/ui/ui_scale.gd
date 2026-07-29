@@ -3,13 +3,14 @@ extends Object
 
 ## Player-facing type + touch floor for the 1080×1920 canvas.
 ## .tscn files use matching literals; code paths reference these consts.
-## Typeface: Pixelify Sans (OFL) — pixel-adjacent UI type for Crunchy Pixel.
+## Typeface: Pixel Operator (CC0) — clear digits for HUD yards/scores (Pixel Kit Golf).
 
-const FONT := preload("res://assets/fonts/PixelifySans-Variable.ttf")
+const FONT := preload("res://assets/fonts/PixelOperator.ttf")
 
-const CAPTION := 32
-const BODY := 40
-const TITLE := 48
+## Pixel Operator runs denser than Pixelify — one step up for HUD readability.
+const CAPTION := 40
+const BODY := 48
+const TITLE := 56
 const TOUCH_MIN := 120
 
 ## Near-white secondary text (hints/adapt) — avoids muted green-on-green.
