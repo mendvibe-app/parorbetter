@@ -5,7 +5,7 @@ extends RefCounted
 ## Distances use a shared yards↔pixels scale so UI estimates match flight.
 
 const PX_PER_YARD := 2.25
-## Share of total shot distance spent in the air (rest is roll/bounce).
+## Mid-iron baseline air share (see air_distance_fraction for per-club identity).
 const AIR_DISTANCE_FRACTION := 0.78
 
 ## Full bag, longest → shortest. Neighbor max gaps ~15–25 yd so overlap is real.
@@ -53,6 +53,37 @@ static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 	if club_max_yards >= 95.0:  # Pitching Wedge
 		return Vector2(10.0, 18.0)
 	return Vector2(8.0, 18.0)  # Gap / Sand / Lob wedges
+
+
+## Carry share of total distance by club category (rest is roll). Same yard buckets
+## as lateral_spread_range_yards. Starting points — tune in playtest.
+static func air_distance_fraction(club_max_yards: float) -> float:
+	if club_max_yards >= 245.0:  # Driver — low, hot, releases hard
+		return 0.68
+	if club_max_yards >= 180.0:  # 3W / Hybrid / long iron
+		return 0.72
+	if club_max_yards >= 150.0:  # Mid (6–7) — baseline
+		return AIR_DISTANCE_FRACTION
+	if club_max_yards >= 120.0:  # Short (8–9)
+		return 0.84
+	if club_max_yards >= 95.0:  # PW
+		return 0.90
+	return 0.94  # Gap / Sand
+
+
+## Path-spin multiplier — wedges bite more than long clubs on good contact.
+static func spin_grip_mul(club_max_yards: float) -> float:
+	if club_max_yards >= 245.0:
+		return 0.75
+	if club_max_yards >= 180.0:
+		return 0.85
+	if club_max_yards >= 150.0:
+		return 1.0
+	if club_max_yards >= 120.0:
+		return 1.15
+	if club_max_yards >= 95.0:
+		return 1.35
+	return 1.5
 
 
 static func putter_for(_remaining_yd: float = 0.0) -> Dictionary:
@@ -244,6 +275,29 @@ static func recommended_power(
 	return clampf(need / effective_max, 0.05, 1.0)
 
 
+## Club-fit solve: uncapped true % + optional POWER_POCKET_LO floor for overclub.
+## Shortest available club keeps true % (short-game baby swings). Never floors putts.
+static func solve_committed_power(
+	remaining_yd: float,
+	club_max_yards: float,
+	lie: String,
+	wind: Vector2 = Vector2.ZERO,
+	severity: String = ""
+) -> Dictionary:
+	var true_pct := recommended_power(remaining_yd, club_max_yards, lie, wind, severity)
+	var power := true_pct
+	var overclub := false
+	# Shortest club keeps baby swings (short game); everything else floors at pocket lo.
+	if (
+		lie != "Green"
+		and not is_shortest_available(club_max_yards, lie)
+		and true_pct < POWER_POCKET_LO
+	):
+		power = POWER_POCKET_LO
+		overclub = true
+	return {"power": power, "true_pct": true_pct, "overclub": overclub}
+
+
 ## True when this club is the shortest available for the lie (Gap on turf/sand).
 static func is_shortest_available(club_max_yards: float, lie: String) -> bool:
 	var available := clubs_for_lie(lie)
@@ -344,7 +398,7 @@ static func launch_velocity(
 		loft = 1.05
 
 	var air_time := lerpf(0.55, 1.15, clampf(result.power, 0.0, 1.0)) * loft
-	var air_frac := AIR_DISTANCE_FRACTION
+	var air_frac := air_distance_fraction(club_max_yards)
 	if lie == "Sand":
 		air_frac = 0.55
 
@@ -369,6 +423,7 @@ static func launch_velocity(
 			spin *= 0.35
 		_:
 			pass
+	spin *= spin_grip_mul(club_max_yards)
 
 	var right := Vector2(-dir.y, dir.x)
 	var launch_dir := (dir + right * lateral * 0.65).normalized()

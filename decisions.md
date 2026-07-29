@@ -6,6 +6,8 @@ Log of gameplay-affecting decisions, added as they happen.
 - **14-hcp miss model:** slight tempo error → mild curve + mild distance leak (GOOD band wide); duff/hosel (MISS) only when clearly off, incomplete, or extreme ratio. Physics contact multipliers stay harsh for true MISS.
 - **Swing legibility:** pad landmarks (START / TOP / THROUGH / FOLLOW), live trail color + ratio strip needle; post-shot uses `ShotReport.glance_text` (tempo diagnosis + contact/balance), full dump in F1 only.
 - **Driving range:** `GameState.range_mode` + `HoleController.load_range` — flat tee, skip aim, infinite reset; enter from start screen (Practice Range), exit via HUD Menu.
+- **Club identity (Phase 1):** per-category `air_distance_fraction` / `spin_grip_mul` by max_yards buckets (same cuts as lateral spread) — long clubs release more, wedges hold.
+- **Club fit:** overclub floors `committed_power` at `POWER_POCKET_LO` (shortest club exempt for short game); aim lock/cone uses floored total distance past the pin; club select shows "runs through".
 - Pure-strike SFX: dropped the three-tone chime for a short low-mid noise knock + pitch-down release (same physical-transient approach as cup-in) so flush contact reads solid, not arcade-triumphant.
 - ~~Concurrent shot input~~ (retired): power/stance + swing timing dual pads resolved on impact tap.
 - ~~Early-release soft crush~~ (retired with dual-pad): lifting finger 1 crushed stability; replaced by balance-from-gesture.

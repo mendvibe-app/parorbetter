@@ -8,9 +8,12 @@ static func default_aim_target(
 	ball_pos: Vector2,
 	cup_pos: Vector2,
 	lie: String,
-	club_max_yards: float
+	club_max_yards: float,
+	wind: Vector2 = Vector2.ZERO,
+	severity: String = ""
 ) -> Vector2:
 	## Start on the ball→pin line: at the pin if reachable, else at club distance toward pin.
+	## Club-fit on: grossly oversized clubs lock past the pin (floored-power total).
 	if lie == "Green":
 		return cup_pos
 	var to_pin := cup_pos - ball_pos
@@ -18,6 +21,15 @@ static func default_aim_target(
 	if pin_dist_px < 1.0:
 		return cup_pos
 	var pin_yd := BallPhysics.pixels_to_yards(pin_dist_px)
+	if lie != "Green":
+		var solved := BallPhysics.solve_committed_power(
+			pin_yd, club_max_yards, lie, wind, severity
+		)
+		if bool(solved["overclub"]):
+			var total_yd := BallPhysics.estimate_carry_yards(
+				float(solved["power"]), club_max_yards, lie, severity
+			)
+			return point_along_bearing(ball_pos, to_pin, total_yd)
 	if pin_yd <= club_max_yards * 1.02:
 		return cup_pos
 	var along_yd := club_max_yards * 0.95

@@ -27,6 +27,8 @@ var current_lie: String = "Tee"
 var current_severity: String = ""
 var aim_radius_yd: float = 22.0
 var committed_power: float = 0.75
+## Uncapped solve % (club select / overclub UI); physics uses committed_power.
+var true_power_pct: float = 0.75
 var shot_type: String = "full"
 var last_verdict: Dictionary = {}
 
@@ -99,9 +101,11 @@ func configure(
 		club_name = String(club["name"])
 		club_max_yards = float(club["max_yards"])
 
-	committed_power = BallPhysics.recommended_power(
+	var solved := BallPhysics.solve_committed_power(
 		aim_distance_yd, club_max_yards, lie, wind, p_severity
 	)
+	committed_power = float(solved["power"])
+	true_power_pct = float(solved["true_pct"])
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
 	# Green: feet (how golfers read putts). Full/pitch stay yards.

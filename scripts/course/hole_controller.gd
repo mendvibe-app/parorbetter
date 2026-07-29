@@ -1120,8 +1120,16 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	# restore_aim (the post-Confirm "back" path): keep the last aim point/lock
 	# distance instead of resetting to the default target — the player already
 	# picked a line, they're just backing off the swing, not restarting aim.
+	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	if not restore_aim:
-		_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
+		_aim_target = AimControl.default_aim_target(
+			ball.global_position,
+			_cup_pos,
+			lie,
+			club_max,
+			wind,
+			ball.get_lie_severity()
+		)
 		_aim_target = AimControl.clamp_aim(_aim_target)
 		# Lock radial distance during aim — player picks line/shape, not yardage yet.
 		_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
@@ -1134,7 +1142,6 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 		_practice_btn.visible = true
 	if _change_club_btn:
 		_change_club_btn.visible = not is_putt
-	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
 		_refresh_wind_indicator(false)
