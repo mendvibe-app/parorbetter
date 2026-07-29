@@ -20,6 +20,15 @@ const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 ## instead of the full-swing air_progress() gate above.
 const PUTT_TIGHTEN_RADIUS := 11.25  ## ~15 ft (world units; PX_PER_YARD 2.25 / 3)
 
+## Pinch-to-zoom (aim/green-book only) — multiplies _desired_camera_zoom(), then
+## the result is safety-clamped so a pinch can't push the camera past a readable range.
+const PINCH_MULT_MIN := 0.6
+const PINCH_MULT_MAX := 1.5
+const PINCH_ABS_ZOOM_MIN := 0.5
+const PINCH_ABS_ZOOM_MAX := 8.0
+const PINCH_MIN_SPAN_PX := 40.0  ## floor on finger-span distance to avoid divide-by-near-zero spikes
+const MAGNIFY_IDLE_RELEASE_MS := 400  ## trackpad magnify gesture has no discrete release; time it out
+
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
 const TEX_FAIRWAY := preload("res://assets/terrain/fairway_tile_a.png")
@@ -67,7 +76,15 @@ var _aiming: bool = false
 var _selecting_club: bool = false
 var _power_previewing: bool = false
 var _aim_dragging: bool = false
+var _active_touches: Dictionary = {}  ## touch index -> last screen position, aim phase only
+var _pinch_idx_a: int = -1
+var _pinch_idx_b: int = -1
+var _pinch_start_dist: float = 0.0
+var _pinch_start_mult: float = 1.0
+var _user_zoom_mult: float = 1.0  ## manual pinch override on top of the auto-framed zoom
+var _magnify_last_ms: int = -1  ## last InputEventMagnifyGesture time; drives idle-release
 var _practice_btn: Button
+var _change_club_btn: Button
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
 var _aim_radius_base_yd: float = 22.0
@@ -115,7 +132,9 @@ func _ready() -> void:
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
+	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_practice_btn()
+	_setup_change_club_btn()
 	# After practice/wind chrome: keep club picker as the topmost UI modal.
 	ui_layer.move_child(_club_select, -1)
 	_apply_safe_area()
@@ -880,6 +899,8 @@ func _begin_tap_in_stroke(pin_yd: float) -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(true)
@@ -912,6 +933,8 @@ func _begin_club_select() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
@@ -941,6 +964,8 @@ func _begin_range_swing() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
 	var lie := "Tee"
@@ -961,9 +986,10 @@ func _begin_range_swing() -> void:
 	_start_power_swing(false)
 
 
-func _begin_aim_phase() -> void:
+func _begin_aim_phase(restore_aim: bool = false) -> void:
 	_aiming = true
 	_aim_dragging = false
+	_reset_pinch_state()
 	_selecting_club = false
 	if _club_select:
 		_club_select.dismiss()
@@ -975,10 +1001,14 @@ func _begin_aim_phase() -> void:
 	_power_previewing = false
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green", club_max)
 	_aim_radius_yd = _aim_radius_base_yd
-	_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
-	_aim_target = AimControl.clamp_aim(_aim_target)
-	# Lock radial distance during aim — player picks line/shape, not yardage yet.
-	_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
+	# restore_aim (the post-Confirm "back" path): keep the last aim point/lock
+	# distance instead of resetting to the default target — the player already
+	# picked a line, they're just backing off the swing, not restarting aim.
+	if not restore_aim:
+		_aim_target = AimControl.default_aim_target(ball.global_position, _cup_pos, lie, club_max)
+		_aim_target = AimControl.clamp_aim(_aim_target)
+		# Lock radial distance during aim — player picks line/shape, not yardage yet.
+		_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
 	_set_green_book_visible(show_book)
@@ -986,6 +1016,8 @@ func _begin_aim_phase() -> void:
 		confirm_aim_btn.visible = true
 	if _practice_btn:
 		_practice_btn.visible = true
+	if _change_club_btn:
+		_change_club_btn.visible = not is_putt
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
@@ -1022,6 +1054,10 @@ func _end_aim_phase() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
+	if shot_routine and shot_routine.back_btn:
+		shot_routine.back_btn.visible = false
 
 
 func _setup_practice_btn() -> void:
@@ -1042,6 +1078,43 @@ func _setup_practice_btn() -> void:
 	_practice_btn.pressed.connect(_start_practice_swing)
 
 
+func _setup_change_club_btn() -> void:
+	_change_club_btn = Button.new()
+	_change_club_btn.name = "ChangeClubButton"
+	_change_club_btn.text = "Change Club"
+	_change_club_btn.visible = false
+	_change_club_btn.custom_minimum_size = Vector2(UiScale.TOUCH_MIN * 2.2, UiScale.TOUCH_MIN)
+	if confirm_aim_btn:
+		_change_club_btn.add_theme_font_size_override("font_size", confirm_aim_btn.get_theme_font_size("font_size"))
+		# Sit above Practice Swing, which sits above Confirm Aim.
+		_change_club_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+		_change_club_btn.offset_left = confirm_aim_btn.offset_left
+		_change_club_btn.offset_right = confirm_aim_btn.offset_right
+		_change_club_btn.offset_top = confirm_aim_btn.offset_top - 280.0
+		_change_club_btn.offset_bottom = confirm_aim_btn.offset_bottom - 280.0
+	ui_layer.add_child(_change_club_btn)
+	_change_club_btn.pressed.connect(_on_change_club_pressed)
+
+
+func _on_change_club_pressed() -> void:
+	if not _aiming or hole_complete:
+		return
+	AudioBus.play_ui()
+	_begin_club_select()
+
+
+func _on_back_requested() -> void:
+	## Re-do window: player backed out after Confirm, before the swing gesture
+	## started moving. shot_routine.cancel_shot() already dropped the aborted
+	## attempt's tempo state; restore_aim=true keeps the last aim point instead
+	## of resetting to the default target.
+	if hole_complete or not GameState.run_active:
+		return
+	shot_routine.cancel_shot()
+	AudioBus.play_ui()
+	_begin_aim_phase(true)
+
+
 func _start_practice_swing() -> void:
 	if not _aiming or hole_complete:
 		return
@@ -1051,6 +1124,8 @@ func _start_practice_swing() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	AudioBus.play_ui()
 	_start_power_swing(true)
@@ -1065,13 +1140,15 @@ func _confirm_aim() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
-	_start_power_swing(false)
+	_start_power_swing(false, true)
 
 
-func _start_power_swing(p_practice: bool = false) -> void:
+func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
@@ -1095,7 +1172,7 @@ func _start_power_swing(p_practice: bool = false) -> void:
 	# Landing preview locked to committed carry (gesture can only subtract).
 	_power_previewing = not p_practice
 	_apply_committed_preview()
-	shot_routine.begin_shot(p_practice)
+	shot_routine.begin_shot(p_practice, p_allow_back)
 	if not shot_routine.practice_result.is_connected(_on_practice_result):
 		shot_routine.practice_result.connect(_on_practice_result)
 	_set_green_book_visible(false)
@@ -1138,6 +1215,8 @@ func _on_practice_result(verdict: Dictionary) -> void:
 		_practice_btn.visible = true
 	_refresh_aim_visuals()
 	var is_putt := ball.get_lie() == "Green"
+	if _change_club_btn:
+		_change_club_btn.visible = not is_putt
 	if is_putt:
 		_refresh_wind_indicator(false)
 	else:
@@ -1318,27 +1397,89 @@ func _nudge_aim(delta: Vector2) -> void:
 	_apply_aim_world(_aim_target + delta)
 
 
+func _begin_pinch(idx_a: int, idx_b: int) -> void:
+	_pinch_idx_a = idx_a
+	_pinch_idx_b = idx_b
+	_pinch_start_dist = maxf(_active_touches[idx_a].distance_to(_active_touches[idx_b]), PINCH_MIN_SPAN_PX)
+	_pinch_start_mult = _user_zoom_mult
+	_aim_dragging = false  # a second finger down means this is a pinch, not an aim drag
+
+
+func _update_pinch() -> void:
+	if not _active_touches.has(_pinch_idx_a) or not _active_touches.has(_pinch_idx_b):
+		return
+	var dist: float = maxf(
+		_active_touches[_pinch_idx_a].distance_to(_active_touches[_pinch_idx_b]), PINCH_MIN_SPAN_PX
+	)
+	_user_zoom_mult = clampf(_pinch_start_mult * (dist / _pinch_start_dist), PINCH_MULT_MIN, PINCH_MULT_MAX)
+
+
+func _end_pinch() -> void:
+	_pinch_idx_a = -1
+	_pinch_idx_b = -1
+	# Release trigger: snap back to the auto-framed zoom immediately — the existing
+	# per-frame camera.zoom lerp in _process() eases the visual transition.
+	_user_zoom_mult = 1.0
+
+
+func _reset_pinch_state() -> void:
+	_active_touches.clear()
+	_pinch_idx_a = -1
+	_pinch_idx_b = -1
+	_user_zoom_mult = 1.0
+	_magnify_last_ms = -1
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if not _aiming:
+		if not _active_touches.is_empty() or _pinch_idx_a >= 0:
+			_reset_pinch_state()
 		return
 
 	if event is InputEventScreenTouch:
 		var touch := event as InputEventScreenTouch
 		if touch.pressed:
-			_aim_dragging = true
-			var screen := AimControl.touch_aim_screen(touch.position)
-			var world := get_viewport().get_canvas_transform().affine_inverse() * screen
-			_apply_aim_world(world)
+			_active_touches[touch.index] = touch.position
+			if _active_touches.size() == 2:
+				var idxs := _active_touches.keys()
+				_begin_pinch(idxs[0], idxs[1])
+			elif _active_touches.size() == 1:
+				_aim_dragging = true
+				var screen := AimControl.touch_aim_screen(touch.position)
+				var world := get_viewport().get_canvas_transform().affine_inverse() * screen
+				_apply_aim_world(world)
+			# 3rd+ finger: ignore, leave the active pinch/drag undisturbed.
 		else:
-			_aim_dragging = false
+			_active_touches.erase(touch.index)
+			if touch.index == _pinch_idx_a or touch.index == _pinch_idx_b:
+				_end_pinch()
+			if _active_touches.is_empty():
+				_aim_dragging = false
 		get_viewport().set_input_as_handled()
 		return
 
-	if event is InputEventScreenDrag and _aim_dragging:
+	if event is InputEventScreenDrag:
 		var drag := event as InputEventScreenDrag
-		var screen := AimControl.touch_aim_screen(drag.position)
-		var world := get_viewport().get_canvas_transform().affine_inverse() * screen
-		_apply_aim_world(world)
+		if not _active_touches.has(drag.index):
+			return
+		_active_touches[drag.index] = drag.position
+		if _pinch_idx_a >= 0 and (drag.index == _pinch_idx_a or drag.index == _pinch_idx_b):
+			_update_pinch()
+			get_viewport().set_input_as_handled()
+			return
+		if _aim_dragging and _pinch_idx_a < 0:
+			var screen := AimControl.touch_aim_screen(drag.position)
+			var world := get_viewport().get_canvas_transform().affine_inverse() * screen
+			_apply_aim_world(world)
+			get_viewport().set_input_as_handled()
+		return
+
+	if event is InputEventMagnifyGesture and _pinch_idx_a < 0:
+		## Trackpad pinch (e.g. macOS in-editor testing) — no discrete release, so
+		## the override times out via _process()/_magnify_last_ms instead.
+		var mag := event as InputEventMagnifyGesture
+		_user_zoom_mult = clampf(_user_zoom_mult * mag.factor, PINCH_MULT_MIN, PINCH_MULT_MAX)
+		_magnify_last_ms = Time.get_ticks_msec()
 		get_viewport().set_input_as_handled()
 		return
 
@@ -1472,22 +1613,25 @@ func _desired_camera_zoom() -> Vector2:
 	var pin_yd := _pin_yards()
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
+	var z: float
 	if _is_putt_context():
 		# Frame ball→cup; zoom out sooner on lags so 40 ft reads as travel, not a short lag.
 		# Floor/cap tuned so short putts (<~10 ft) actually read tighter than 20-40 ft ones —
 		# old floor (34) + cap (7.5) together clamped everything under ~70 ft to one flat zoom.
 		var dist := ball.global_position.distance_to(_cup_pos)
 		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
-		var z := clampf(view_min * 0.52 / half_span, 2.6, 42.0)
-		return Vector2(z, z)
+		z = clampf(view_min * 0.52 / half_span, 2.6, 42.0)
 	# Approach with green book — frame ball toward green without losing landing circle
-	if _aiming and _should_show_green_book():
-		var z := lerpf(2.0, 1.35, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
-		return Vector2(z, z)
-	if pin_yd <= 90.0:
-		var z := lerpf(1.35, 0.95, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
-		return Vector2(z, z)
-	return Vector2(0.85, 0.85)
+	elif _aiming and _should_show_green_book():
+		z = lerpf(2.0, 1.35, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
+	elif pin_yd <= 90.0:
+		z = lerpf(1.35, 0.95, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
+	else:
+		z = 0.85
+	# Pinch-to-zoom override — aim phase only; auto-framing owns zoom everywhere else.
+	if _aiming and _user_zoom_mult != 1.0:
+		z = clampf(z * _user_zoom_mult, PINCH_ABS_ZOOM_MIN, PINCH_ABS_ZOOM_MAX)
+	return Vector2(z, z)
 
 
 func _desired_camera_look() -> Vector2:
@@ -1557,6 +1701,9 @@ func _process(_delta: float) -> void:
 			z_lerp = 0.35
 		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
+		if _magnify_last_ms >= 0 and Time.get_ticks_msec() - _magnify_last_ms > MAGNIFY_IDLE_RELEASE_MS:
+			_user_zoom_mult = 1.0
+			_magnify_last_ms = -1
 		# Snap-feel aim follow (faster) so book/zoom don't crawl in
 		camera.global_position = camera.global_position.lerp(_desired_camera_look(), 0.28)
 		camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), 0.28)
