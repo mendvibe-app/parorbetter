@@ -15,6 +15,10 @@ const FLIGHT_ZOOM_LAND := 1.45
 const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
+## Putt "TV tighten": inside this ball→cup distance during roll, punch zoom in fast
+## and lean the look target harder toward the cup — no air time, so distance-gated
+## instead of the full-swing air_progress() gate above.
+const PUTT_TIGHTEN_RADIUS := 11.25  ## ~15 ft (world units; PX_PER_YARD 2.25 / 3)
 
 const TEX_ROUGH := preload("res://assets/terrain/rough_tile_a.png")
 const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
@@ -1470,9 +1474,11 @@ func _desired_camera_zoom() -> Vector2:
 	var view_min := minf(view.x, view.y)
 	if _is_putt_context():
 		# Frame ball→cup; zoom out sooner on lags so 40 ft reads as travel, not a short lag.
+		# Floor/cap tuned so short putts (<~10 ft) actually read tighter than 20-40 ft ones —
+		# old floor (34) + cap (7.5) together clamped everything under ~70 ft to one flat zoom.
 		var dist := ball.global_position.distance_to(_cup_pos)
-		var half_span := maxf(dist * 0.90 + 26.0, 34.0)
-		var z := clampf(view_min * 0.52 / maxf(half_span, 28.0), 2.6, 7.5)
+		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
+		var z := clampf(view_min * 0.52 / half_span, 2.6, 42.0)
 		return Vector2(z, z)
 	# Approach with green book — frame ball toward green without losing landing circle
 	if _aiming and _should_show_green_book():
@@ -1534,15 +1540,20 @@ func _process(_delta: float) -> void:
 				var tight := inverse_lerp(FLIGHT_ZOOM_LAUNCH, FLIGHT_ZOOM_LAND, camera.zoom.x)
 				lead = lerpf(FLIGHT_LOOK_LEAD_WIDE, FLIGHT_LOOK_LEAD_TIGHT, clampf(tight, 0.0, 1.0))
 			look += ball.velocity.normalized() * lead
+		var putt_closing_in := _is_putt_context() and ball.global_position.distance_to(_cup_pos) <= PUTT_TIGHTEN_RADIUS
 		if _is_putt_context():
-			look = look.lerp(_cup_pos, 0.35)
+			look = look.lerp(_cup_pos, 0.5 if putt_closing_in else 0.35)
 		camera.global_position = camera.global_position.lerp(look, 0.18)
 		var target_zoom := _desired_camera_zoom()
 		if not _is_putt_context():
 			target_zoom = _flight_camera_zoom()
 		# Aggressive zoom lerp on the "in" beat / roll so short flights still punch tight.
+		# Putts get the same TV-style punch once the ball is closing in on the cup — they have
+		# no air time, so gate on distance-to-cup instead of air_progress().
 		var z_lerp := 0.12
 		if not _is_putt_context() and (ball.state == GolfBall.State.ROLL or ball.air_progress() >= FLIGHT_ZOOM_IN_START):
+			z_lerp = 0.35
+		elif putt_closing_in and ball.state == GolfBall.State.ROLL:
 			z_lerp = 0.35
 		camera.zoom = camera.zoom.lerp(target_zoom, z_lerp)
 	elif _aiming:
