@@ -6,6 +6,7 @@ extends RefCounted
 var club_name: String = ""
 var club_max_yards: float = 0.0
 var lie: String = ""
+var severity: String = ""
 var power: float = 0.0
 var stance: float = 0.0
 var path_error: float = 0.0
@@ -28,18 +29,20 @@ static func from_shot(
 	p_lie: String,
 	p_aim_radius_yd: float = 0.0,
 	p_aim_offset: String = "",
-	p_wind_note: String = ""
+	p_wind_note: String = "",
+	p_severity: String = ""
 ) -> ShotReport:
 	var r := ShotReport.new()
 	r.club_name = p_club
 	r.club_max_yards = p_club_max
 	r.lie = p_lie
+	r.severity = p_severity
 	r.power = result.power
 	r.stance = result.stance_stability
 	r.path_error = result.path_error
 	r.contact = result.contact_label()
 	r.contact_mul = BallPhysics.contact_multiplier(result.contact_quality)
-	r.lie_mul = BallPhysics.lie_multiplier(p_lie)
+	r.lie_mul = BallPhysics.lie_multiplier(p_lie, p_severity)
 	# Putts skip contact_mul in launch_velocity — don't lie in the planned yards.
 	if p_lie == "Green":
 		r.planned_yards = p_club_max * result.power * r.lie_mul
@@ -107,7 +110,15 @@ func _build_reasons(result: ShotResult) -> void:
 
 	match lie:
 		"Rough":
-			reasons.append("Lie ROUGH — %d%% club distance" % int(lie_mul * 100.0))
+			if severity != "" and GameState.rough_severity_enabled:
+				var tag := severity.to_lower()
+				if severity == BallPhysics.ROUGH_SEV_SITTING:
+					tag = "sitting up"
+				reasons.append(
+					"Lie ROUGH (%s) — %d%% club distance" % [tag, int(lie_mul * 100.0)]
+				)
+			else:
+				reasons.append("Lie ROUGH — %d%% club distance" % int(lie_mul * 100.0))
 		"Sand":
 			reasons.append("Lie SAND — %d%% club distance" % int(lie_mul * 100.0))
 		"Tee":

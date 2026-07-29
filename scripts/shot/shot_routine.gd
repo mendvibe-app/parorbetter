@@ -24,6 +24,7 @@ var club_max_yards: float = 180.0
 var remaining_yards: float = 160.0
 var pin_yards: float = 160.0
 var current_lie: String = "Tee"
+var current_severity: String = ""
 var aim_radius_yd: float = 22.0
 var committed_power: float = 0.75
 var shot_type: String = "full"
@@ -76,27 +77,31 @@ func configure(
 	p_shape: float = 0.0,
 	p_aim_radius_yd: float = 22.0,
 	p_club_name: String = "",
-	p_club_max_yards: float = -1.0
+	p_club_max_yards: float = -1.0,
+	p_severity: String = ""
 ) -> void:
 	timing_scale = p_timing
 	suggested_shape = p_shape
 	current_lie = lie
+	current_severity = p_severity
 	remaining_yards = aim_distance_yd
 	pin_yards = pin_distance_yd
 	aim_radius_yd = p_aim_radius_yd
 	if GameState.debug_timing_scale != null:
 		timing_scale = float(GameState.debug_timing_scale)
-	timing_scale *= BallPhysics.lie_timing_scale(lie)
+	timing_scale *= BallPhysics.lie_timing_scale(lie, p_severity)
 
 	if p_club_max_yards > 0.0 and not p_club_name.is_empty():
 		club_name = p_club_name
 		club_max_yards = p_club_max_yards
 	else:
-		var club := BallPhysics.pick_club(pin_distance_yd, lie)
+		var club := BallPhysics.pick_club(pin_distance_yd, lie, p_severity)
 		club_name = String(club["name"])
 		club_max_yards = float(club["max_yards"])
 
-	committed_power = BallPhysics.recommended_power(aim_distance_yd, club_max_yards, lie, wind)
+	committed_power = BallPhysics.recommended_power(
+		aim_distance_yd, club_max_yards, lie, wind, p_severity
+	)
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
 	# Green: feet (how golfers read putts). Full/pitch stay yards.
@@ -112,6 +117,8 @@ func configure(
 		club_icon.texture = HudIcons.club_texture(club_name)
 	if club_label:
 		club_label.text = club_name
+	if tempo_gesture:
+		tempo_gesture.set_lie_preview(lie, p_severity)
 
 
 func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:

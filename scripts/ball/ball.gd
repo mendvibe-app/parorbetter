@@ -27,6 +27,8 @@ var _air_duration: float = 1.0
 var _height: float = 0.0
 var _last_safe_pos: Vector2 = Vector2.ZERO
 var _lie: String = "Tee"
+## Rough severity: Buried / Average / SittingUp when toggle on; else "".
+var _lie_severity: String = ""
 var _trail: Line2D
 var _is_perfect_shot: bool = false
 
@@ -101,7 +103,7 @@ func clear_trail() -> void:
 func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	global_position = pos
 	_last_safe_pos = pos
-	_lie = lie
+	_apply_lie_string(lie, true)
 	velocity = Vector2.ZERO
 	spin = 0.0
 	_height = 0.0
@@ -134,7 +136,9 @@ func launch(
 	if _pin_dir == Vector2.ZERO:
 		_pin_dir = Vector2(0, -1)
 
-	var launch_data := BallPhysics.launch_velocity(result, to_pin, club_max_yards, _lie)
+	var launch_data := BallPhysics.launch_velocity(
+		result, to_pin, club_max_yards, _lie, _lie_severity
+	)
 	velocity = launch_data["velocity"]
 	spin = launch_data["spin"]
 	_air_duration = launch_data["airborne_time"]
@@ -198,12 +202,29 @@ func get_last_safe() -> Vector2:
 
 
 func set_lie(lie: String) -> void:
-	_lie = lie
+	_apply_lie_string(lie, false)
 	_apply_lie_visual()
 
 
 func get_lie() -> String:
 	return _lie
+
+
+func get_lie_severity() -> String:
+	return _lie_severity
+
+
+## Assign lie string + severity roll rules. force_roll: always re-evaluate (reset_at).
+func _apply_lie_string(lie: String, force_roll: bool) -> void:
+	var prev := _lie
+	_lie = lie
+	if lie != "Rough" or not GameState.rough_severity_enabled:
+		_lie_severity = ""
+		return
+	# Enter Rough (or forced reset already in Rough): roll once.
+	if force_roll or prev != "Rough":
+		_lie_severity = BallPhysics.roll_rough_severity()
+	# else stay Rough → keep existing severity
 
 
 func _apply_lie_visual() -> void:
@@ -416,9 +437,9 @@ func _on_area_entered(other: Area2D) -> void:
 		# Putting surface wins — island water volumes can graze the green edge.
 		for a in area.get_overlapping_areas():
 			if a.is_in_group("green"):
-				_lie = "Green"
+				_apply_lie_string("Green", false)
 				return
-		_lie = "Water"
+		_apply_lie_string("Water", false)
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
@@ -426,7 +447,7 @@ func _on_area_entered(other: Area2D) -> void:
 		entered_hazard.emit("water")
 		return
 	if other.is_in_group("oob"):
-		_lie = "OOB"
+		_apply_lie_string("OOB", false)
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
@@ -434,13 +455,13 @@ func _on_area_entered(other: Area2D) -> void:
 		entered_hazard.emit("oob")
 		return
 	if other.is_in_group("sand"):
-		_lie = "Sand"
+		_apply_lie_string("Sand", false)
 	elif other.is_in_group("green"):
-		_lie = "Green"
+		_apply_lie_string("Green", false)
 	elif other.is_in_group("fairway"):
-		_lie = "Fairway"
+		_apply_lie_string("Fairway", false)
 	elif other.is_in_group("rough"):
-		_lie = "Rough"
+		_apply_lie_string("Rough", false)
 
 
 func flash_perfect() -> void:

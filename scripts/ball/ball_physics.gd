@@ -74,18 +74,49 @@ static func clubs_for_lie(lie: String) -> Array[Dictionary]:
 	return out
 
 
-static func shot_need_yards(remaining_yd: float, lie: String) -> float:
+## Rough severity tiers (Rough lie severity epic). Weights sum to 1.0.
+const ROUGH_SEV_BURIED := "Buried"
+const ROUGH_SEV_AVERAGE := "Average"
+const ROUGH_SEV_SITTING := "SittingUp"
+## Cumulative: Buried 35%, Average 45%, SittingUp 20%.
+const ROUGH_SEV_P_BURIED := 0.35
+const ROUGH_SEV_P_AVERAGE := 0.80  # 0.35 + 0.45
+const ROUGH_MUL_BURIED := 0.68
+const ROUGH_MUL_AVERAGE := 0.82
+const ROUGH_MUL_SITTING := 0.94
+const ROUGH_TIMING_BURIED := 0.70
+const ROUGH_TIMING_AVERAGE := 0.82
+const ROUGH_TIMING_SITTING := 0.94
+
+
+static func roll_rough_severity() -> String:
+	var r := randf()
+	if r < ROUGH_SEV_P_BURIED:
+		return ROUGH_SEV_BURIED
+	if r < ROUGH_SEV_P_AVERAGE:
+		return ROUGH_SEV_AVERAGE
+	return ROUGH_SEV_SITTING
+
+
+static func shot_need_yards(remaining_yd: float, lie: String, severity: String = "") -> float:
 	if lie == "Rough":
-		return remaining_yd * 1.2
+		var need := remaining_yd * 1.2
+		# Buried chokes distance — ask for more club so pick/preview match swing math.
+		if (
+			GameState.rough_severity_enabled
+			and severity == ROUGH_SEV_BURIED
+		):
+			need *= ROUGH_MUL_AVERAGE / ROUGH_MUL_BURIED
+		return need
 	return remaining_yd * 1.08
 
 
 ## Suggested club: shortest in the available bag that covers need (overlap = real choice).
-static func pick_club(remaining_yd: float, lie: String) -> Dictionary:
+static func pick_club(remaining_yd: float, lie: String, severity: String = "") -> Dictionary:
 	if lie == "Green":
 		return putter_for(remaining_yd)
 
-	var need := shot_need_yards(remaining_yd, lie)
+	var need := shot_need_yards(remaining_yd, lie, severity)
 	var available := clubs_for_lie(lie)
 	if available.is_empty():
 		return BAG[0]
@@ -100,11 +131,13 @@ static func pick_club(remaining_yd: float, lie: String) -> Dictionary:
 
 
 ## Compact picker window: up to `count` clubs centered on pick_club (clamped at bag ends).
-static func suggest_clubs(remaining_yd: float, lie: String, count: int = 3) -> Array[Dictionary]:
+static func suggest_clubs(
+	remaining_yd: float, lie: String, count: int = 3, severity: String = ""
+) -> Array[Dictionary]:
 	var available := clubs_for_lie(lie)
 	if available.is_empty() or count <= 0:
 		return []
-	var picked := pick_club(remaining_yd, lie)
+	var picked := pick_club(remaining_yd, lie, severity)
 	var idx := 0
 	for i in available.size():
 		if String(available[i]["name"]) == String(picked["name"]):
@@ -122,19 +155,31 @@ static func suggest_clubs(remaining_yd: float, lie: String, count: int = 3) -> A
 ## Recommended swing fraction for this distance (same math as recommended_power).
 ## UI shows this as "% swing" only when under a full hit — not "100% today".
 static func club_percent_today(
-	remaining_yd: float, club_max_yards: float, lie: String, wind: Vector2 = Vector2.ZERO
+	remaining_yd: float,
+	club_max_yards: float,
+	lie: String,
+	wind: Vector2 = Vector2.ZERO,
+	severity: String = ""
 ) -> float:
-	return recommended_power(remaining_yd, club_max_yards, lie, wind)
+	return recommended_power(remaining_yd, club_max_yards, lie, wind, severity)
 
 
-static func lie_multiplier(lie: String) -> float:
+static func lie_multiplier(lie: String, severity: String = "") -> float:
 	match lie:
 		"Tee":
 			return 1.0
 		"Fairway":
 			return 1.0
 		"Rough":
-			return 0.82
+			if not GameState.rough_severity_enabled or severity.is_empty():
+				return ROUGH_MUL_AVERAGE
+			match severity:
+				ROUGH_SEV_BURIED:
+					return ROUGH_MUL_BURIED
+				ROUGH_SEV_SITTING:
+					return ROUGH_MUL_SITTING
+				_:
+					return ROUGH_MUL_AVERAGE
 		"Sand":
 			return 0.7
 		"Green":
@@ -144,10 +189,18 @@ static func lie_multiplier(lie: String) -> float:
 
 
 ## Tightens power/swing timing windows off poor lies (1.0 = no change).
-static func lie_timing_scale(lie: String) -> float:
+static func lie_timing_scale(lie: String, severity: String = "") -> float:
 	match lie:
 		"Rough":
-			return 0.82
+			if not GameState.rough_severity_enabled or severity.is_empty():
+				return ROUGH_TIMING_AVERAGE
+			match severity:
+				ROUGH_SEV_BURIED:
+					return ROUGH_TIMING_BURIED
+				ROUGH_SEV_SITTING:
+					return ROUGH_TIMING_SITTING
+				_:
+					return ROUGH_TIMING_AVERAGE
 		"Sand":
 			return 0.66
 		_:
@@ -163,12 +216,20 @@ static func pixels_to_yards(pixels: float) -> float:
 
 
 ## Estimated total distance for UI (assumes solid / good contact).
-static func estimate_carry_yards(power: float, club_max_yards: float, lie: String) -> float:
-	return club_max_yards * clampf(power, 0.0, 1.0) * lie_multiplier(lie)
+static func estimate_carry_yards(
+	power: float, club_max_yards: float, lie: String, severity: String = ""
+) -> float:
+	return club_max_yards * clampf(power, 0.0, 1.0) * lie_multiplier(lie, severity)
 
 
-static func recommended_power(remaining_yd: float, club_max_yards: float, lie: String, wind: Vector2 = Vector2.ZERO) -> float:
-	var effective_max := club_max_yards * lie_multiplier(lie)
+static func recommended_power(
+	remaining_yd: float,
+	club_max_yards: float,
+	lie: String,
+	wind: Vector2 = Vector2.ZERO,
+	severity: String = ""
+) -> float:
+	var effective_max := club_max_yards * lie_multiplier(lie, severity)
 	if effective_max <= 0.01:
 		return 1.0
 	var wind_yards := 0.0
@@ -224,7 +285,8 @@ static func launch_velocity(
 	result: ShotResult,
 	target_dir: Vector2,
 	club_max_yards: float,
-	lie: String
+	lie: String,
+	severity: String = ""
 ) -> Dictionary:
 	var dir := target_dir.normalized()
 	if dir == Vector2.ZERO:
@@ -233,7 +295,7 @@ static func launch_velocity(
 	var is_putt := lie == "Green"
 	var force := 0.0 if is_putt else force_factor(result.power, club_max_yards, lie)
 	# Putts: tempo power_mul already leaked distance — don't stack contact ×0.4.
-	var power_mul := result.power * lie_multiplier(lie)
+	var power_mul := result.power * lie_multiplier(lie, severity)
 	if not is_putt:
 		power_mul *= contact_multiplier(result.contact_quality)
 	# Mash doesn't buy clean extra yards — contact gets jumpy instead.

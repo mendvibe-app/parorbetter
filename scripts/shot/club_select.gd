@@ -14,11 +14,13 @@ var _list: VBoxContainer
 var _scroll: ScrollContainer
 var _title: Label
 var _hint: Label
+var _lie_preview: LiePreview
 var _confirm: Button
 var _bag_toggle: Button
 var _selected: Dictionary = {}
 var _confirm_ready_at_msec: int = 0
 var _lie: String = ""
+var _severity: String = ""
 var _pin_yd: float = 0.0
 var _wind: Vector2 = Vector2.ZERO
 var _full_bag: bool = false
@@ -83,6 +85,14 @@ func _ready() -> void:
 	_hint.text = "Tap a club, then Confirm"
 	root.add_child(_hint)
 
+	# Lie diorama above the bag — read severity before you commit a club.
+	var prev_wrap := CenterContainer.new()
+	prev_wrap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_lie_preview = LiePreview.new()
+	_lie_preview.custom_minimum_size = Vector2(160, 56)
+	prev_wrap.add_child(_lie_preview)
+	root.add_child(prev_wrap)
+
 	_scroll = ScrollContainer.new()
 	_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_scroll.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -123,14 +133,17 @@ func _process(_delta: float) -> void:
 	_refresh_confirm_enabled()
 
 
-func present(lie: String, pin_yd: float, wind: Vector2) -> void:
+func present(lie: String, pin_yd: float, wind: Vector2, severity: String = "") -> void:
 	_lie = lie
+	_severity = severity
 	_pin_yd = pin_yd
 	_wind = wind
 	_full_bag = false
 	_selected = {}
 	_confirm_ready_at_msec = Time.get_ticks_msec() + int(OPEN_LOCK_SEC * 1000.0)
 	_title.text = "CHOOSE CLUB  ·  %d yd" % int(pin_yd)
+	if _lie_preview:
+		_lie_preview.set_state(lie, severity)
 	_rebuild_list()
 	visible = true
 	set_process(true)
@@ -181,7 +194,7 @@ func _on_scroll_gui_input(event: InputEvent) -> void:
 func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
 	## Swing % = recommended_power for this pin (how hard you'd hit it).
 	## Omit when it's a full swing — "100% today" read as a mystery score.
-	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind)
+	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
 	var star := "★ " if is_suggested else ""
 	var badge := _tendency_badge(name)
 	if pct >= 0.95:
@@ -207,10 +220,12 @@ func _rebuild_list(prefer_name: String = "") -> void:
 	for child in _list.get_children():
 		child.queue_free()
 
-	var suggested := BallPhysics.pick_club(_pin_yd, _lie)
+	var suggested := BallPhysics.pick_club(_pin_yd, _lie, _severity)
 	var suggested_name := String(suggested["name"])
 	var clubs: Array[Dictionary] = (
-		BallPhysics.clubs_for_lie(_lie) if _full_bag else BallPhysics.suggest_clubs(_pin_yd, _lie)
+		BallPhysics.clubs_for_lie(_lie)
+		if _full_bag
+		else BallPhysics.suggest_clubs(_pin_yd, _lie, 3, _severity)
 	)
 	_bag_toggle.text = "Suggested" if _full_bag else "Full bag"
 	_set_panel_compact(not _full_bag)

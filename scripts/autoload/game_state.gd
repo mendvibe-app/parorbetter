@@ -77,6 +77,9 @@ var club_coach_ui_enabled: bool = false
 ## Sharpened Dogleg Corners epic — A/B toggle vs the old smooth-bend fairway curve.
 ## Defaults off so existing behavior is unchanged until validated in playtesting.
 var sharp_dogleg_enabled: bool = false
+## Rough lie severity — Buried / Average / SittingUp sub-states for Rough only.
+## Live by default after playtest; no F1 toggle.
+var rough_severity_enabled: bool = true
 
 
 func _ready() -> void:

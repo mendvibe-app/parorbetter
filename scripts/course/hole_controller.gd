@@ -1049,7 +1049,7 @@ func _begin_club_select() -> void:
 	feedback.text = "RANGE — pick a club" if GameState.range_mode else "%d yd — pick a club" % int(pin_yd)
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 	_show_wind_flag(wind)
-	_club_select.present(lie, pin_yd, wind)
+	_club_select.present(lie, pin_yd, wind, ball.get_lie_severity())
 
 
 func _on_club_chosen(club: Dictionary) -> void:
@@ -1104,7 +1104,7 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	if _chosen_club.is_empty():
-		_chosen_club = BallPhysics.pick_club(pin_yd, lie)
+		_chosen_club = BallPhysics.pick_club(pin_yd, lie, ball.get_lie_severity())
 	var club_max := float(_chosen_club["max_yards"])
 	_power_previewing = false
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green", club_max)
@@ -1275,7 +1275,17 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	var club_name := String(_chosen_club.get("name", ""))
 	var club_max := float(_chosen_club.get("max_yards", -1.0))
 	shot_routine.configure(
-		lie, aim_yd, pin_yd, wind, shape_label, timing, shape_amt, _aim_radius_yd, club_name, club_max
+		lie,
+		aim_yd,
+		pin_yd,
+		wind,
+		shape_label,
+		timing,
+		shape_amt,
+		_aim_radius_yd,
+		club_name,
+		club_max,
+		ball.get_lie_severity()
 	)
 	# Landing preview locked to committed carry (gesture can only subtract).
 	_power_previewing = not p_practice
@@ -1302,7 +1312,7 @@ func _apply_committed_preview() -> void:
 	var lie := ball.get_lie()
 	var club_max := float(_chosen_club.get("max_yards", shot_routine.club_max_yards))
 	var power := shot_routine.committed_power
-	var est := BallPhysics.estimate_carry_yards(power, club_max, lie)
+	var est := BallPhysics.estimate_carry_yards(power, club_max, lie, ball.get_lie_severity())
 	var from := ball.global_position
 	var bearing := _aim_target - from
 	if bearing.length_squared() < 1.0:
@@ -1648,6 +1658,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 	if wind.length() >= 4.0 and lie_at_strike != "Green":
 		wind_note = "Wind was active — landing may drift from aim circle"
 	_last_result = result
+	var sev_at_strike := ball.get_lie_severity()
 	_last_report = ShotReport.from_shot(
 		result,
 		shot_routine.club_name,
@@ -1655,7 +1666,8 @@ func _on_shot_ready(result: ShotResult) -> void:
 		lie_at_strike,
 		_aim_radius_yd,
 		aim_offset,
-		wind_note
+		wind_note,
+		sev_at_strike
 	)
 	GameState.last_shot_metrics = {
 		"power": result.power,
@@ -1664,6 +1676,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"contact": result.contact_label(),
 		"club": shot_routine.club_name,
 		"lie": lie_at_strike,
+		"severity": sev_at_strike,
 		"planned_yd": _last_report.planned_yards,
 		"summary": _last_report.summary_line(),
 		"aim_radius_yd": _aim_radius_yd,

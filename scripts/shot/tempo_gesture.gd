@@ -94,6 +94,10 @@ var putt_show_marker: bool = false
 ## its yard ticks against this, not the putter constant putt's ruler defaults to.
 var club_max_yards: float = 40.0
 var peak_pos: Vector2 = Vector2.ZERO
+## Rough severity cue for address pose offset (Buried/Average/SittingUp); empty = none.
+var lie_severity: String = ""
+## Side-on lie diorama — top-right of the pad, mirrors golfer stage top-left.
+var lie_preview: LiePreview
 
 var _touch_index: int = -1
 var _address: Vector2 = Vector2.ZERO
@@ -135,6 +139,34 @@ func _ready() -> void:
 	texture_filter = TEXTURE_FILTER_NEAREST
 	set_process(false)
 	set_process_input(false)
+	_setup_lie_preview()
+	resized.connect(_layout_lie_preview)
+
+
+func _setup_lie_preview() -> void:
+	lie_preview = LiePreview.new()
+	lie_preview.name = "LiePreview"
+	lie_preview.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(lie_preview)
+	_layout_lie_preview()
+
+
+func _layout_lie_preview() -> void:
+	if lie_preview == null:
+		return
+	var w := 112.0
+	var h := 48.0
+	# Top-right, same margin language as golfer top-left (GOLFER_MARGIN).
+	lie_preview.position = Vector2(size.x - w - GOLFER_MARGIN, GOLFER_MARGIN)
+	lie_preview.size = Vector2(w, h)
+	lie_preview.custom_minimum_size = Vector2(w, h)
+
+
+func set_lie_preview(lie: String, severity: String = "") -> void:
+	lie_severity = severity if lie == "Rough" else ""
+	if lie_preview:
+		lie_preview.set_state(lie, severity)
+	queue_redraw()
 
 
 func _is_putt() -> bool:
@@ -669,6 +701,20 @@ func _draw_golfer() -> void:
 	var tw := float(a.get_width()) * scale
 	var th := GOLFER_DRAW_H
 	var origin := Vector2(GOLFER_MARGIN, GOLFER_MARGIN)
+	# Subtle severity cue on full-swing address (primary read is LiePreview).
+	if (
+		not _is_putt()
+		and not _is_chip()
+		and GameState.rough_severity_enabled
+		and lie_severity != ""
+		and t < 0.15
+		and not had_top
+	):
+		match lie_severity:
+			BallPhysics.ROUGH_SEV_BURIED:
+				origin.y += 4.0  # crouch into buried lie
+			BallPhysics.ROUGH_SEV_SITTING:
+				origin.y -= 3.0  # more upright over a sitting-up ball
 	var pad := 6.0
 	var stage := Rect2(origin - Vector2(pad, pad), Vector2(tw + pad * 2.0, th + pad * 2.0))
 	_draw_golfer_stage(stage)
