@@ -51,6 +51,19 @@ def main() -> int:
     # Dedup guard: launch → final on the same putt verdict must not re-pop.
     assert "verdict == _last_verdict" in MINI and "return" in MINI.split("verdict == _last_verdict")[1][:40]
 
+    # Legibility revision: needle drawn big enough for the source art's baked-in
+    # outline/highlight to resolve at NEAREST-filter minification (was 18.0, crushed).
+    assert "nd := 30.0" in MINI or "nd := 28.0" in MINI or "nd := 32.0" in MINI
+    # Procedural dark-outline ring underneath the needle, not a title-text glow.
+    assert "OUTLINE_COLOR" in MINI and "OUTLINE_SCALE" in MINI
+    assert MINI.count("draw_texture(TEX_NEEDLE") == 2  # outline pass + graded-color pass
+    # Good-zone band reads as a guide (stroke only), not a shape competing with the needle.
+    assert MINI.count("OUTLINE_COLOR, false, 2.0)") == 2  # ratio strip + amplitude strip
+
+    # Plain-language word next to the number, graded off the same tol as the band.
+    assert "_verdict_word" in MINI
+    assert '"Early"' in MINI and '"On time"' in MINI and '"Late"' in MINI
+
     # Wired into both result-screen entry points, keyed off report.lie.
     assert PANEL.count("tempo_mini.show_verdict(GameState.last_tempo_metrics") == 2
     assert 'report.lie == "Green"' in PANEL

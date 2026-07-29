@@ -13,6 +13,10 @@ const NEEDLE_POP_FROM := 1.3
 const NEEDLE_POP_TO := 1.0
 const NEEDLE_POP_TIME := 0.18
 
+## Dark near-black outline baked into the existing needle/track pixel art.
+const OUTLINE_COLOR := Color(0.10196, 0.12157, 0.10196, 1.0)
+const OUTLINE_SCALE := 1.3
+
 var _verdict: Dictionary = {}
 var _last_verdict: Dictionary = {}
 var _is_green: bool = false
@@ -69,20 +73,35 @@ func _needle_color(abs_n: float, band_perfect: float, band_good: float) -> Color
 
 func _draw_needle(x: float, y: float, color: Color, label: String) -> void:
 	var nsz := TEX_NEEDLE.get_size()
-	var nd := 18.0
+	var nd := 30.0
 	var ns := (nd / maxf(nsz.x, 1.0)) * _needle_scale
+	# Procedural outline ring underneath — guarantees contrast against any zone
+	# color behind it (source art's baked-in outline crushes at small sizes).
+	var outline_ns := ns * OUTLINE_SCALE
+	draw_set_transform(Vector2(x, y), 0.0, Vector2(outline_ns, outline_ns))
+	draw_texture(TEX_NEEDLE, -nsz * 0.5, OUTLINE_COLOR)
 	draw_set_transform(Vector2(x, y), 0.0, Vector2(ns, ns))
 	draw_texture(TEX_NEEDLE, -nsz * 0.5, color)
 	draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 	draw_string(
 		UiScale.FONT,
-		Vector2(x - 20.0, y - 12.0),
+		Vector2(x - 24.0, y - 16.0),
 		label,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
 		UiScale.CAPTION * 0.6,
 		color,
 	)
+
+
+func _verdict_word(err: float, tol: float) -> String:
+	## Plain-language read next to the ratio/frac number — same tol used for
+	## the good-zone band, so "On time" lines up with what's drawn as the guide.
+	if err < -tol:
+		return "Early"
+	if err > tol:
+		return "Late"
+	return "On time"
 
 
 func _draw_ratio_strip() -> void:
@@ -97,7 +116,7 @@ func _draw_ratio_strip() -> void:
 	var r_max := 5.5
 	var x_lo := strip.position.x + strip.size.x * clampf((target - tol - r_min) / (r_max - r_min), 0.0, 1.0)
 	var x_hi := strip.position.x + strip.size.x * clampf((target + tol - r_min) / (r_max - r_min), 0.0, 1.0)
-	draw_rect(Rect2(x_lo, strip.position.y, maxf(x_hi - x_lo, 2.0), strip.size.y), Color(0.35, 0.7, 0.4, 0.45), true)
+	draw_rect(Rect2(x_lo, strip.position.y, maxf(x_hi - x_lo, 2.0), strip.size.y), OUTLINE_COLOR, false, 2.0)
 
 	var x_ideal := strip.position.x + strip.size.x * clampf((target - r_min) / (r_max - r_min), 0.0, 1.0)
 	draw_line(
@@ -106,10 +125,12 @@ func _draw_ratio_strip() -> void:
 		Color(1.0, 1.0, 1.0, 0.95), 2.0, true
 	)
 
-	var abs_n := absf(ratio - target) / tol
+	var err := ratio - target
+	var abs_n := absf(err) / tol
 	var needle_c := _needle_color(abs_n, TempoGrade.BAND_PERFECT, TempoGrade.BAND_GOOD)
+	var word := _verdict_word(err, tol)
 	var x_n := strip.position.x + strip.size.x * clampf((ratio - r_min) / (r_max - r_min), 0.0, 1.0)
-	_draw_needle(x_n, strip.position.y + strip.size.y * 0.5, needle_c, "%.1f:1" % ratio)
+	_draw_needle(x_n, strip.position.y + strip.size.y * 0.5, needle_c, "%s · %.1f:1" % [word, ratio])
 
 
 func _draw_amplitude_strip() -> void:
@@ -125,7 +146,7 @@ func _draw_amplitude_strip() -> void:
 	var f_max := 1.0
 	var x_lo := strip.position.x + strip.size.x * clampf((target - tol - f_min) / (f_max - f_min), 0.0, 1.0)
 	var x_hi := strip.position.x + strip.size.x * clampf((target + tol - f_min) / (f_max - f_min), 0.0, 1.0)
-	draw_rect(Rect2(x_lo, strip.position.y, maxf(x_hi - x_lo, 2.0), strip.size.y), Color(0.35, 0.7, 0.85, 0.4), true)
+	draw_rect(Rect2(x_lo, strip.position.y, maxf(x_hi - x_lo, 2.0), strip.size.y), OUTLINE_COLOR, false, 2.0)
 
 	var x_ideal := strip.position.x + strip.size.x * clampf((target - f_min) / (f_max - f_min), 0.0, 1.0)
 	draw_line(
@@ -134,7 +155,9 @@ func _draw_amplitude_strip() -> void:
 		Color(0.7, 0.95, 1.0, 0.95), 2.0, true
 	)
 
-	var abs_n := absf(actual - target) / tol
+	var err := actual - target
+	var abs_n := absf(err) / tol
 	var needle_c := _needle_color(abs_n, PuttStroke.BAND_PERFECT, PuttStroke.BAND_GOOD)
+	var word := _verdict_word(err, tol)
 	var x_n := strip.position.x + strip.size.x * clampf((actual - f_min) / (f_max - f_min), 0.0, 1.0)
-	_draw_needle(x_n, strip.position.y + strip.size.y * 0.5, needle_c, "%.0f%%" % (actual * 100.0))
+	_draw_needle(x_n, strip.position.y + strip.size.y * 0.5, needle_c, "%s · %.0f%%" % [word, actual * 100.0])
