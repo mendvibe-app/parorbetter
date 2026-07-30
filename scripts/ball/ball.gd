@@ -258,7 +258,8 @@ func launch(
 	p_wind: Vector2,
 	p_slope: Vector2,
 	p_hole: HoleData = null,
-	p_green_center: Vector2 = Vector2.ZERO
+	p_green_center: Vector2 = Vector2.ZERO,
+	shot_type: String = "full"
 ) -> void:
 	var to_pin := target_pos - global_position
 	_pin_dir = to_pin.normalized()
@@ -266,7 +267,7 @@ func launch(
 		_pin_dir = Vector2(0, -1)
 
 	var launch_data := BallPhysics.launch_velocity(
-		result, to_pin, club_max_yards, _lie, _lie_severity
+		result, to_pin, club_max_yards, _lie, _lie_severity, shot_type
 	)
 	velocity = launch_data["velocity"]
 	spin = launch_data["spin"]

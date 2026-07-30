@@ -386,12 +386,31 @@ func _guide_alpha() -> float:
 
 
 func _guide_back_sec() -> float:
-	return GUIDE_BACK_SHORT if TempoGrade.target_ratio(shot_type) < 2.5 else GUIDE_BACK_FULL
+	## Ratio stays 3:1 / 2:1; duration scales by club so driver feels bigger than 9i.
+	var base := GUIDE_BACK_SHORT if TempoGrade.target_ratio(shot_type) < 2.5 else GUIDE_BACK_FULL
+	if shot_type == "full":
+		base *= club_guide_duration_scale(club_max_yards)
+	return base
 
 
 func _guide_down_sec() -> float:
 	var back := _guide_back_sec()
 	return back / maxf(TempoGrade.target_ratio(shot_type), 1.0)
+
+
+static func club_guide_duration_scale(club_max_yards: float) -> float:
+	## WGT-style: same 3:1 skill, longer absolute window with longer clubs.
+	if club_max_yards >= 245.0:
+		return 1.18
+	if club_max_yards >= 200.0:
+		return 1.10
+	if club_max_yards >= 160.0:
+		return 1.0
+	if club_max_yards >= 130.0:
+		return 0.92
+	if club_max_yards >= 110.0:
+		return 0.86
+	return 0.82
 
 
 func _impact_cross() -> float:

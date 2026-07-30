@@ -673,9 +673,14 @@ func _elbow_fairway_x(along: float) -> float:
 	return lerpf(corner_x, bot_x, (along - cp) / (1.0 - cp))
 
 
+## Pad outside green silhouette before hazard radius is applied (must match _clears_green).
+const GREEN_HAZARD_PAD := 14.0
+const GREEN_HAZARD_CLEAR_EXTRA := 8.0
+
+
 func _clears_green(center: Vector2, radius: float) -> bool:
-	var rx := hole.green_radius_x + 14.0 + radius + 8.0
-	var ry := hole.green_radius_y + 14.0 + radius + 8.0
+	var rx := hole.green_radius_x + GREEN_HAZARD_PAD + radius + GREEN_HAZARD_CLEAR_EXTRA
+	var ry := hole.green_radius_y + GREEN_HAZARD_PAD + radius + GREEN_HAZARD_CLEAR_EXTRA
 	var dx := (center.x - _green_center.x) / maxf(rx, 1.0)
 	var dy := (center.y - _green_center.y) / maxf(ry, 1.0)
 	return dx * dx + dy * dy > 1.0
@@ -702,10 +707,10 @@ func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
 			HoleData.ROLE_GREENSIDE:
 				if kind == "tree":
 					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
-				else:
+				elif kind == "sand":
+					# Never silent-drop: push outward until clear, then place.
 					var c := _greenside_center(side if side != 0 else 1, size)
-					if kind == "sand" and _clears_green(c, size):
-						_add_bunker(c, size, art if art > 0 else 1)
+					_add_bunker(c, size, art if art > 0 else 1)
 			HoleData.ROLE_LANDING:
 				if kind == "tree":
 					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
@@ -733,9 +738,10 @@ func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
 
 
 func _greenside_center(side: int, size: float) -> Vector2:
-	var rx := hole.green_radius_x + 14.0
-	var ry := hole.green_radius_y + 14.0
-	var dist := maxf(rx, ry) + 10.0 + size
+	## Place outside the same expanded ellipse _clears_green uses (was +10 vs +22 → silent drop).
+	var rx := hole.green_radius_x + GREEN_HAZARD_PAD
+	var ry := hole.green_radius_y + GREEN_HAZARD_PAD
+	var dist := maxf(rx, ry) + GREEN_HAZARD_CLEAR_EXTRA + size + 4.0
 	var ang: float
 	if hole.pin_offset.length() > 4.0:
 		ang = hole.pin_offset.angle()
@@ -751,13 +757,23 @@ func _greenside_center(side: int, size: float) -> Vector2:
 			break
 		ang += step
 	# USGA: keep sand clear of the cup (~15 ft / 5 yd).
-	var clear := BallPhysics.yards_to_pixels(HoleGenerator.PIN_EDGE_MARGIN_YD) + size * 0.5
-	for _j in 8:
+	var pin_clear := BallPhysics.yards_to_pixels(HoleGenerator.PIN_EDGE_MARGIN_YD) + size * 0.5
+	var best := _green_center + Vector2(cos(ang), sin(ang)) * dist
+	for _j in 12:
 		var c := _green_center + Vector2(cos(ang), sin(ang)) * dist
-		if c.distance_to(_cup_pos) >= clear:
+		var pin_ok := c.distance_to(_cup_pos) >= pin_clear
+		var green_ok := _clears_green(c, size)
+		if pin_ok and green_ok:
 			return c
-		ang += step
-	return _green_center + Vector2(cos(ang), sin(ang)) * dist
+		if pin_ok:
+			best = c
+		# Push out until outside green ellipse; rotate if still in approach wedge / pin.
+		if not green_ok:
+			dist += 6.0
+		else:
+			ang += step
+	# Fallback: never silent-drop — place best candidate even if slightly tight.
+	return best
 
 
 func _place_island_ring() -> void:
@@ -1877,7 +1893,10 @@ func _on_shot_ready(result: ShotResult) -> void:
 	if _is_putt_context() and shot_result_panel and shot_result_panel.has_method("show_launch"):
 		shot_result_panel.show_launch(_last_report)
 	var slope: Vector2 = course_root.get_meta("slope", hole.green_slope)
-	ball.launch(result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center)
+	ball.launch(
+		result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center,
+		shot_routine.shot_type
+	)
 	_follow_ball()
 	# Panel owns the glance — don't stack the same tempo text on Feedback.
 	if result.is_perfect() and result.stance_stability >= 0.72:

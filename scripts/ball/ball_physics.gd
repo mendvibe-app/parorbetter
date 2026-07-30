@@ -56,8 +56,20 @@ static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 
 
 ## Carry share of total distance by club category (rest is roll). Same yard buckets
-## as lateral_spread_range_yards. Starting points — tune in playtest.
-static func air_distance_fraction(club_max_yards: float) -> float:
+## as lateral_spread_range_yards. Full-swing defaults — short game overrides below.
+static func air_distance_fraction(club_max_yards: float, shot_type: String = "full") -> float:
+	var full := _air_fraction_full(club_max_yards)
+	# Chip/pitch were using full-wedge carry (0.90–0.94) so they never released.
+	if shot_type == "chip":
+		# Mostly roll — releases past the pitch mark.
+		return clampf(lerpf(0.48, 0.58, clampf((club_max_yards - 85.0) / 50.0, 0.0, 1.0)), 0.45, 0.62)
+	if shot_type == "pitch":
+		# More carry than chip, still more release than a stock full wedge.
+		return clampf(lerpf(full, 0.72, 0.55), 0.68, 0.82)
+	return full
+
+
+static func _air_fraction_full(club_max_yards: float) -> float:
 	if club_max_yards >= 245.0:  # Driver — low, hot, releases hard
 		return 0.68
 	if club_max_yards >= 180.0:  # 3W / Hybrid / long iron
@@ -71,19 +83,20 @@ static func air_distance_fraction(club_max_yards: float) -> float:
 	return 0.94  # Gap / Sand
 
 
-## Path-spin multiplier — wedges bite more than long clubs on good contact.
+## Path-spin multiplier — mild club identity only (was 0.75–1.5; short irons over-curved).
+## Flattened: wedge/driver ratio ≤ ~1.25 so small tempo noise isn't 2× offline.
 static func spin_grip_mul(club_max_yards: float) -> float:
 	if club_max_yards >= 245.0:
-		return 0.75
+		return 0.92
 	if club_max_yards >= 180.0:
-		return 0.85
+		return 0.96
 	if club_max_yards >= 150.0:
 		return 1.0
 	if club_max_yards >= 120.0:
-		return 1.15
+		return 1.08
 	if club_max_yards >= 95.0:
-		return 1.35
-	return 1.5
+		return 1.12
+	return 1.18
 
 
 static func putter_for(_remaining_yd: float = 0.0) -> Dictionary:
@@ -349,7 +362,8 @@ static func launch_velocity(
 	target_dir: Vector2,
 	club_max_yards: float,
 	lie: String,
-	severity: String = ""
+	severity: String = "",
+	shot_type: String = "full"
 ) -> Dictionary:
 	var dir := target_dir.normalized()
 	if dir == Vector2.ZERO:
@@ -407,8 +421,8 @@ static func launch_velocity(
 		loft = 1.05
 
 	var air_time := lerpf(0.55, 1.15, clampf(result.power, 0.0, 1.0)) * loft
-	var air_frac := air_distance_fraction(club_max_yards)
-	if lie == "Sand":
+	var air_frac := air_distance_fraction(club_max_yards, shot_type)
+	if lie == "Sand" and shot_type == "full":
 		air_frac = 0.55
 
 	var air_px := total_px * air_frac

@@ -13,16 +13,21 @@ GEN = DIR.joinpath("hole_generator.gd").read_text(encoding="utf-8")
 CTRL = DIR.joinpath("hole_controller.gd").read_text(encoding="utf-8")
 
 
+GREEN_HAZARD_PAD = 14.0
+GREEN_HAZARD_CLEAR_EXTRA = 8.0
+
+
 def clears_green(center, green_c, rx, ry, radius) -> bool:
-    erx = rx + 14.0 + radius + 8.0
-    ery = ry + 14.0 + radius + 8.0
+    erx = rx + GREEN_HAZARD_PAD + radius + GREEN_HAZARD_CLEAR_EXTRA
+    ery = ry + GREEN_HAZARD_PAD + radius + GREEN_HAZARD_CLEAR_EXTRA
     dx = (center[0] - green_c[0]) / max(erx, 1.0)
     dy = (center[1] - green_c[1]) / max(ery, 1.0)
     return dx * dx + dy * dy > 1.0
 
 
 def greenside_center(green_c, pin, side, size, rx, ry):
-    dist = max(rx, ry) + 14.0 + 10.0 + size
+    """Mirror hole_controller: dist clears expanded ellipse (no silent drop)."""
+    dist = max(rx, ry) + GREEN_HAZARD_PAD + GREEN_HAZARD_CLEAR_EXTRA + size + 4.0
     if math.hypot(pin[0], pin[1]) > 4.0:
         ang = math.atan2(pin[1], pin[0])
     else:
@@ -36,6 +41,12 @@ def greenside_center(green_c, pin, side, size, rx, ry):
         if abs(diff) > math.radians(40.0):
             break
         ang += (1 if side == 0 else side) * math.radians(35.0)
+    # Push out until clear (controller loop)
+    for _ in range(12):
+        c = (green_c[0] + math.cos(ang) * dist, green_c[1] + math.sin(ang) * dist)
+        if clears_green(c, green_c, rx, ry, size):
+            return c
+        dist += 6.0
     return (green_c[0] + math.cos(ang) * dist, green_c[1] + math.sin(ang) * dist)
 
 
@@ -72,12 +83,23 @@ def main() -> int:
         gc = greenside_center(green_c, pin, side, 40.0, rx, ry)
         assert clears_green(gc, green_c, rx, ry, 40.0)
 
+    # Elliptical green — old +10 dist failed _clears_green; new placement must pass.
+    erx, ery = 70.0, 40.0
+    for side in (-1, 1):
+        for sz in (36.0, 48.0):
+            gc = greenside_center(green_c, pin, side, sz, erx, ery)
+            assert clears_green(gc, green_c, erx, ery, sz), (side, sz, gc)
+
     # Landing beside fairway, not at green center
     landing = (540.0 + 70.0 + 40.0 * 0.35, -80.0 + 0.5 * 900.0)
     assert clears_green(landing, green_c, rx, ry, 40.0)
 
     assert re.search(r'ROLE_CARRY|"carry"', GEN)
     assert "greenside" in GEN
+    assert "GREEN_HAZARD_PAD" in CTRL
+    assert "GREEN_HAZARD_CLEAR_EXTRA" in CTRL
+    # Greenside sand always places (no if _clears_green skip).
+    assert "elif kind == \"sand\":" in CTRL or "elif kind == 'sand':" in CTRL
     print("hazard_placement_check: ok")
     return 0
 

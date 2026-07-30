@@ -360,6 +360,24 @@ def main() -> int:
     # Ghost guide: through ends at ≈ address (impact at the ball).
     assert "GUIDE_BACK_FULL := 0.75" in GESTURE
     assert "GUIDE_BACK_SHORT := 0.64" in GESTURE
+    assert "func club_guide_duration_scale" in GESTURE
+    assert "club_guide_duration_scale(club_max_yards)" in GESTURE
+    # Driver longer absolute window than mid than wedge; ratio still 3:1.
+    def club_scale(yd: float) -> float:
+        if yd >= 245.0:
+            return 1.18
+        if yd >= 200.0:
+            return 1.10
+        if yd >= 160.0:
+            return 1.0
+        if yd >= 130.0:
+            return 0.92
+        if yd >= 110.0:
+            return 0.86
+        return 0.82
+
+    assert club_scale(260) > club_scale(160) > club_scale(110)
+    assert abs((0.75 * club_scale(260)) / (0.75 * club_scale(260) / 3.0) - 3.0) < 1e-6
     assert "func _impact_cross" in GESTURE
     assert "func _ghost_impact_pos" in GESTURE
     assert "_ghost_impact_pos" in GESTURE.split("func _ideal_ghost_pos")[1].split("func ")[0]
