@@ -83,20 +83,20 @@ static func _air_fraction_full(club_max_yards: float) -> float:
 	return 0.94  # Gap / Sand
 
 
-## Path-spin multiplier — mild club identity only (was 0.75–1.5; short irons over-curved).
-## Flattened: wedge/driver ratio ≤ ~1.25 so small tempo noise isn't 2× offline.
+## Path-spin multiplier — mild club identity (pre-pack driver 0.75; avoid 0.92 over-flatten).
+## Driver 0.78 keeps a bit freer flight than mid; wedge/driver ~1.54 (was 2.0).
 static func spin_grip_mul(club_max_yards: float) -> float:
 	if club_max_yards >= 245.0:
-		return 0.92
+		return 0.78
 	if club_max_yards >= 180.0:
-		return 0.96
+		return 0.88
 	if club_max_yards >= 150.0:
 		return 1.0
 	if club_max_yards >= 120.0:
-		return 1.08
+		return 1.10
 	if club_max_yards >= 95.0:
-		return 1.12
-	return 1.18
+		return 1.15
+	return 1.20
 
 
 static func putter_for(_remaining_yd: float = 0.0) -> Dictionary:

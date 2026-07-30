@@ -12,11 +12,12 @@ ROUTINE = DIR.joinpath("shot_routine.gd").read_text(encoding="utf-8")
 REPORT = DIR.joinpath("../systems/shot_report.gd").read_text(encoding="utf-8")
 METER = DIR.joinpath("meter_display.gd").read_text(encoding="utf-8")
 DEBUG = DIR.joinpath("../debug/debug_controls.gd").read_text(encoding="utf-8")
+HOLE = DIR.joinpath("../course/hole_controller.gd").read_text(encoding="utf-8")
 
 TARGET_FULL = 3.0
 TARGET_SHORT = 2.0
 TOL_FULL = 1.1
-TOL_SHORT = 0.85
+TOL_SHORT = 1.35
 BAND_PERFECT = 0.50
 BAND_GOOD = 1.15
 BAND_THIN_FAT = 1.85
@@ -57,19 +58,26 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
     bs_len = float(sample.get("backswing_len", 0.0))
     ft_len = float(sample.get("follow_through_len", 0.0))
     incomplete = bool(sample.get("incomplete", False))
+    is_pitch = shot_type == "pitch"
     short_game = shot_type in ("putt", "pitch")
     bs_floor = 0.10 if short_game else 0.18
     ft_floor = 0.04 if short_game else 0.08
-    accel_pen = min(max((accel - 8.0) / 24.0, 0.0), 1.0) * t
+    accel_lo = 14.0 if is_pitch else 8.0
+    accel_span = 30.0 if is_pitch else 24.0
+    accel_pen = min(max((accel - accel_lo) / accel_span, 0.0), 1.0) * t
     jerk_pen = min(max((jerk - 0.6) / 1.4, 0.0), 1.0) * t
     short_bs = min(max((bs_floor - bs_len) / bs_floor, 0.0), 1.0)
     short_ft = 0.0 if incomplete else min(max((ft_floor - ft_len) / ft_floor, 0.0), 1.0)
     incomplete_pen = ((0.30 if short_game else 0.55) if incomplete else 0.0)
     peak_vel = float(sample.get("peak_vel", 0.0))
     transition_ratio = float(sample.get("vel_at_top", 0.0)) / max(peak_vel, 0.001)
-    transition_pen = min(max((transition_ratio - 0.15) / (0.55 - 0.15), 0.0), 1.0) * t
+    tr_lo = 0.28 if is_pitch else 0.15
+    tr_hi = 0.75 if is_pitch else 0.55
+    transition_pen = min(max((transition_ratio - tr_lo) / max(tr_hi - tr_lo, 0.05), 0.0), 1.0) * t
+    accel_w = 0.25 if is_pitch else 0.35
+    trans_w = 0.10 if is_pitch else 0.15
     pen = (
-        accel_pen * 0.35 + jerk_pen * 0.15 + transition_pen * 0.15
+        accel_pen * accel_w + jerk_pen * 0.15 + transition_pen * trans_w
         + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
     )
     return min(max(1.0 - pen, 0.0), 1.0)
@@ -123,7 +131,8 @@ def main() -> int:
     assert "TARGET_FULL := 3.0" in GRADE
     assert "TARGET_SHORT := 2.0" in GRADE
     assert "TOL_FULL := 1.1" in GRADE
-    assert "TOL_SHORT := 0.85" in GRADE
+    assert "TOL_SHORT := 1.35" in GRADE
+    assert "is_pitch" in GRADE  # pitch softens accel/transition vs full
     assert "BAND_PERFECT := 0.50" in GRADE
     assert "BAND_GOOD := 1.15" in GRADE
     assert "BAND_THIN_FAT := 1.85" in GRADE
@@ -135,7 +144,7 @@ def main() -> int:
     # a hardcoded threshold here would silently defeat the "adapts to any swing speed" design).
     assert "transition_ratio" in GRADE and "transition_pen" in GRADE
     assert "peak_vel" in GRADE and "vel_at_top" in GRADE
-    assert "jerk_pen * 0.15" in GRADE and "transition_pen * 0.15" in GRADE
+    assert "jerk_pen * 0.15" in GRADE and "trans_w" in GRADE
     assert "_peak_vel" in GESTURE and "_vel_at_top" in GESTURE
     # Accel/jerk fold-in is deferred past the top-detection check so the exact
     # reversal frame (guaranteed sharp regardless of skill) can be excluded.
@@ -359,29 +368,43 @@ def main() -> int:
 
     # Ghost guide: through ends at ≈ address (impact at the ball).
     assert "GUIDE_BACK_FULL := 0.75" in GESTURE
-    assert "GUIDE_BACK_SHORT := 0.64" in GESTURE
+    assert "GUIDE_BACK_SHORT := 0.54" in GESTURE
+    assert "MIN_BACKSWING_PITCH_LANE" in GESTURE
     assert "func club_guide_duration_scale" in GESTURE
     assert "club_guide_duration_scale(club_max_yards)" in GESTURE
     # Driver longer absolute window than mid than wedge; ratio still 3:1.
     def club_scale(yd: float) -> float:
         if yd >= 245.0:
-            return 1.18
+            return 1.06
         if yd >= 200.0:
-            return 1.10
+            return 1.03
         if yd >= 160.0:
             return 1.0
         if yd >= 130.0:
-            return 0.92
+            return 0.95
         if yd >= 110.0:
-            return 0.86
-        return 0.82
+            return 0.90
+        return 0.88
 
     assert club_scale(260) > club_scale(160) > club_scale(110)
+    assert abs(club_scale(260) - 1.06) < 1e-9
     assert abs((0.75 * club_scale(260)) / (0.75 * club_scale(260) / 3.0) - 3.0) < 1e-6
+    # Meter ticks must apply the same full-swing scale (no audio/ghost desync).
+    assert "club_guide_duration_scale(tempo_gesture.club_max_yards)" in METER
     assert "func _impact_cross" in GESTURE
     assert "func _ghost_impact_pos" in GESTURE
-    assert "_ghost_impact_pos" in GESTURE.split("func _ideal_ghost_pos")[1].split("func ")[0]
-    assert "top.lerp(impact_end" in GESTURE
+    assert "func _ghost_follow_pos" in GESTURE
+    ghost_fn = GESTURE.split("func _ideal_ghost_pos")[1].split("func ")[0]
+    assert "_ghost_impact_pos" in ghost_fn
+    assert "top.lerp(impact_end" in ghost_fn
+    # Demo must ease (not constant-speed reverse) and finish past the ball.
+    assert "pow(1.0 - t, 3.0)" in ghost_fn or "pow(1.0 - t" in ghost_fn
+    assert "follow" in ghost_fn
+    assert "_ghost_follow_pos" in ghost_fn
+    # Rest / loop origin at address (start here), not parked in follow-through.
+    assert '"pos": start' in ghost_fn and '"phase": "done"' in ghost_fn
+    assert "_ghost_t0_ms" in GESTURE
+    assert "Time.get_ticks_msec() - _ghost_t0_ms" in GESTURE
     assert "TempoGesture.GUIDE_BACK_SHORT" in METER
     assert "TempoGesture.GUIDE_BACK_FULL" in METER
     assert "0.75 / maxf(target" not in METER
@@ -392,14 +415,24 @@ def main() -> int:
     assert "match the ratio, not the clock" not in ROUTINE
     # Tick interval equals ghost backswing for both shot types (2:1 uses SHORT).
     GUIDE_BACK_FULL = 0.75
-    GUIDE_BACK_SHORT = 0.64
+    GUIDE_BACK_SHORT = 0.54
     assert abs(GUIDE_BACK_SHORT / (GUIDE_BACK_SHORT / TARGET_SHORT) - TARGET_SHORT) < 1e-6
     assert abs(GUIDE_BACK_FULL / (GUIDE_BACK_FULL / TARGET_FULL) - TARGET_FULL) < 1e-6
-    assert (GUIDE_BACK_SHORT if TARGET_SHORT < 2.5 else GUIDE_BACK_FULL) == 0.64
+    assert (GUIDE_BACK_SHORT if TARGET_SHORT < 2.5 else GUIDE_BACK_FULL) == 0.54
     assert (GUIDE_BACK_SHORT if TARGET_FULL < 2.5 else GUIDE_BACK_FULL) == 0.75
+    # Pitch through slightly longer than full (0.27 vs 0.25) — short path needs the time.
+    assert GUIDE_BACK_SHORT / TARGET_SHORT >= GUIDE_BACK_FULL / TARGET_FULL - 1e-9
+    # Ghost follow is lane-relative (not fixed pad-height).
+    follow_fn = GESTURE.split("func _ghost_follow_pos")[1].split("func ")[0]
+    assert "lane_len" in follow_fn and "0.14" in follow_fn
     # Pitch lane is shorter than full (ghost must not race a driver-length path at 2:1).
     assert "_is_pitch()" in GESTURE.split("func address_hint")[1].split("func ")[0]
     assert "_is_pitch()" in GESTURE.split("func top_hint")[1].split("func ")[0]
+    # Range wedges land in pitch band (stock 85% max never did).
+    range_swing = HOLE.split("func _begin_range_swing")[1].split("func ")[0]
+    assert "club_max <= 110.0" in range_swing
+    assert "TempoGrade.PITCH_YD" in range_swing
+    assert "TempoGrade.CHIP_YD" in range_swing
     assert "0.70" in GESTURE.split("func top_hint")[1].split("func ")[0]
     # Impact ≈ address (small early band); old 12% shortfall is gone
     IMPACT_CROSS_FRAC = 0.02
@@ -432,7 +465,7 @@ def main() -> int:
     top_fn = GESTURE.split("func top_hint")[1].split("func ")[0]
     assert "_is_putt()" in addr_fn and "_is_chip()" in addr_fn and "_is_pitch()" in addr_fn
     assert "_is_putt()" in top_fn and "_is_chip()" in top_fn and "_is_pitch()" in top_fn
-    assert "0.70" in top_fn  # pitch shorter top than full 0.92
+    assert "0.80" in top_fn  # pitch shorter top than full 0.92
     # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
     assert "func _lane_project" not in GESTURE
     assert "_address = address_hint()" in GESTURE
@@ -491,7 +524,7 @@ def main() -> int:
     lanes = {
         "putt": (0.22, 0.92),
         "chip": (0.20, 0.85),
-        "pitch": (0.32, 0.70),
+        "pitch": (0.30, 0.80),
         "full": (0.30, 0.92),
     }
     for kind, (addr_y, top_y) in lanes.items():
@@ -499,7 +532,17 @@ def main() -> int:
         assert addr_y > 0.12, "%s through room on-pad" % kind
     assert (lanes["pitch"][1] - lanes["pitch"][0]) < (lanes["full"][1] - lanes["full"][0])
     assert 0.20 < 0.22 < 0.30
-    assert 0.70 < 0.85 < 0.92
+    assert 0.80 < 0.85 < 0.92
+    # Pitch playable: mild blast (3.3:1) with rough reverse is GOOD, not Path+1 MISS.
+    blast = {
+        "t_takeaway": 0.0, "t_top": 0.54, "t_impact": 0.70,
+        "max_accel": 22.0, "max_jerk": 0.4, "backswing_len": 0.35,
+        "follow_through_len": 0.08, "incomplete": False,
+        "peak_vel": 12.0, "vel_at_top": 5.0,
+    }
+    gb = grade(blast, "pitch")
+    assert gb["contact"] in ("PERFECT", "GOOD", "THIN"), gb
+    assert abs(gb["path_error"]) < 0.95, gb
 
     # Edge rejection math — 4% floor 24px on a 1080-wide viewport
     EDGE_FRAC = 0.04

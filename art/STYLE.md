@@ -162,7 +162,8 @@ Ship names unchanged (engine preloads):
 `fairway_tile_a.png`, `rough_tile_a.png`, `rough_tile_b.png`, `water_tile.png`,  
 `green_*.png`, `bunker_*.png`, `ui_golfer_*.png`, etc.
 
-App icon: `icon.png` (512); design mood: `art/references/ref_app_icon_*.png`.
+App icon: `icon.png` (512) + `icon_128` / `icon_1024` — kit **golfer mid-swing + pin + ball**
+(start-screen pieces). Archive/alts: `art/generated/wave_D/icons/`. Mood: `art/references/ref_app_icon_*.png`.
 
 ---
 

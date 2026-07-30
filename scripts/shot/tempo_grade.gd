@@ -9,7 +9,9 @@ const TARGET_FULL := 3.0
 const TARGET_SHORT := 2.0
 ## Half-width of accept window at full balance (full: ~1.9–4.1 with 1.1 — 14-hcp playable).
 const TOL_FULL := 1.1
-const TOL_SHORT := 0.85
+## Pitch/putt ratio window — short pad path makes through easy to over-speed (was 0.85;
+## playtest: ghost match still MISS Path+1 from ~4–6:1 blasts). Wider = mobile-playable 2:1.
+const TOL_SHORT := 1.35
 const PURE_BALANCE := 0.72
 ## Below this aim distance → pitch tempo (2:1); at/above → full (3:1).
 const PITCH_YD := 50.0
@@ -81,12 +83,17 @@ static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String 
 	var ft_len := float(sample.get("follow_through_len", 0.0))
 	var incomplete: bool = bool(sample.get("incomplete", false))
 	# Short strokes are shorter — don't grade putt/pitch length against a full-swing pad.
-	var short_game := shot_type == "putt" or shot_type == "pitch"
+	var is_pitch := shot_type == "pitch"
+	var short_game := shot_type == "putt" or is_pitch
 	var floor_bs := bs_floor(shot_type)
 	var floor_ft := ft_floor(shot_type)
 
-	# ponytail: accel/jerk thresholds are playtest knobs — calibrate on-device
-	var accel_pen := clampf((accel - 8.0) / 24.0, 0.0, 1.0) * t
+	# ponytail: accel/jerk thresholds are playtest knobs — calibrate on-device.
+	# Pitch: short lane + snappy 2:1 reverse spikes pad-normalized accel/transition
+	# even when the player is tracking the ghost (debug Bal ~20% + Path+1 MISS).
+	var accel_lo := 14.0 if is_pitch else 8.0
+	var accel_span := 30.0 if is_pitch else 24.0
+	var accel_pen := clampf((accel - accel_lo) / accel_span, 0.0, 1.0) * t
 	var jerk_pen := clampf((jerk - 0.6) / 1.4, 0.0, 1.0) * t
 	var short_bs := clampf((floor_bs - bs_len) / floor_bs, 0.0, 1.0)
 	var short_ft := 0.0 if incomplete else clampf((floor_ft - ft_len) / floor_ft, 0.0, 1.0)
@@ -97,11 +104,15 @@ static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String 
 	# not a fixed threshold, so it adapts to fast/slow swingers like the tempo ratio does.
 	var peak_vel := float(sample.get("peak_vel", 0.0))
 	var transition_ratio := float(sample.get("vel_at_top", 0.0)) / maxf(peak_vel, 0.001)
-	# Playtest knobs, same as the existing accel/jerk thresholds — calibrate on-device.
-	var transition_pen := clampf((transition_ratio - 0.15) / (0.55 - 0.15), 0.0, 1.0) * t
+	# Pitch 2:1 reverse is snappier by design — don't demand a full-swing pause.
+	var tr_lo := 0.28 if is_pitch else 0.15
+	var tr_hi := 0.75 if is_pitch else 0.55
+	var transition_pen := clampf((transition_ratio - tr_lo) / maxf(tr_hi - tr_lo, 0.05), 0.0, 1.0) * t
 
+	var accel_w := 0.25 if is_pitch else 0.35
+	var trans_w := 0.10 if is_pitch else 0.15
 	var pen := (
-		accel_pen * 0.35 + jerk_pen * 0.15 + transition_pen * 0.15
+		accel_pen * accel_w + jerk_pen * 0.15 + transition_pen * trans_w
 		+ short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
 	)
 	return clampf(1.0 - pen, 0.0, 1.0)

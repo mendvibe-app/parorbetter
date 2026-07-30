@@ -177,6 +177,12 @@ func _apply_safe_area() -> void:
 	UiScale.apply_hole_safe_area(
 		hud, feedback, _wind_flag, shot_routine, confirm_aim_btn, shot_result_panel
 	)
+	if _change_club_btn:
+		# Keep Change Club in top chrome (never over the swing pad).
+		var m := UiScale.viewport_safe_margins(get_viewport())
+		var top := UiScale.FEEDBACK_TOP + m.y
+		_change_club_btn.offset_top = top
+		_change_club_btn.offset_bottom = top + UiScale.TOUCH_MIN
 	if wind_banner:
 		wind_banner.visible = false
 	if _hole_map:
@@ -1181,6 +1187,9 @@ func _start_shot_ui() -> void:
 			_begin_tap_in_stroke(pin_yd)
 		else:
 			_begin_aim_phase()
+	elif GameState.range_mode and not _chosen_club.is_empty():
+		# Range: keep last club until Change Club (don't force picker every swing).
+		_begin_range_swing()
 	else:
 		_begin_club_select()
 
@@ -1261,7 +1270,8 @@ func _on_club_chosen(club: Dictionary) -> void:
 
 
 func _begin_range_swing() -> void:
-	## Skip aim — fixed center line at recommended carry for the chosen club.
+	## Skip aim — fixed center line. Wedges use a short pitch target so 2:1 is
+	## practiceable; stock 85% max never entered the pitch gate on range.
 	_aiming = false
 	_aim_dragging = false
 	if _club_select:
@@ -1270,14 +1280,18 @@ func _begin_range_swing() -> void:
 		confirm_aim_btn.visible = false
 	if _practice_btn:
 		_practice_btn.visible = false
-	if _change_club_btn:
-		_change_club_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
 	var lie := "Tee"
 	var club_max := float(_chosen_club.get("max_yards", 180.0))
 	var wind: Vector2 = course_root.get_meta("wind", Vector2.ZERO)
-	var recommend := BallPhysics.recommended_power(club_max * 0.85, club_max, lie, wind)
+	var target_yd := club_max * 0.85
+	# PW (110) + Gap/Sand (85): short target inside pitch band, above chip.
+	if club_max <= 110.0:
+		var gate := minf(TempoGrade.PITCH_YD, club_max * TempoGrade.PITCH_POWER_CAP)
+		if gate > TempoGrade.CHIP_YD + 2.0:
+			target_yd = clampf(club_max * 0.35, TempoGrade.CHIP_YD + 2.0, gate - 1.0)
+	var recommend := BallPhysics.recommended_power(target_yd, club_max, lie, wind)
 	var est := BallPhysics.estimate_carry_yards(recommend, club_max, lie)
 	var bearing := _cup_pos - _tee_pos
 	if bearing.length_squared() < 1.0:
@@ -1289,6 +1303,9 @@ func _begin_range_swing() -> void:
 	_power_previewing = true
 	_refresh_aim_visuals()
 	_set_aim_visuals_visible(true)
+	# Sticky club: Change Club still available so you can switch without re-entering range.
+	if _change_club_btn:
+		_change_club_btn.visible = true
 	_start_power_swing(false)
 
 
@@ -1397,22 +1414,29 @@ func _setup_change_club_btn() -> void:
 	_change_club_btn.text = "Change Club"
 	_change_club_btn.visible = false
 	_change_club_btn.custom_minimum_size = Vector2(UiScale.TOUCH_MIN * 2.2, UiScale.TOUCH_MIN)
-	if confirm_aim_btn:
-		_change_club_btn.add_theme_font_size_override("font_size", confirm_aim_btn.get_theme_font_size("font_size"))
-		# Sit above Practice Swing, which sits above Confirm Aim.
-		_change_club_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-		_change_club_btn.offset_left = confirm_aim_btn.offset_left
-		_change_club_btn.offset_right = confirm_aim_btn.offset_right
-		_change_club_btn.offset_top = confirm_aim_btn.offset_top - 280.0
-		_change_club_btn.offset_bottom = confirm_aim_btn.offset_bottom - 280.0
+	_change_club_btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
+	# Top-right chrome — range keeps this visible during the stroke; center-bottom
+	# sat on the live swing pad. Course aim uses the same parking spot.
+	_change_club_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_change_club_btn.offset_left = -300.0
+	_change_club_btn.offset_right = -24.0
+	_change_club_btn.offset_top = UiScale.FEEDBACK_TOP
+	_change_club_btn.offset_bottom = UiScale.FEEDBACK_TOP + UiScale.TOUCH_MIN
 	ui_layer.add_child(_change_club_btn)
 	_change_club_btn.pressed.connect(_on_change_club_pressed)
 
 
 func _on_change_club_pressed() -> void:
-	if not _aiming or hole_complete:
+	if hole_complete:
+		return
+	# Course: only during aim. Range: anytime before/after a sticky swing.
+	if not GameState.range_mode and not _aiming:
 		return
 	AudioBus.play_ui()
+	if GameState.range_mode:
+		shot_routine.set_active(false)
+		if shot_routine.has_method("cancel_shot"):
+			shot_routine.cancel_shot()
 	_begin_club_select()
 
 
@@ -1850,6 +1874,8 @@ func _on_shot_ready(result: ShotResult) -> void:
 	ball_in_flight = true
 	_power_previewing = false
 	_set_aim_visuals_visible(false)
+	if _change_club_btn:
+		_change_club_btn.visible = false
 	_refresh_wind_indicator(false)
 	var lie_at_strike := ball.get_lie()
 	_set_green_book_visible(false)
@@ -1887,6 +1913,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"aim_radius_yd": _aim_radius_yd,
 		"aim_offset": aim_offset,
 		"form": GameState.get_form(),
+		"shot_type": shot_routine.shot_type,
 	}
 	# Full-shot flight owns the screen (up-and-in + tracer); glance waits for settle.
 	# Putts stay short — keep the live glance.

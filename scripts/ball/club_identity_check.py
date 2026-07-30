@@ -37,16 +37,16 @@ def _air_fraction_full(club_max_yards: float) -> float:
 
 def spin_grip_mul(club_max_yards: float) -> float:
     if club_max_yards >= 245.0:
-        return 0.92
+        return 0.78
     if club_max_yards >= 180.0:
-        return 0.96
+        return 0.88
     if club_max_yards >= 150.0:
         return 1.0
     if club_max_yards >= 120.0:
-        return 1.08
+        return 1.10
     if club_max_yards >= 95.0:
-        return 1.12
-    return 1.18
+        return 1.15
+    return 1.20
 
 
 def main() -> None:
@@ -64,9 +64,10 @@ def main() -> None:
     grips = [spin_grip_mul(y) for y in samples]
     for a, b in zip(airs, airs[1:]):
         assert a <= b + 1e-9, (a, b)
-    # Flattened grip: still mild identity, not 2× wedge vs driver.
+    # Mild identity: driver freer than mid; not 2× wedge vs driver.
+    assert spin_grip_mul(260) == 0.78
     assert spin_grip_mul(85) >= spin_grip_mul(160) >= spin_grip_mul(260)
-    assert spin_grip_mul(85) / spin_grip_mul(260) < 1.35
+    assert spin_grip_mul(85) / spin_grip_mul(260) < 1.6
 
     assert air_distance_fraction(260) == 0.68
     assert air_distance_fraction(160) == 0.78

@@ -18,14 +18,16 @@ const VEL_TOP_EPS := 40.0
 const IMPACT_CROSS_FRAC := 0.02
 const IMPACT_CROSS_FLOOR_PX := 6.0
 const MIN_BACKSWING_FRAC := 0.14
+## Pitch min top as a fraction of the short lane (full uses MIN_BACKSWING_FRAC of pad H).
+const MIN_BACKSWING_PITCH_LANE := 0.22
 ## ponytail: ~4% L/R edge margin — calibrate on-device with gesture nav on
 const EDGE_DEADZONE_FRAC := 0.04
 const EDGE_DEADZONE_MIN_PX := 24.0
 ## Ideal Tour-Tempo-ish pacing for the pad ghost (seconds).
-## Full 3:1 → 0.75 / 0.25. Short 2:1 → 0.64 / 0.32 (was 0.50/0.25 — same
-## through as full while racing a full-length lane; unreadable on pitch).
+## Full 3:1 → 0.75 / 0.25. Short 2:1 → 0.54 / 0.27 — through slightly longer than full
+## so the short pitch path isn't over-sped into 4–6:1 (playtest Path+1 MISS).
 const GUIDE_BACK_FULL := 0.75
-const GUIDE_BACK_SHORT := 0.64
+const GUIDE_BACK_SHORT := 0.54
 const BALL_TEX := preload("res://assets/ball/ball.png")
 const TEX_START := preload("res://assets/ui/ui_tempo_landmark_start.png")
 const TEX_TOP := preload("res://assets/ui/ui_tempo_landmark_top.png")
@@ -144,6 +146,8 @@ var _max_lateral: float = 0.0
 var _marker_crossed: bool = false
 ## msec when axis locked — brief ball pop-in scale.
 var _ball_pop_at: int = 0
+## Idle ghost loop origin — pad enable / reset so demo always starts at address.
+var _ghost_t0_ms: int = 0
 ## Fastest speed reached during the backswing — baseline for the transition check.
 var _peak_vel: float = 0.0
 ## Speed at the exact moment of reversal — compared against _peak_vel to grade
@@ -214,20 +218,21 @@ func address_hint() -> Vector2:
 	elif _is_chip():
 		y = 0.20
 	elif _is_pitch():
-		y = 0.32
+		y = 0.30
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
-	## Pitch top sits higher than full — shorter path matches 2:1 tour pace.
+	## Pitch shorter than full but long enough that through takes real time
+	## (0.70 was so short a normal finger blast read as 4–6:1 → always MISS).
 	var y := 0.92
 	if _is_putt():
 		y = 0.92
 	elif _is_chip():
 		y = 0.85
 	elif _is_pitch():
-		y = 0.70
+		y = 0.80
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
@@ -350,6 +355,7 @@ func reset() -> void:
 	_ball_pop_at = 0
 	_peak_vel = 0.0
 	_vel_at_top = 0.0
+	_ghost_t0_ms = Time.get_ticks_msec()
 	queue_redraw()
 	trail_updated.emit(trail)
 	live_changed.emit()
@@ -357,7 +363,9 @@ func reset() -> void:
 
 func set_enabled(on: bool) -> void:
 	active = on
-	if not on:
+	if on:
+		_ghost_t0_ms = Time.get_ticks_msec()
+	else:
 		dragging = false
 		swinging = false
 	modulate.a = 1.0 if on else 0.45
@@ -399,18 +407,19 @@ func _guide_down_sec() -> float:
 
 
 static func club_guide_duration_scale(club_max_yards: float) -> float:
-	## WGT-style: same 3:1 skill, longer absolute window with longer clubs.
+	## Subtle feel cue only — 1.18 made driver ghost a new obstacle (hands + VEL_TOP_EPS).
+	## Driver ~1.06 → back ~0.795s (was ~0.885s). Ratio still 3:1 via _guide_down_sec.
 	if club_max_yards >= 245.0:
-		return 1.18
+		return 1.06
 	if club_max_yards >= 200.0:
-		return 1.10
+		return 1.03
 	if club_max_yards >= 160.0:
 		return 1.0
 	if club_max_yards >= 130.0:
-		return 0.92
+		return 0.95
 	if club_max_yards >= 110.0:
-		return 0.86
-	return 0.82
+		return 0.90
+	return 0.88
 
 
 func _impact_cross() -> float:
@@ -426,24 +435,50 @@ func _ghost_impact_pos(start: Vector2, top: Vector2) -> Vector2:
 	return start + lane * (minf(_impact_cross(), lane_len * 0.45) / lane_len)
 
 
+func _ghost_follow_pos(start: Vector2, top: Vector2) -> Vector2:
+	## Past the ball (through address) so the demo teaches a complete stroke, not a stop at impact.
+	## Lane-relative: pad-height follow was ~26% of the short pitch stroke (oversized).
+	var through := (start - top).normalized()
+	if through.length_squared() < 0.01:
+		through = Vector2(0, -1)
+	var lane_len := maxf(start.distance_to(top), 1.0)
+	var dist := maxf(lane_len * 0.14, 18.0)
+	# Stay on-pad above address (through points toward target / smaller y).
+	var room := maxf(start.y - 12.0, 12.0)
+	return start + through * minf(dist, room)
+
+
 func _ideal_ghost_pos(elapsed: float) -> Dictionary:
-	## Returns {pos, phase} phase: pull|top|through|done
-	## Through ends at impact cross (≈ address) so tracing the ghost matches the grader.
+	## Demo path that grades well if followed: ease into top (calm transition),
+	## accelerate through impact (3:1 / 2:1 times), then follow past the ball.
+	## Old constant-speed lerp + hard reverse taught a lurchy incomplete stroke.
 	var start := _address if (dragging and _t_takeaway >= 0.0) else address_hint()
 	var top := top_hint()
 	var impact_end := _ghost_impact_pos(start, top)
+	var follow_end := _ghost_follow_pos(start, top)
 	var back := _guide_back_sec()
 	var down := _guide_down_sec()
+	## Short finish after impact — visual only; ratio is still back:down only.
+	var follow := clampf(down * 0.55, 0.12, 0.28)
 	if elapsed < 0.0:
 		return {"pos": start, "phase": "pull"}
 	if elapsed <= back:
-		var u := elapsed / back
-		var phase := "top" if u > 0.92 else "pull"
+		# Ease-out: most travel early, slow into top (low vel_at_top → better balance).
+		var t := clampf(elapsed / maxf(back, 0.001), 0.0, 1.0)
+		var u := 1.0 - pow(1.0 - t, 3.0)
+		var phase := "top" if t > 0.88 else "pull"
 		return {"pos": start.lerp(top, u), "phase": phase}
 	if elapsed <= back + down:
-		var u2 := (elapsed - back) / down
+		# Ease-in: soft leave from top, accelerate through the ball (not a constant reverse).
+		var t2 := clampf((elapsed - back) / maxf(down, 0.001), 0.0, 1.0)
+		var u2 := t2 * t2 * (3.0 - 2.0 * t2)  # smoothstep — calm start, committed finish
 		return {"pos": top.lerp(impact_end, u2), "phase": "through"}
-	return {"pos": impact_end, "phase": "done"}
+	if elapsed <= back + down + follow:
+		var t3 := clampf((elapsed - back - down) / maxf(follow, 0.001), 0.0, 1.0)
+		var u3 := 1.0 - pow(1.0 - t3, 2.0)
+		return {"pos": impact_end.lerp(follow_end, u3), "phase": "follow"}
+	# Rest at address (impact zone) — next loop and the player's start are the same place.
+	return {"pos": start, "phase": "done"}
 
 
 func _accept_mouse() -> bool:
@@ -613,7 +648,12 @@ func _update(pos: Vector2) -> void:
 			_marker_crossed = true
 			moment.emit("marker")
 
-	var min_bs := maxf(size.y * MIN_BACKSWING_FRAC, _deadzone() * 1.2)
+	# Pitch: fraction of short lane (same ~22% of stroke as full's pad-H rule on long lane).
+	var min_bs := (
+		maxf(_lane_len() * MIN_BACKSWING_PITCH_LANE, _deadzone() * 1.2)
+		if _is_pitch()
+		else maxf(size.y * MIN_BACKSWING_FRAC, _deadzone() * 1.2)
+	)
 	if not had_top and _peak_disp >= min_bs:
 		var reversing := _prev_vel > VEL_TOP_EPS and _vel <= VEL_TOP_EPS * 0.25
 		var peaked := _disp < _peak_disp - _deadzone() * 0.15 and _vel < 0.0
@@ -1176,10 +1216,12 @@ func _draw_tempo_ghost(looping: bool) -> void:
 		return
 	var back := _guide_back_sec()
 	var down := _guide_down_sec()
-	var cycle := back + down + 0.35  # rest at address before replaying
+	var follow := clampf(down * 0.55, 0.12, 0.28)
+	var cycle := back + down + follow + 0.28  # rest at address before replaying
 	var elapsed: float
 	if looping:
-		elapsed = fmod(Time.get_ticks_msec() / 1000.0, cycle)
+		# Pad-local clock (not wall fmod) so open always starts at address, not mid-follow.
+		elapsed = fmod(maxf((Time.get_ticks_msec() - _ghost_t0_ms) / 1000.0, 0.0), cycle)
 	elif dragging and _t_takeaway >= 0.0:
 		elapsed = Time.get_ticks_msec() / 1000.0 - _t_takeaway
 	else:
@@ -1193,8 +1235,11 @@ func _draw_tempo_ghost(looping: bool) -> void:
 			col = Color(0.45, 1.0, 0.55, a * 0.7)
 		"through":
 			col = Color(1.0, 0.9, 0.35, a * 0.7)
+		"follow":
+			col = Color(0.55, 0.95, 0.65, a * 0.6)
 		"done":
-			col = Color(0.35, 0.85, 1.0, a * 0.35)
+			# Address rest — same cue as "start here", a bit stronger than the old follow-hold.
+			col = Color(0.35, 0.85, 1.0, a * 0.55)
 	# Ghost disc + ring — follow this for perfect spacing
 	draw_circle(pos, 18.0, Color(col.r, col.g, col.b, col.a * 0.35))
 	draw_arc(pos, 20.0, 0.0, TAU, 28, col, 3.0, true)

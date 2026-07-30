@@ -85,23 +85,30 @@ func _process(_delta: float) -> void:
 		return
 	var m: Dictionary = GameState.last_shot_metrics
 	var t: Dictionary = GameState.last_tempo_metrics
-	var tempo_line := "Tempo: —"
+	var shot_type := str(m.get("shot_type", "")) if not m.is_empty() else ""
+	var type_bit := (" [%s]" % shot_type) if not shot_type.is_empty() else ""
+	var tempo_line := "Tempo: —%s" % type_bit
 	if not t.is_empty():
 		if t.has("target_frac"):
-			tempo_line = "Putt frac %.2f (tgt %.2f)  bal %d%%\n%s" % [
+			tempo_line = "Putt frac %.2f (tgt %.2f)  bal %d%%%s\n%s" % [
 				float(t.get("actual_frac", 0.0)),
 				float(t.get("target_frac", 0.0)),
 				int(float(t.get("balance", 0.0)) * 100.0),
+				type_bit,
 				str(t.get("note", "")),
 			]
 		else:
-			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms\naccel %.1f (clean<8, maxed@32)  jerk %.2f (clean<0.6, maxed@2.0)\n%s" % [
+			var tgt := float(t.get("target", 3.0))
+			var accel_hint := "clean<14" if tgt < 2.5 else "clean<8"
+			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms%s\naccel %.1f (%s)  jerk %.2f\n%s" % [
 				float(t.get("ratio", 0.0)),
-				float(t.get("target", 3.0)),
+				tgt,
 				int(float(t.get("balance", 0.0)) * 100.0),
 				int(t.get("backswing_ms", 0)),
 				int(t.get("downswing_ms", 0)),
+				type_bit,
 				float(t.get("max_accel", 0.0)),
+				accel_hint,
 				float(t.get("max_jerk", 0.0)),
 				str(t.get("note", "")),
 			]
