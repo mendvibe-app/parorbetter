@@ -78,6 +78,12 @@ def main() -> None:
     assert air_distance_fraction(85, "pitch") < air_distance_fraction(85, "full")
     assert air_distance_fraction(85, "chip") < 0.65
     assert "chip" in PHYS and "pitch" in PHYS
+    # Short-shot line damp — greenside path+1 must not reverse a 3 yd pitch.
+    assert "static func short_shot_line_scale" in PHYS
+    assert "short_shot_line_scale(total_yards)" in PHYS
+    assert "clampf(total_yards / 40.0, 0.12, 1.0)" in PHYS or "total_yards / 40.0" in PHYS
+    BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
+    assert "spin_scale" in BALL and "along_spd" in BALL
 
     print(
         "club_identity_check: ok "

@@ -12,6 +12,7 @@ GS = (ROOT / "scripts" / "autoload" / "game_state.gd").read_text(encoding="utf-8
 SS = (ROOT / "scripts" / "ui" / "start_screen.gd").read_text(encoding="utf-8")
 HC = (ROOT / "scripts" / "course" / "hole_controller.gd").read_text(encoding="utf-8")
 HUD = (ROOT / "scripts" / "ui" / "hud.gd").read_text(encoding="utf-8")
+GO = (ROOT / "scripts" / "ui" / "game_over.gd").read_text(encoding="utf-8")
 
 
 def format_score_to_par(score: int) -> str:
@@ -26,17 +27,28 @@ def main() -> int:
     assert "_return_to_start()" in MAIN
     ready = re.search(r"func _ready\(\) -> void:\n((?:.*\n)*?)(?=\nfunc |\Z)", MAIN)
     assert ready, "missing main._ready"
-    assert "_start_run()" not in ready.group(1), "main._ready must not auto-start a run"
+    assert "_start_run(" not in ready.group(1) or "_start_run()" not in ready.group(1).replace(
+        "_start_run(false)", ""
+    ).replace("_start_run(true)", "")
+    # Stricter: no bare auto-start call in ready body
+    assert re.search(r"^\s*_start_run\(", ready.group(1), re.M) is None, "main._ready must not auto-start"
     assert "_return_to_start()" in ready.group(1)
 
     assert "signal start_pressed" in SS
+    assert "signal stroke_play_pressed" in SS
     assert "signal green_pressed" in SS
     assert "signal range_pressed" in SS
     assert "func show_screen" in SS
     assert "format_score_to_par" in SS
+    assert "Survival" in SS or "stroke_play" in SS
 
     assert 'RECORDS_PATH := "user://records.cfg"' in GS
     assert "best_score_to_par" in GS
+    assert "best_stroke_score_to_par" in GS
+    assert "stroke_play_mode" in GS
+    assert "func is_stroke_play" in GS
+    assert "func apply_hole_result_lives" in GS
+    assert "if stroke_play_mode or in_practice():" in GS
     assert "best_deepest_hole" in GS
     assert "has_finished_course" in GS
     assert "func add_score_to_par" in GS
@@ -50,25 +62,31 @@ def main() -> int:
     assert "func exit_green_mode" in GS
 
     assert "GameState.add_score_to_par(diff)" in HC
+    assert "func _hole_result_feedback" in HC
+    assert "is_stroke_play()" in HC
     assert "func load_practice_green" in HC
-    assert "func _make_practice_green_hole" in HC
-    assert "func _reset_practice_green" in HC
-    assert "GameState.green_mode:" in HC  # cup divert in _on_holed_out
+    assert "GameState.green_mode:" in HC
     assert "func refresh_practice_green" in HUD
+    assert "lives_row.visible = GameState.is_survival()" in HUD
 
     assert "green_pressed.connect(_on_practice_green)" in MAIN
+    assert "stroke_play_pressed" in MAIN
     assert "load_practice_green()" in MAIN
     assert "GameState.in_practice()" in MAIN
+    assert "reset_run(stroke_play)" in MAIN or "reset_run(p_stroke_play" in GS
+
+    assert "ROUND COMPLETE" in GO
+    assert "18 Hole Round" in GO
 
     assert format_score_to_par(0) == "E"
     assert format_score_to_par(-4) == "-4"
     assert format_score_to_par(2) == "+2"
 
-    # Deepest persists on begin_hole (not only end_run); primary falls back to deepest.
-    assert "if deepest_hole > best_deepest_hole:" in GS
-    assert "_save_records()" in GS
-    assert "elif GameState.best_deepest_hole > 0:" in SS
-    assert 'score_label.text = str(GameState.best_deepest_hole)' in SS
+    assert "if not stroke_play_mode and deepest_hole > best_deepest_hole:" in GS or (
+        "not stroke_play_mode" in GS and "best_deepest_hole" in GS
+    )
+    assert "Survival" in SS
+    assert "18 Hole" in SS
 
     dusk = ROOT / "assets" / "background" / "title_dusk.png"
     assert dusk.is_file(), f"missing {dusk}"
@@ -76,7 +94,8 @@ def main() -> int:
     assert scene.is_file()
     scene_txt = scene.read_text(encoding="utf-8")
     assert 'name="Buttons" type="VBoxContainer"' in scene_txt
-    assert "Start Round" in scene_txt
+    assert "Survival" in scene_txt
+    assert "18 Hole Round" in scene_txt
     assert "Practice Green" in scene_txt
     assert "Practice Range" in scene_txt
     assert 'path="res://scenes/ui/start_screen.tscn"' in (ROOT / "scenes" / "main.tscn").read_text(

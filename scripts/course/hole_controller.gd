@@ -101,7 +101,7 @@ var _pinch_start_mult: float = 1.0
 var _user_zoom_mult: float = 1.0  ## manual pinch override on top of the auto-framed zoom
 var _magnify_last_ms: int = -1  ## last InputEventMagnifyGesture time; drives idle-release
 var _practice_btn: Button
-var _change_club_btn: Button
+var _change_club_btn: BaseButton
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
 var _aim_radius_base_yd: float = 22.0
@@ -135,6 +135,8 @@ var _putt_cam_look: Vector2 = Vector2.ZERO
 @onready var wind_banner: Label = $UILayer/WindBanner
 @onready var ui_layer: CanvasLayer = $UILayer
 const _HOLE_MAP_SCR := preload("res://scripts/ui/hole_map.gd")
+const TEX_CLUB_BAG: Texture2D = preload("res://assets/ui/ui_club_bag.png")
+const CHANGE_CLUB_ICON := 88.0
 var _hole_map: Control  ## HoleMap instance
 
 
@@ -158,9 +160,11 @@ func _ready() -> void:
 	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_practice_btn()
 	_setup_change_club_btn()
-	# After practice/wind chrome: keep club picker as the topmost UI modal.
-	ui_layer.move_child(_club_select, -1)
 	_setup_hole_map()
+	# Bag icon above map in tree (map was covering it); club select stays topmost modal.
+	if _change_club_btn:
+		ui_layer.move_child(_change_club_btn, -1)
+	ui_layer.move_child(_club_select, -1)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -177,12 +181,10 @@ func _apply_safe_area() -> void:
 	UiScale.apply_hole_safe_area(
 		hud, feedback, _wind_flag, shot_routine, confirm_aim_btn, shot_result_panel
 	)
-	if _change_club_btn:
-		# Keep Change Club in top chrome (never over the swing pad).
-		var m := UiScale.viewport_safe_margins(get_viewport())
-		var top := UiScale.FEEDBACK_TOP + m.y
-		_change_club_btn.offset_top = top
-		_change_club_btn.offset_bottom = top + UiScale.TOUCH_MIN
+	# ShotRoutine may compact pad chrome (meter hidden on scored shots) after safe-area defaults.
+	if shot_routine and shot_routine.visible and shot_routine.has_method("layout_shot_chrome"):
+		shot_routine.layout_shot_chrome()
+	_park_change_club_btn()
 	if wind_banner:
 		wind_banner.visible = false
 	if _hole_map:
@@ -1409,21 +1411,38 @@ func _setup_practice_btn() -> void:
 
 
 func _setup_change_club_btn() -> void:
-	_change_club_btn = Button.new()
+	## Bag icon directly under the cart-GPS map (top-right chrome column).
+	_change_club_btn = TextureButton.new()
 	_change_club_btn.name = "ChangeClubButton"
-	_change_club_btn.text = "Change Club"
 	_change_club_btn.visible = false
-	_change_club_btn.custom_minimum_size = Vector2(UiScale.TOUCH_MIN * 2.2, UiScale.TOUCH_MIN)
-	_change_club_btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
-	# Top-right chrome — range keeps this visible during the stroke; center-bottom
-	# sat on the live swing pad. Course aim uses the same parking spot.
-	_change_club_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
-	_change_club_btn.offset_left = -300.0
-	_change_club_btn.offset_right = -24.0
-	_change_club_btn.offset_top = UiScale.FEEDBACK_TOP
-	_change_club_btn.offset_bottom = UiScale.FEEDBACK_TOP + UiScale.TOUCH_MIN
+	_change_club_btn.texture_normal = TEX_CLUB_BAG
+	_change_club_btn.ignore_texture_size = true
+	_change_club_btn.stretch_mode = TextureButton.STRETCH_KEEP_ASPECT_CENTERED
+	_change_club_btn.custom_minimum_size = Vector2(CHANGE_CLUB_ICON, CHANGE_CLUB_ICON)
+	_change_club_btn.tooltip_text = "Change Club"
+	_change_club_btn.focus_mode = Control.FOCUS_NONE
+	_change_club_btn.z_index = 6  # HoleMap is z=5
+	_change_club_btn.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	ui_layer.add_child(_change_club_btn)
 	_change_club_btn.pressed.connect(_on_change_club_pressed)
+	_park_change_club_btn()
+
+
+func _park_change_club_btn() -> void:
+	if _change_club_btn == null:
+		return
+	var m := UiScale.viewport_safe_margins(get_viewport())
+	# HoleMap.park_under_debug band, then sit flush under the map (right-aligned).
+	var map_top := UiScale.HUD_HEIGHT + m.y + 8.0 + 60.0 + 10.0
+	var right := m.z + 16.0
+	var s := CHANGE_CLUB_ICON
+	var gap := 8.0
+	var top := map_top + HoleMap.MAP_H + gap
+	_change_club_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_change_club_btn.offset_right = -right
+	_change_club_btn.offset_left = -right - s
+	_change_club_btn.offset_top = top
+	_change_club_btn.offset_bottom = top + s
 
 
 func _on_change_club_pressed() -> void:
@@ -2325,39 +2344,49 @@ func _on_holed_out() -> void:
 	GameState.add_score_to_par(diff)
 	var life_delta := GameState.apply_hole_result_lives(result)
 	_update_hud()
-	var life_txt := ""
-	if life_delta > 0:
-		life_txt = "  +%d life" % life_delta
-	elif life_delta < 0:
-		life_txt = "  %d life" % life_delta
-	feedback.text = "IN THE HOLE  ·  %s (%+d)%s" % [Scoring.label(result), diff, life_txt]
+	feedback.text = _hole_result_feedback(result, diff, life_delta)
 	feedback.modulate = Color(1.0, 0.95, 0.5)
 	if Scoring.is_birdie_or_better(result):
-		_show_birdie()
+		_show_birdie(result, diff)
 		AudioBus.play_golf_clap()
 	elif result == Scoring.Result.PAR:
 		AudioBus.play_golf_clap()
-	# Start sting now — don't wait for the settle timer / panel.
-	var ending := not GameState.run_active or GameState.lives <= 0 \
-		or GameState.current_hole >= GameState.HOLE_COUNT
-	if ending:
+	# Survival: death sting on lives out / finish. Stroke play: only soft finish on 18.
+	var died := GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0)
+	var finished := GameState.current_hole >= GameState.HOLE_COUNT
+	if died:
 		AudioBus.play_water_hazard()
 	# Let the soft cam settle before advancing (was 1.1 with snappy zoom).
 	await get_tree().create_timer(1.55).timeout
-	if not GameState.run_active or GameState.lives <= 0:
+	if GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0):
 		request_game_over.emit()
 		return
-	if GameState.current_hole >= GameState.HOLE_COUNT:
+	if finished:
 		GameState.end_run("course_complete")
 		request_game_over.emit()
 		return
 	request_next_hole.emit()
 
 
-func _show_birdie() -> void:
+func _hole_result_feedback(result: Scoring.Result, diff: int, life_delta: int) -> String:
+	var label := Scoring.label(result)
+	if GameState.is_stroke_play():
+		return "IN THE HOLE  ·  %s (%+d)" % [label, diff]
+	var life_txt := ""
+	if life_delta > 0:
+		life_txt = "  +%d life" % life_delta
+	elif life_delta < 0:
+		life_txt = "  %d life" % life_delta
+	return "IN THE HOLE  ·  %s (%+d)%s" % [label, diff, life_txt]
+
+
+func _show_birdie(result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1) -> void:
 	birdie_label.visible = true
 	birdie_label.modulate.a = 0.0
-	birdie_label.text = "BIRDIE MOMENTUM  +1 LIFE"
+	if GameState.is_stroke_play():
+		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
+	else:
+		birdie_label.text = "BIRDIE MOMENTUM  +1 LIFE"
 	var tw := create_tween()
 	tw.tween_property(birdie_label, "modulate:a", 1.0, 0.15)
 	tw.tween_property(flash_rect, "modulate:a", 0.45, 0.08)

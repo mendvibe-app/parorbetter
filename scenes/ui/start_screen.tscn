@@ -207,7 +207,22 @@ theme_override_styles/pressed = SubResource("menu_btn_pressed")
 theme_override_styles/focus = SubResource("menu_btn_hover")
 theme_override_constants/icon_max_width = 56
 theme_override_font_sizes/font_size = 52
-text = "Start Round"
+text = "Survival"
+icon = ExtResource("3")
+icon_alignment = 1
+vertical_icon_alignment = 0
+expand_icon = false
+
+[node name="StrokePlayButton" type="Button" parent="Panel/Buttons"]
+custom_minimum_size = Vector2(400, 128)
+layout_mode = 2
+theme_override_styles/normal = SubResource("menu_btn_normal")
+theme_override_styles/hover = SubResource("menu_btn_hover")
+theme_override_styles/pressed = SubResource("menu_btn_pressed")
+theme_override_styles/focus = SubResource("menu_btn_hover")
+theme_override_constants/icon_max_width = 56
+theme_override_font_sizes/font_size = 48
+text = "18 Hole Round"
 icon = ExtResource("3")
 icon_alignment = 1
 vertical_icon_alignment = 0

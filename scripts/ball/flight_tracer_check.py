@@ -63,6 +63,10 @@ def main() -> None:
     assert "Color(0.95, 0.85, 0.25, 0.92)" in BALL  # amber
     assert "Color(0.95, 0.35, 0.3, 0.92)" in BALL  # red
     assert "ShotResult.ContactQuality.PERFECT:" in BALL
+    # Spin curve is relative to launch dir — world-X only broke past-pin / side chips.
+    assert "Vector2(spin * 28.0, 0.0)" not in BALL
+    assert "flight_right * spin" in BALL or "roll_right * spin" in BALL
+    assert "Vector2(-_launch_dir.y, _launch_dir.x)" in BALL
 
     assert "const FLIGHT_LAUNCH_FRAC := 0.90" in HOLE
     assert "const FLIGHT_LAND_FRAC := 1.28" in HOLE

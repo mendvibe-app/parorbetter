@@ -18,6 +18,8 @@ func _ready() -> void:
 	hole_controller.request_game_over.connect(_on_game_over)
 	game_over.restart_pressed.connect(_on_restart)
 	start_screen.start_pressed.connect(_on_start)
+	if start_screen.has_signal("stroke_play_pressed"):
+		start_screen.stroke_play_pressed.connect(_on_stroke_play)
 	start_screen.green_pressed.connect(_on_practice_green)
 	start_screen.range_pressed.connect(_on_practice_range)
 	start_screen.coach_pressed.connect(_on_coach)
@@ -42,7 +44,12 @@ func _return_to_start() -> void:
 
 func _on_start() -> void:
 	start_screen.hide_screen()
-	_start_run()
+	_start_run(false)
+
+
+func _on_stroke_play() -> void:
+	start_screen.hide_screen()
+	_start_run(true)
 
 
 func _on_practice_green() -> void:
@@ -59,9 +66,9 @@ func _on_practice_range() -> void:
 	hole_controller.load_range()
 
 
-func _start_run() -> void:
+func _start_run(stroke_play: bool = false) -> void:
 	game_over.hide_panel()
-	GameState.reset_run()
+	GameState.reset_run(stroke_play)
 	AudioBus.start_music()
 	hole_controller.load_hole(1)
 
@@ -72,7 +79,10 @@ func _on_next_hole() -> void:
 
 
 func _on_game_over() -> void:
-	game_over.show_result(GameState.deepest_hole, "out_of_lives" if GameState.lives <= 0 else "course_complete")
+	var reason := "course_complete"
+	if GameState.is_survival() and GameState.lives <= 0:
+		reason = "out_of_lives"
+	game_over.show_result(GameState.deepest_hole, reason)
 
 
 func _on_restart() -> void:

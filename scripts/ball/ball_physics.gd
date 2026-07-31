@@ -357,6 +357,12 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 			return 1.0
 
 
+## Dampen path/spin on very short shots so sidespin can't outrun forward speed.
+static func short_shot_line_scale(total_yards: float) -> float:
+	# Full line authority by ~40 yd; at 3–8 yd (greenside pitch) keep a small miss only.
+	return clampf(total_yards / 40.0, 0.12, 1.0)
+
+
 static func launch_velocity(
 	result: ShotResult,
 	target_dir: Vector2,
@@ -447,11 +453,18 @@ static func launch_velocity(
 		_:
 			pass
 	spin *= spin_grip_mul(club_max_yards)
+	# Short greenside pitches: full-swing path/spin scale on ~3–15 yd total speed makes
+	# the ball go sideways/back (playtest: plan 3 yd, path +1, actual flies offline).
+	var line_scale := short_shot_line_scale(total_yards)
+	lateral *= line_scale
+	spin *= line_scale
 
 	var right := Vector2(-dir.y, dir.x)
-	var launch_dir := (dir + right * lateral * 0.65).normalized()
-	if launch_dir.dot(dir) < 0.2:
-		launch_dir = dir
+	# Cap offline aim: keep launch mostly toward target (was 0.2 → nearly 80° offline OK).
+	var offline := clampf(lateral * 0.65, -0.85, 0.85)
+	var launch_dir := (dir + right * offline).normalized()
+	if launch_dir.dot(dir) < 0.55:
+		launch_dir = (dir + right * signf(offline) * 0.45).normalized()
 	var velocity := launch_dir * base_speed
 
 	var roll_px := total_px * (1.0 - air_frac)

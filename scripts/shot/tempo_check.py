@@ -156,6 +156,18 @@ def main() -> int:
     assert "SwingContact" not in ROUTINE
     assert "committed_power" in ROUTINE
     assert "practice_mode" in ROUTINE
+    assert "func pace_reads" in GRADE and "func pace_copy" in GRADE
+    assert "PACE_TOL_FRAC" in GRADE
+    assert "ratio_ok" in GRADE  # never "on time" when ratio is off
+    assert "Through too quick for that backswing" in GRADE
+    assert "live_coach" in METER and "GameState.range_mode" in METER
+    assert "layout_shot_chrome" in ROUTINE
+    assert "SHOT_PAD_TOP_COMPACT" in (DIR.parent / "ui" / "ui_scale.gd").read_text(encoding="utf-8")
+    # Takeaway starts on axis lock (not finger-down) — pitch ghost wait no longer inflates 2:1.
+    assert "VEL_TOP_EPS_PITCH" in GESTURE
+    begin_fn = GESTURE.split("func _begin")[1].split("func ")[0]
+    assert "_t_takeaway = -1.0" in begin_fn or "_t_takeaway = -1" in begin_fn
+    assert "_t_takeaway = now" in GESTURE.split("func _update")[1].split("func ")[0]
     assert "PURE_BALANCE" in ROUTINE
     assert "PITCH_YD := 50.0" in GRADE
     assert "PITCH_POWER_CAP" in GRADE

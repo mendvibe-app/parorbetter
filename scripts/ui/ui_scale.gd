@@ -29,6 +29,13 @@ const WIND_TOP := 290.0
 const SHOT_RESULT_TOP := 220.0
 ## Top chrome inside ShotPanel (info + meter + hint) — pad fills the rest.
 const SHOT_PAD_TOP := 208.0
+## When live meter is hidden (scored full/pitch), collapse chrome so the pad grows.
+const SHOT_PAD_TOP_COMPACT := 116.0
+const HINT_TOP_WITH_METER := 152.0
+const HINT_TOP_NO_METER := 56.0
+const HINT_HEIGHT := 48.0
+const METER_TOP := 48.0
+const METER_BOTTOM := 150.0
 
 
 ## Map screen safe rect → viewport L/T/R/B via stretch inverse. Pure for self-check.

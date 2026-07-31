@@ -36,7 +36,8 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at` (shared by putt physics + green book) |
 | Hazards | `HoleData.hazards` role specs (`greenside` / `landing` / `carry` / `edge` / `island_ring`); placed by `HoleController._place_hazards` |
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
-| Lives | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |
+| Lives (Survival) | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |
+| 18 Hole Round | `GameState.stroke_play_mode` — no lives, always finish 18; net via `HandicapMath` |
 | Pure strikes (round) | `GameState.pure_strikes` / `record_pure_strike()` |
 | UI type scale | `UiScale.CAPTION/BODY/TITLE` (40 / 48 / 56); celebration ~64–72 in scenes |
 | Touch target min | `UiScale.TOUCH_MIN` (120 px on 1080-wide canvas ≈ 44–48pt) |
@@ -49,7 +50,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | `shot/` | Club select, aim helpers, tempo gesture/grade, shot routine/result, arc meter math (autoload `ArcMeters`) |
 | `ball/` | Ball node + launch/lie/physics helpers |
 | `course/` | Hole data/resource, generator, hole controller (build + shot UI glue) |
-| `systems/` | Scoring, shot report formatting |
+| `systems/` | Scoring, shot report formatting, `HandicapMath` (slope / SI / HCP) |
 | `ui/` | HUD, shot result panel, game over, `UiScale` (type/touch/safe-area) |
 | `autoload/` | `GameState`, `AudioBus` (ArcMeters lives under `shot/` but is autoloaded) |
 | `debug/` | F1 debug panel — metrics, force perfect/mishit, hole jump, balance sliders |

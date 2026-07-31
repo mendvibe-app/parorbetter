@@ -14,6 +14,8 @@ static var EMA_ALPHA: float = 0.35
 
 const DEADZONE_FRAC := 0.10
 const VEL_TOP_EPS := 40.0
+## Pitch reverse is softer on a short lane — full's 40 px/s often never fires cleanly.
+const VEL_TOP_EPS_PITCH := 22.0
 ## Early-side half-width at address — impact at the ball, not 12% short of it.
 const IMPACT_CROSS_FRAC := 0.02
 const IMPACT_CROSS_FLOOR_PX := 6.0
@@ -24,8 +26,7 @@ const MIN_BACKSWING_PITCH_LANE := 0.22
 const EDGE_DEADZONE_FRAC := 0.04
 const EDGE_DEADZONE_MIN_PX := 24.0
 ## Ideal Tour-Tempo-ish pacing for the pad ghost (seconds).
-## Full 3:1 → 0.75 / 0.25. Short 2:1 → 0.54 / 0.27 — through slightly longer than full
-## so the short pitch path isn't over-sped into 4–6:1 (playtest Path+1 MISS).
+## Full 3:1 → 0.75 / 0.25. Short 2:1 → 0.54 / 0.27.
 const GUIDE_BACK_FULL := 0.75
 const GUIDE_BACK_SHORT := 0.54
 const BALL_TEX := preload("res://assets/ball/ball.png")
@@ -469,9 +470,14 @@ func _ideal_ghost_pos(elapsed: float) -> Dictionary:
 		var phase := "top" if t > 0.88 else "pull"
 		return {"pos": start.lerp(top, u), "phase": phase}
 	if elapsed <= back + down:
-		# Ease-in: soft leave from top, accelerate through the ball (not a constant reverse).
+		# Soft leave from top, commit through. Pitch: less ease-in hang so the short
+		# lane's reverse is trackable (full smoothstep taught a crawl then a whip).
 		var t2 := clampf((elapsed - back) / maxf(down, 0.001), 0.0, 1.0)
-		var u2 := t2 * t2 * (3.0 - 2.0 * t2)  # smoothstep — calm start, committed finish
+		var u2: float
+		if _is_pitch():
+			u2 = lerpf(t2 * t2 * (3.0 - 2.0 * t2), t2, 0.55)  # blend toward linear
+		else:
+			u2 = t2 * t2 * (3.0 - 2.0 * t2)
 		return {"pos": top.lerp(impact_end, u2), "phase": "through"}
 	if elapsed <= back + down + follow:
 		var t3 := clampf((elapsed - back - down) / maxf(follow, 0.001), 0.0, 1.0)
@@ -569,10 +575,11 @@ func _begin(pos: Vector2, index: int) -> void:
 	_smoothed = pos
 	_last_pos = pos
 	_prev_t = Time.get_ticks_msec() / 1000.0
-	_t_takeaway = _prev_t
+	# Takeaway starts on axis lock (real move), not finger-down — waiting on the
+	# ghost / deadzone used to inflate backswing and wreck pitch 2:1.
+	_t_takeaway = -1.0
 	trail.append(pos)
 	set_process(true)
-	moment.emit("takeaway")
 	live_changed.emit()
 	queue_redraw()
 
@@ -601,6 +608,11 @@ func _update(pos: Vector2) -> void:
 			_axis_locked = true
 			swinging = true
 			_ball_pop_at = Time.get_ticks_msec()
+			_t_takeaway = now
+			_prev_t = now
+			_last_pos = _smoothed
+			moment.emit("takeaway")
+			live_changed.emit()
 		else:
 			_prev_t = now
 			_last_pos = _smoothed
@@ -654,8 +666,9 @@ func _update(pos: Vector2) -> void:
 		if _is_pitch()
 		else maxf(size.y * MIN_BACKSWING_FRAC, _deadzone() * 1.2)
 	)
+	var vel_eps := VEL_TOP_EPS_PITCH if _is_pitch() else VEL_TOP_EPS
 	if not had_top and _peak_disp >= min_bs:
-		var reversing := _prev_vel > VEL_TOP_EPS and _vel <= VEL_TOP_EPS * 0.25
+		var reversing := _prev_vel > vel_eps and _vel <= vel_eps * 0.25
 		var peaked := _disp < _peak_disp - _deadzone() * 0.15 and _vel < 0.0
 		if reversing or peaked:
 			had_top = true
@@ -1222,7 +1235,7 @@ func _draw_tempo_ghost(looping: bool) -> void:
 	if looping:
 		# Pad-local clock (not wall fmod) so open always starts at address, not mid-follow.
 		elapsed = fmod(maxf((Time.get_ticks_msec() - _ghost_t0_ms) / 1000.0, 0.0), cycle)
-	elif dragging and _t_takeaway >= 0.0:
+	elif dragging and _t_takeaway >= 0.0 and _axis_locked:
 		elapsed = Time.get_ticks_msec() / 1000.0 - _t_takeaway
 	else:
 		return

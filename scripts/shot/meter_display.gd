@@ -38,8 +38,10 @@ func set_shot_context(p_type: String, p_timing: float, p_practice: bool = false)
 	_guide_phase = 0.0
 	_next_tick_at = 0.15
 	_refresh_guide_alpha()
-	# Putt/chip: hide dead empty bar until post-stroke reveal (hint owns live instruction).
-	visible = p_type != "putt" and p_type != "chip"
+	# Live ratio bar only while grooving (Practice Swing or Range). Scored hole shots
+	# stay clean — ghost + ticks are the coach; putt/chip always hint-owned.
+	var live_coach := p_practice or GameState.range_mode
+	visible = live_coach and p_type != "putt" and p_type != "chip"
 	queue_redraw()
 
 

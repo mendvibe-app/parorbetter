@@ -281,10 +281,16 @@ func launch(
 	_green_center = p_green_center
 	_shot_origin = global_position
 	_launch_dir = launch_data["launch_dir"]
-	# Soft guard only: don't launch nearly backward; allow offline aim for break reads
-	if _is_putt and _launch_dir.dot(_pin_dir) < 0.15:
-		_launch_dir = (_launch_dir + _pin_dir).normalized()
-		velocity = _launch_dir * float(launch_data["landing_speed"])
+	# Don't launch nearly backward vs pin (putt break + short greenside path/spin).
+	var pin_align := 0.25 if _is_putt else 0.50
+	if _launch_dir.dot(_pin_dir) < pin_align:
+		_launch_dir = (_launch_dir + _pin_dir * 2.5).normalized()
+		if _launch_dir.dot(_pin_dir) < pin_align:
+			_launch_dir = _pin_dir
+		if _is_putt:
+			velocity = _launch_dir * float(launch_data["landing_speed"])
+		else:
+			velocity = _launch_dir * maxf(velocity.length(), 1.0)
 	_planned_distance_px = launch_data["travel_px"]
 	_landing_speed = launch_data["landing_speed"]
 	_air_fraction = launch_data["air_fraction"]
@@ -449,7 +455,17 @@ func _process_flight(delta: float) -> void:
 	_height = sin(clampf(t, 0.0, 1.0) * PI) * (28.0 + velocity.length() * 0.02)
 
 	velocity += wind * delta * 6.0
-	velocity += Vector2(spin * 28.0, 0.0) * delta
+	# Curve offline relative to launch. Scale by forward speed so weak short pitches
+	# don't get absolute sidespin that reverse/sideways the ball (plan ~3 yd cases).
+	var flight_right := Vector2(-_launch_dir.y, _launch_dir.x)
+	var along_spd := maxf(velocity.dot(_launch_dir), 0.0)
+	var spin_scale := clampf(along_spd / 180.0, 0.08, 1.0)
+	velocity += flight_right * spin * 28.0 * delta * spin_scale
+	# Never allow flight to reverse past the pin/launch line from spin alone.
+	var along_after := velocity.dot(_launch_dir)
+	if along_after < along_spd * 0.15:
+		var lat := velocity.dot(flight_right)
+		velocity = _launch_dir * maxf(along_spd * 0.35, 12.0) + flight_right * lat * 0.55
 
 	var collision := move_and_collide(velocity * delta)
 	var along := _traveled_along()
@@ -523,8 +539,14 @@ func _process_roll(delta: float) -> void:
 	velocity = velocity.move_toward(Vector2.ZERO, friction * 60.0 * delta)
 
 	if not _is_putt:
-		velocity += Vector2(spin * 8.0, 0.0) * delta
+		var roll_right := Vector2(-_launch_dir.y, _launch_dir.x)
+		var roll_along := maxf(velocity.dot(_launch_dir), 0.0)
+		var roll_spin_scale := clampf(roll_along / 120.0, 0.08, 1.0)
+		velocity += roll_right * spin * 8.0 * delta * roll_spin_scale
 		spin = move_toward(spin, 0.0, delta * 1.8)
+		# Keep roll from walking backwards off a short miss.
+		if velocity.dot(_pin_dir) < -20.0 and _planned_distance_px < BallPhysics.yards_to_pixels(50.0):
+			velocity += _pin_dir * 40.0 * delta
 	else:
 		# Mild anti-teleport only — break can still pull offline / slightly against aim
 		var toward := velocity.dot(_pin_dir)

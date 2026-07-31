@@ -30,6 +30,8 @@ const CHIP_YD := 20.0
 const BAND_PERFECT := 0.50
 const BAND_GOOD := 1.15
 const BAND_THIN_FAT := 1.85
+## Absolute pace vs ghost guide (display only — does not change contact grade).
+const PACE_TOL_FRAC := 0.22
 
 
 static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
@@ -130,12 +132,29 @@ static func tolerance_width(
 	return base * shrink
 
 
+static func guide_back_ms(shot_type: String, club_max_yards: float = 0.0) -> float:
+	## Same absolute guide as TempoGesture ghost / meter ticks (ms).
+	var base := (
+		TempoGesture.GUIDE_BACK_SHORT
+		if target_ratio(shot_type) < 2.5
+		else TempoGesture.GUIDE_BACK_FULL
+	)
+	if shot_type == "full" and club_max_yards > 0.0:
+		base *= TempoGesture.club_guide_duration_scale(club_max_yards)
+	return base * 1000.0
+
+
+static func guide_down_ms(shot_type: String, club_max_yards: float = 0.0) -> float:
+	return guide_back_ms(shot_type, club_max_yards) / maxf(target_ratio(shot_type), 1.0)
+
+
 static func grade(
 	sample: Dictionary,
 	shot_type: String,
 	timing_scale: float = 1.0,
 	tol_scale: float = 1.0,
-	balance_tighten: float = 1.0
+	balance_tighten: float = 1.0,
+	club_max_yards: float = 0.0
 ) -> Dictionary:
 	var target := target_ratio(shot_type)
 	var bal := balance(sample, balance_tighten, shot_type)
@@ -187,6 +206,17 @@ static func grade(
 
 	var floor_bs := bs_floor(shot_type)
 	var short_bs := clampf((floor_bs - float(sample.get("backswing_len", 0.0))) / floor_bs, 0.0, 1.0)
+	var back_ms := int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0)
+	var down_ms := int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0)
+	# Display-only pace vs ghost guide (does not affect contact / power_mul / path).
+	var reads: Dictionary = pace_reads(
+		back_ms, down_ms, guide_back_ms(shot_type, club_max_yards), guide_down_ms(shot_type, club_max_yards)
+	)
+	var back_read := str(reads.get("backswing_read", "on_pace"))
+	var down_read := str(reads.get("downswing_read", "on_pace"))
+	var copy: Dictionary = pace_copy(back_read, down_read, r, target)
+	back_read = str(copy.get("backswing_read", back_read))
+	down_read = str(copy.get("downswing_read", down_read))
 
 	return {
 		"ratio": r,
@@ -196,21 +226,114 @@ static func grade(
 		"contact": contact,
 		"power_mul": power_mul,
 		"path_error": path,
-		"note": tempo_note(
-			r, target, bal,
-			int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0),
-			int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0),
-			short_bs
-		),
-		"backswing_ms": int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0),
-		"downswing_ms": int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0),
+		"note": tempo_note(r, target, bal, back_ms, down_ms, short_bs, back_read, down_read),
+		"backswing_ms": back_ms,
+		"downswing_ms": down_ms,
+		"backswing_read": back_read,
+		"downswing_read": down_read,
+		"back_line": str(copy.get("back_line", "")),
+		"down_line": str(copy.get("down_line", "")),
+		"headline": str(copy.get("headline", "")),
 		"max_accel": float(sample.get("max_accel", 0.0)),
 		"max_jerk": float(sample.get("max_jerk", 0.0)),
 	}
 
 
+static func pace_band(actual_ms: float, guide_ms: float) -> String:
+	## "on_pace" | "slow" | "fast" vs ghost guide duration (display only).
+	var g := maxf(guide_ms, 1.0)
+	var err := actual_ms - g
+	var half := g * PACE_TOL_FRAC
+	if absf(err) <= half:
+		return "on_pace"
+	return "slow" if err > 0.0 else "fast"
+
+
+static func pace_reads(
+	back_ms: int, down_ms: int, guide_back_ms: float, guide_down_ms: float
+) -> Dictionary:
+	return {
+		"backswing_read": pace_band(float(back_ms), guide_back_ms),
+		"downswing_read": pace_band(float(down_ms), guide_down_ms),
+	}
+
+
+static func pace_copy(
+	back_read: String, down_read: String, ratio: float = -1.0, target: float = 3.0
+) -> Dictionary:
+	## Coaching-biased lines. Never say "on time" when ratio is clearly off the target
+	## (absolute guide bands can both pass while 4.2:1 vs 3:1 still grades MISS).
+	var br := back_read
+	var dr := down_read
+	var back_line := ""
+	var down_line := ""
+	var ratio_ok := true
+	if ratio >= 0.0 and target > 0.01:
+		# Same ballpark as tempo_note "on tempo" (~8% of target).
+		ratio_ok = absf(ratio - target) <= maxf(target * 0.08, 0.2)
+
+	# Absolute guide said both fine, but ratio is the grade — re-attribute relatively.
+	if br == "on_pace" and dr == "on_pace" and not ratio_ok:
+		if ratio > target:
+			# Too many back units per through: thru quick relative to back (playtest 826/197).
+			br = "slow"  # long vs through (coaching often: speed the back / ease the whip)
+			dr = "fast"
+		else:
+			br = "fast"
+			dr = "slow"
+
+	match br:
+		"slow":
+			back_line = "Backswing — too slow, take it back with more pace"
+		"fast":
+			back_line = "Backswing — too quick"
+		_:
+			back_line = "Backswing — on pace"
+	match dr:
+		"fast":
+			down_line = "Downswing — rushed the transition"
+		"slow":
+			down_line = "Downswing — lost speed through impact"
+		_:
+			down_line = "Downswing — on pace"
+
+	# Relative override lines when we re-attributed from ratio.
+	if back_read == "on_pace" and down_read == "on_pace" and not ratio_ok:
+		if ratio > target:
+			back_line = "Backswing — long for that through"
+			down_line = "Downswing — too quick vs back"
+		else:
+			back_line = "Backswing — short vs through"
+			down_line = "Downswing — hanging / slow vs back"
+
+	var headline: String
+	if br == "on_pace" and dr == "on_pace" and ratio_ok:
+		headline = "Tempo — on time"
+	elif not ratio_ok and ratio > target:
+		# Lead with the real miss: relationship, not absolute clocks.
+		headline = "Through too quick for that backswing — match the %.0f:1" % target
+	elif not ratio_ok and ratio < target:
+		headline = "Rushed to through — brief pause at top"
+	elif br == "slow":
+		headline = back_line
+	elif br == "on_pace" and dr != "on_pace":
+		headline = down_line
+	elif br == "fast" and dr == "on_pace":
+		headline = back_line
+	else:
+		headline = back_line
+	return {
+		"back_line": back_line,
+		"down_line": down_line,
+		"headline": headline,
+		"backswing_read": br,
+		"downswing_read": dr,
+	}
+
+
 static func tempo_note(
-	r: float, target: float, bal: float, back_ms: int = 0, down_ms: int = 0, short_bs: float = 0.0
+	r: float, target: float, bal: float, back_ms: int = 0, down_ms: int = 0, short_bs: float = 0.0,
+	back_read: String = "", down_read: String = ""
 ) -> String:
 	var err := r - target
 	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
@@ -220,17 +343,20 @@ static func tempo_note(
 		if back_ms > 0 and down_ms > 0:
 			timing = " (%dms back / %dms thru)" % [back_ms, down_ms]
 		return "Tempo %.1f:1%s — backswing too short · take it to the top · %s" % [r, timing, bal_word]
+	var timing2 := ""
+	if back_ms > 0 and down_ms > 0:
+		timing2 = " (%dms back / %dms thru)" % [back_ms, down_ms]
+	if not back_read.is_empty() and not down_read.is_empty():
+		var copy: Dictionary = pace_copy(back_read, down_read, r, target)
+		return "Tempo %.1f:1%s — %s · %s" % [r, timing2, str(copy["headline"]), bal_word]
+	# Legacy ratio-only note (no absolute pace attached).
 	var tempo_word: String
 	if absf(err) <= target * 0.08:
 		tempo_word = "on tempo"
 	elif err < 0.0:
 		tempo_word = "rushed to through — brief pause at top"
 	elif back_ms > 0 and down_ms > 0 and float(down_ms) < float(back_ms) / target * 0.92:
-		# High ratio from a fast through (not a long pause at top).
 		tempo_word = "through too quick — finish through the ball"
 	else:
 		tempo_word = "pull/pause too long vs through — don't linger at top"
-	var timing2 := ""
-	if back_ms > 0 and down_ms > 0:
-		timing2 = " (%dms back / %dms thru)" % [back_ms, down_ms]
 	return "Tempo %.1f:1%s — %s · %s" % [r, timing2, tempo_word, bal_word]

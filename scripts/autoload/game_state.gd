@@ -60,15 +60,35 @@ var tap_in_break: float = 0.12
 var range_mode: bool = false
 ## Practice green — infinite putt practice, no lives / hole advance.
 var green_mode: bool = false
+## 18 Hole Round (stroke play) — no lives, always finish 18. False = Survival.
+var stroke_play_mode: bool = false
 
 ## In-run score vs par (sum of strokes − par per hole).
 var score_to_par: int = 0
-## Persisted records (`user://records.cfg`).
+## Net score to par (stroke play with handicap strokes applied).
+var net_score_to_par: int = 0
+## Per-hole score-to-par for the current round (appended on each hole-out).
+var hole_scores: Array[int] = []
+## Course slope-style difficulty (~55–155) from mean hole complexity.
+var course_slope: float = 113.0
+## stroke_index[h] = SI rank 1..18 (1 = hardest); h is 0-based hole index.
+var stroke_index: PackedInt32Array = PackedInt32Array()
+## Strokes received this round from course handicap (0 if HCP not established).
+var course_handicap: int = 0
+
+## Persisted records (`user://records.cfg`) — Survival.
 var best_score_to_par: int = 0
 var best_deepest_hole: int = 0
 var has_finished_course: bool = false
+## 18 Hole Round PB (independent of Survival).
+var best_stroke_score_to_par: int = 0
+var has_finished_stroke_round: bool = false
+## Rolling stroke-play differentials (last 20) for handicap index.
+var stroke_differentials: Array[float] = []
 
 const RECORDS_PATH := "user://records.cfg"
+const DIFF_HISTORY_MAX := 20
+const HCP_MIN_ROUNDS := 3
 
 ## Per-club tendency aggregate — persists across runs, excluded from reset_run().
 var club_coach: ClubCoachLog
@@ -89,13 +109,15 @@ func _ready() -> void:
 	reset_run()
 
 
-func reset_run() -> void:
+func reset_run(p_stroke_play: bool = false) -> void:
 	lives = START_LIVES
 	current_hole = 1
 	deepest_hole = 1
 	strokes_this_hole = 0
 	total_strokes = 0
 	score_to_par = 0
+	net_score_to_par = 0
+	hole_scores.clear()
 	pure_strikes = 0
 	path_miss_history.clear()
 	form_history.clear()
@@ -113,13 +135,23 @@ func reset_run() -> void:
 	tempo_guide_forced = false
 	range_mode = false
 	green_mode = false
+	stroke_play_mode = p_stroke_play
 	course_seed = randi()
 	_regenerate_course()
+	course_handicap = _course_handicap_for_round()
 	lives_changed.emit(lives)
 	hole_changed.emit(current_hole)
 	adaptation_changed.emit(get_adaptation_bias())
 	form_changed.emit(get_form())
 	pure_strikes_changed.emit(pure_strikes)
+
+
+func is_stroke_play() -> bool:
+	return stroke_play_mode and not in_practice()
+
+
+func is_survival() -> bool:
+	return not stroke_play_mode and not in_practice()
 
 
 func record_pure_strike() -> void:
@@ -132,6 +164,11 @@ func _regenerate_course() -> void:
 		course_seed = randi()
 	course = HoleGenerator.generate_course(course_seed, course_theme, DEFAULT_HOLE_COUNT)
 	HOLE_COUNT = maxi(course.size(), 1)
+	var complexities: Array[float] = []
+	for h in course:
+		complexities.append(float(h.complexity))
+	course_slope = HandicapMath.course_slope(complexities)
+	stroke_index = HandicapMath.stroke_index_ranks(complexities)
 
 
 func get_hole(hole_index: int) -> HoleData:
@@ -144,16 +181,21 @@ func get_hole(hole_index: int) -> HoleData:
 func set_lives(value: int) -> void:
 	lives = clampi(value, 0, MAX_LIVES)
 	lives_changed.emit(lives)
-	if lives <= 0 and run_active:
+	# Stroke play: lives UI is hidden and economy is inert — never end the run.
+	if lives <= 0 and run_active and not stroke_play_mode and not in_practice():
 		end_run("out_of_lives")
 
 
 func add_lives(delta: int) -> void:
+	if stroke_play_mode or in_practice():
+		return
 	set_lives(lives + delta)
 
 
 ## Apply life change for a finished hole. Returns the delta applied.
 func apply_hole_result_lives(result: Scoring.Result) -> int:
+	if stroke_play_mode or in_practice():
+		return 0
 	var delta := 0
 	match result:
 		Scoring.Result.ALBATROSS, Scoring.Result.EAGLE, Scoring.Result.BIRDIE:
@@ -166,6 +208,14 @@ func apply_hole_result_lives(result: Scoring.Result) -> int:
 			delta = -2
 	add_lives(delta)
 	return delta
+
+
+## True if this hole (1-based) receives a handicap stroke this round.
+func hole_gets_stroke(hole_index: int) -> bool:
+	if not is_stroke_play() or course_handicap <= 0 or stroke_index.is_empty():
+		return false
+	var i := clampi(hole_index - 1, 0, stroke_index.size() - 1)
+	return int(stroke_index[i]) <= course_handicap
 
 
 ## Map rolling miss bias to hazard side for a hole.
@@ -197,8 +247,8 @@ func bias_label() -> String:
 func begin_hole(hole_index: int) -> void:
 	current_hole = clampi(hole_index, 1, HOLE_COUNT)
 	deepest_hole = maxi(deepest_hole, current_hole)
-	# Persist deepest as you go — survives quit before game-over end_run.
-	if deepest_hole > best_deepest_hole:
+	# Survival deepest PB — stroke play doesn't compete on deepest.
+	if not stroke_play_mode and deepest_hole > best_deepest_hole:
 		best_deepest_hole = deepest_hole
 		_save_records()
 	strokes_this_hole = 0
@@ -319,6 +369,11 @@ func add_score_to_par(diff: int) -> void:
 	if in_practice():
 		return
 	score_to_par += diff
+	hole_scores.append(diff)
+	var net_diff := diff
+	if is_stroke_play() and hole_gets_stroke(current_hole):
+		net_diff -= 1
+	net_score_to_par += net_diff
 
 
 static func format_score_to_par(score: int) -> String:
@@ -327,16 +382,49 @@ static func format_score_to_par(score: int) -> String:
 	return "%+d" % score
 
 
+func handicap_index() -> Variant:
+	## null if not established; else float average of best recent differentials.
+	return HandicapMath.handicap_index(stroke_differentials, HCP_MIN_ROUNDS)
+
+
+func handicap_label() -> String:
+	var hi: Variant = handicap_index()
+	if hi == null:
+		return "HCP — play %d rounds" % HCP_MIN_ROUNDS
+	return "HCP %.1f" % float(hi)
+
+
+func _course_handicap_for_round() -> int:
+	if not stroke_play_mode:
+		return 0
+	var hi: Variant = handicap_index()
+	if hi == null:
+		return 0
+	return HandicapMath.course_handicap(float(hi), course_slope)
+
+
 func _update_records_on_end(reason: String) -> void:
 	var changed := false
-	if deepest_hole > best_deepest_hole:
-		best_deepest_hole = deepest_hole
-		changed = true
-	if reason == "course_complete":
-		if not has_finished_course or score_to_par < best_score_to_par:
-			best_score_to_par = score_to_par
-			has_finished_course = true
+	if stroke_play_mode:
+		if reason == "course_complete":
+			if not has_finished_stroke_round or score_to_par < best_stroke_score_to_par:
+				best_stroke_score_to_par = score_to_par
+				has_finished_stroke_round = true
+				changed = true
+			var d := HandicapMath.score_differential(score_to_par, course_slope)
+			stroke_differentials.append(d)
+			while stroke_differentials.size() > DIFF_HISTORY_MAX:
+				stroke_differentials.pop_front()
 			changed = true
+	else:
+		if deepest_hole > best_deepest_hole:
+			best_deepest_hole = deepest_hole
+			changed = true
+		if reason == "course_complete":
+			if not has_finished_course or score_to_par < best_score_to_par:
+				best_score_to_par = score_to_par
+				has_finished_course = true
+				changed = true
 	if changed:
 		_save_records()
 
@@ -348,6 +436,13 @@ func _load_records() -> void:
 	best_score_to_par = int(cfg.get_value("records", "best_score_to_par", 0))
 	best_deepest_hole = int(cfg.get_value("records", "best_deepest_hole", 0))
 	has_finished_course = bool(cfg.get_value("records", "has_finished_course", false))
+	best_stroke_score_to_par = int(cfg.get_value("records", "best_stroke_score_to_par", 0))
+	has_finished_stroke_round = bool(cfg.get_value("records", "has_finished_stroke_round", false))
+	stroke_differentials.clear()
+	var raw: Variant = cfg.get_value("records", "stroke_differentials", [])
+	if raw is Array:
+		for v in raw:
+			stroke_differentials.append(float(v))
 
 
 func _save_records() -> void:
@@ -355,6 +450,12 @@ func _save_records() -> void:
 	cfg.set_value("records", "best_score_to_par", best_score_to_par)
 	cfg.set_value("records", "best_deepest_hole", best_deepest_hole)
 	cfg.set_value("records", "has_finished_course", has_finished_course)
+	cfg.set_value("records", "best_stroke_score_to_par", best_stroke_score_to_par)
+	cfg.set_value("records", "has_finished_stroke_round", has_finished_stroke_round)
+	var diffs: Array = []
+	for d in stroke_differentials:
+		diffs.append(d)
+	cfg.set_value("records", "stroke_differentials", diffs)
 	cfg.save(RECORDS_PATH)
 
 
@@ -369,6 +470,7 @@ func in_practice() -> bool:
 func enter_range_mode() -> void:
 	green_mode = false
 	range_mode = true
+	stroke_play_mode = false
 	run_active = true
 
 
@@ -379,6 +481,7 @@ func exit_range_mode() -> void:
 func enter_green_mode() -> void:
 	range_mode = false
 	green_mode = true
+	stroke_play_mode = false
 	run_active = true
 
 

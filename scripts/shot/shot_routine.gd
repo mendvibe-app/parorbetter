@@ -143,6 +143,7 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
 		if shot_type == "putt" or shot_type == "chip":
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
+	_layout_shot_chrome()
 	# One live instruction — golf moments, not engine marks.
 	if practice_mode:
 		if shot_type == "putt" or shot_type == "chip":
@@ -183,6 +184,36 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 func set_active(on: bool) -> void:
 	visible = on
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if on:
+		_layout_shot_chrome()
+
+
+func layout_shot_chrome() -> void:
+	## Collapse meter band on scored full/pitch so the pad isn't floating under empty chrome.
+	var show_meter := (
+		(practice_mode or GameState.range_mode)
+		and shot_type != "putt" and shot_type != "chip"
+	)
+	var hint_top := UiScale.HINT_TOP_WITH_METER if show_meter else UiScale.HINT_TOP_NO_METER
+	var pad_top := UiScale.SHOT_PAD_TOP if show_meter else UiScale.SHOT_PAD_TOP_COMPACT
+	if meter_display:
+		meter_display.offset_top = UiScale.METER_TOP
+		meter_display.offset_bottom = UiScale.METER_BOTTOM
+	if hint_label:
+		hint_label.offset_top = hint_top
+		hint_label.offset_bottom = hint_top + UiScale.HINT_HEIGHT
+	var controls := get_node_or_null("Controls") as Control
+	if controls:
+		var m := UiScale.viewport_safe_margins(get_viewport()) if get_viewport() else Vector4.ZERO
+		controls.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		controls.offset_left = 12.0
+		controls.offset_right = -12.0
+		controls.offset_top = pad_top
+		controls.offset_bottom = -(UiScale.CONTROLS_PAD_BOTTOM + m.w)
+
+
+func _layout_shot_chrome() -> void:
+	layout_shot_chrome()
 
 
 func cancel_shot() -> void:
@@ -244,7 +275,9 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		var chip_arc := PuttStroke.CHIP_ARC_SCALE if shot_type == "chip" else 1.0
 		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards, chip_tol, chip_arc)
 	else:
-		verdict = TempoGrade.grade(sample, shot_type, timing_scale, tol_scale, bal_tighten)
+		verdict = TempoGrade.grade(
+			sample, shot_type, timing_scale, tol_scale, bal_tighten, club_max_yards
+		)
 	last_verdict = verdict
 	GameState.last_tempo_metrics = verdict
 

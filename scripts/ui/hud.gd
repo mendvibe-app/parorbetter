@@ -52,11 +52,14 @@ func refresh(hole: HoleData, strokes: int) -> void:
 	_strokes = strokes
 	var tee := GameState.active_tee_set_for_hole(hole.hole_number)
 	var yds := int(hole.tee_yards(tee))
-	hole_label.text = "HOLE %d · PAR %d · %s · %d YDS" % [
-		hole.hole_number, hole.par, HoleData.tee_set_label(tee), yds
+	var stroke_bit := ""
+	if GameState.is_stroke_play() and GameState.hole_gets_stroke(hole.hole_number):
+		stroke_bit = " · ★"  # handicap stroke on this hole
+	hole_label.text = "HOLE %d · PAR %d · %s · %d YDS%s" % [
+		hole.hole_number, hole.par, HoleData.tee_set_label(tee), yds, stroke_bit
 	]
 	_refresh_score()
-	lives_row.visible = true
+	lives_row.visible = GameState.is_survival()
 	if menu_btn:
 		menu_btn.visible = false
 
@@ -80,6 +83,10 @@ func refresh_practice_green(putts: int) -> void:
 
 
 func _refresh_score() -> void:
+	if GameState.is_stroke_play():
+		var card := GameState.format_score_to_par(GameState.score_to_par)
+		score_label.text = "Strokes %d · %s" % [_strokes, card]
+		return
 	var pure_bit := ""
 	if GameState.pure_strikes > 0:
 		pure_bit = " · %d pure" % GameState.pure_strikes
