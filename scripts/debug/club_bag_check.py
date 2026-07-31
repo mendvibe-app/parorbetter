@@ -115,6 +115,23 @@ def main() -> None:
     # Mash on Gap still taxed
     assert force_factor(1.0, 85.0, "Fairway") == 1.0
 
+    # Display order + short labels (coach / tight UI)
+    from pathlib import Path
+
+    phys = (Path(__file__).resolve().parents[1] / "ball" / "ball_physics.gd").read_text(
+        encoding="utf-8"
+    )
+    coach = (Path(__file__).resolve().parents[1] / "ui" / "coach_screen.gd").read_text(
+        encoding="utf-8"
+    )
+    assert "func club_short_name" in phys
+    assert "func sort_club_names_by_bag" in phys
+    assert 'return "3W"' in phys or 'replace("-Wood", "W")' in phys
+    assert 'replace("-Iron", "I")' in phys
+    assert "sort_club_names_by_bag" in coach
+    assert "club_short_name" in coach
+    assert "names.sort()" not in coach  # alpha scramble (5-Iron before Driver)
+
     print("club_bag_check: ok")
 
 

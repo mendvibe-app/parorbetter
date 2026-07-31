@@ -6,6 +6,17 @@ Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before 
 
 **Art**: Locked direction in `art/STYLE.md` (**Pixel Kit Golf**) — PixelLab-native kit (tilesets/character/props), not photo-ref clones. Pipeline: `art/prompts/kit.md`. Mood refs optional under `art/references/`. Briefs under `art/prompts/`. Raw → `art/generated/`; finals → `assets/` after wave gate. UI typeface: **Pixel Operator** (CC0) via `assets/ui/game_theme.tres` / `UiScale.FONT`.
 
+## Token Efficiency
+
+- Prefer editing the previous result over re-explaining or defending it.
+- When continuing work, carry forward only the last accepted answer or the minimal necessary context. Drop drafts, false starts, and long intermediate reasoning.
+- Start a new focused session (or clearly separate the task) when the goal changes or the conversation gets heavy.
+- Default to concise outputs. Prefer “code only”, “diff only”, or short answers unless depth is explicitly requested.
+- Be selective with file reads and context. Prefer targeted reads/greps over broad exploration once the relevant location is known. Avoid re-reading the same files.
+- Batch related questions in one response when possible.
+- If a request is ambiguous, ask 1–2 clarifying questions instead of guessing and regenerating.
+- Once a result is accepted, treat it as the new baseline.
+
 ## Shot loop (end to end)
 
 Orchestrated by `HoleController` + `ShotRoutine`.

@@ -12,6 +12,7 @@ signal reload_hole
 @onready var club_coach_label: Label = $Panel/Margin/Root/Scroll/VBox/ClubCoachLabel
 @onready var hole_spin: SpinBox = $Panel/Margin/Root/Scroll/VBox/HoleRow/HoleSpin
 @onready var lives_spin: SpinBox = $Panel/Margin/Root/Scroll/VBox/LivesRow/LivesSpin
+var practice_spins: Dictionary = {}  ## shot_type → SpinBox
 @onready var timing_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/TimingRow/TimingSlider
 @onready var wind_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/WindRow/WindSlider
 @onready var fairway_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/FairwayRow/FairwaySlider
@@ -55,9 +56,47 @@ func _ready() -> void:
 	$Panel/Margin/Root/Scroll/VBox/LivesRow/SetLivesBtn.pressed.connect(func():
 		GameState.set_lives(int(lives_spin.value))
 	)
+	_setup_practice_count_row()
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
+
+
+func _setup_practice_count_row() -> void:
+	## Practice swings per shot type (0–3) — prefs until a real settings screen exists.
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	if vbox == null:
+		return
+	var block := VBoxContainer.new()
+	block.name = "PracticeCountBlock"
+	var header := Label.new()
+	header.text = "Practice swings (0–3)"
+	block.add_child(header)
+	var insert_at := -1
+	var lives_row := vbox.get_node_or_null("LivesRow")
+	if lives_row:
+		insert_at = lives_row.get_index() + 1
+	for st: String in ["full", "pitch", "chip", "putt"]:
+		var row := HBoxContainer.new()
+		var lab := Label.new()
+		lab.text = "  %s" % st.capitalize()
+		lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var spin := SpinBox.new()
+		spin.min_value = 0
+		spin.max_value = 3
+		spin.value = GameState.practice_swing_count_for(st)
+		spin.rounded = true
+		var key: String = st
+		spin.value_changed.connect(func(v: float):
+			GameState.set_practice_swing_count(key, int(v))
+		)
+		practice_spins[st] = spin
+		row.add_child(lab)
+		row.add_child(spin)
+		block.add_child(row)
+	vbox.add_child(block)
+	if insert_at >= 0:
+		vbox.move_child(block, insert_at)
 
 
 func _park_below_hud() -> void:
@@ -143,10 +182,10 @@ func _process(_delta: float) -> void:
 
 func _club_coach_dump() -> String:
 	var clubs: Dictionary = GameState.club_coach.clubs
-	var names := clubs.keys()
-	names.sort()
+	var names: Array = BallPhysics.sort_club_names_by_bag(clubs.keys())
 	var lines: PackedStringArray = PackedStringArray()
-	for club_name in names:
+	for club_name_v in names:
+		var club_name := str(club_name_v)
 		var stats: Dictionary = clubs[club_name]
 		var shots := int(stats.get("shots_logged", 0))
 		if shots <= 0:
@@ -166,7 +205,7 @@ func _club_coach_dump() -> String:
 		var path_word := "slice bias" if path_avg > 0.0 else ("hook bias" if path_avg < 0.0 else "neutral")
 		var tempo_word := "rushed" if tempo_avg < 0.0 else ("lingering" if tempo_avg > 0.0 else "neutral")
 		var tip := ClubCoachLog.resolve_tip(stats)
-		lines.append("%s — %d shots" % [club_name.to_upper(), shots])
+		lines.append("%s — %d shots" % [BallPhysics.club_short_name(club_name), shots])
 		lines.append("  avg %d yd | contact: %s" % [
 			int(ClubCoachLog.avg(stats.get("yardage_history", []))),
 			" / ".join(contact_bits),

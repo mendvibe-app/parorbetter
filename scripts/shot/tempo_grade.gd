@@ -193,11 +193,15 @@ static func grade(
 	if bal < 0.25 and contact == ShotResult.ContactQuality.GOOD and raw_n > BAND_GOOD:
 		contact = ShotResult.ContactQuality.FAT if err < 0.0 else ShotResult.ContactQuality.THIN
 
-	# Gentle distance leak — slight miss ≈ mild shortfall, not a duff.
-	# MISS still hurts; BallPhysics contact ×0.4 finishes the hosel.
-	var power_mul := clampf(1.0 - abs_n * 0.22, 0.55, 1.0)
-	if contact == ShotResult.ContactQuality.MISS:
-		power_mul = minf(power_mul, 0.50)
+	# Distance is owned by contact tier (ball_physics.contact_multiplier).
+	# Tempo error only taxes distance once we're out of GOOD — inside PERFECT/GOOD
+	# a slightly-off ratio must not leak carry (was continuous abs_n tax on every shot).
+	var power_mul := 1.0
+	if contact == ShotResult.ContactQuality.THIN or contact == ShotResult.ContactQuality.FAT:
+		var over := maxf(abs_n - BAND_GOOD, 0.0)
+		power_mul = clampf(1.0 - over * 0.30, 0.55, 1.0)
+	elif contact == ShotResult.ContactQuality.MISS:
+		power_mul = 0.50
 
 	# Path: slight errors → mild curve; disaster → wild. Amplify only on true lurch.
 	var path := clampf(signf(err if absf(err) > 0.01 else 0.0) * abs_n * 0.35, -1.0, 1.0)

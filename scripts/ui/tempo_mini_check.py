@@ -49,8 +49,9 @@ def main() -> int:
 
     assert "func pace_reads" in GRADE and "func pace_copy" in GRADE
     assert "PACE_TOL_FRAC" in GRADE
-    # Scoring contact path still ratio-based (not pace)
-    assert "abs_n * 0.22" in GRADE
+    # Distance owned by contact tier, not continuous abs_n leak
+    assert "var power_mul := 1.0" in GRADE
+    assert "abs_n * 0.22" not in GRADE
 
     # Live meter gated to practice || range
     assert "GameState.range_mode" in METER

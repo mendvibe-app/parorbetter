@@ -53,6 +53,9 @@ var last_tempo_metrics: Dictionary = {}
 ## Fadeable tempo guide — shows rhythm only, never widens windows.
 var tempo_guide_enabled: bool = true
 var tempo_guide_forced: bool = false
+## Auto practice reps before the real swing after Confirm Aim (0–3), per shot type.
+## Not used in range_mode. Defaults: full/pitch get one; short game starts at zero.
+var practice_reps: Dictionary = {"full": 1, "pitch": 1, "chip": 0, "putt": 0}
 ## Tap-in fast path (putt ceremony skip). Playtest knobs via F1.
 var tap_in_yd: float = 4.0
 var tap_in_break: float = 0.12
@@ -429,6 +432,17 @@ func _update_records_on_end(reason: String) -> void:
 		_save_records()
 
 
+func practice_swing_count_for(shot_type: String) -> int:
+	var key := shot_type if practice_reps.has(shot_type) else "full"
+	return clampi(int(practice_reps.get(key, 0)), 0, 3)
+
+
+func set_practice_swing_count(shot_type: String, v: int) -> void:
+	var key := shot_type if practice_reps.has(shot_type) else "full"
+	practice_reps[key] = clampi(v, 0, 3)
+	_save_records()
+
+
 func _load_records() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(RECORDS_PATH) != OK:
@@ -443,6 +457,23 @@ func _load_records() -> void:
 	if raw is Array:
 		for v in raw:
 			stroke_differentials.append(float(v))
+	_load_practice_reps(cfg)
+
+
+func _load_practice_reps(cfg: ConfigFile) -> void:
+	## Per-type prefs; migrate flat practice_swing_count → full (and pitch if unset).
+	var defaults := {"full": 1, "pitch": 1, "chip": 0, "putt": 0}
+	if cfg.has_section_key("prefs", "practice_reps"):
+		var raw: Variant = cfg.get_value("prefs", "practice_reps", {})
+		if raw is Dictionary:
+			for k in defaults.keys():
+				if raw.has(k):
+					defaults[k] = clampi(int(raw[k]), 0, 3)
+	elif cfg.has_section_key("prefs", "practice_swing_count"):
+		var old := clampi(int(cfg.get_value("prefs", "practice_swing_count", 1)), 0, 3)
+		defaults["full"] = old
+		defaults["pitch"] = old
+	practice_reps = defaults
 
 
 func _save_records() -> void:
@@ -456,6 +487,7 @@ func _save_records() -> void:
 	for d in stroke_differentials:
 		diffs.append(d)
 	cfg.set_value("records", "stroke_differentials", diffs)
+	cfg.set_value("prefs", "practice_reps", practice_reps.duplicate())
 	cfg.save(RECORDS_PATH)
 
 

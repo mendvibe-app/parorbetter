@@ -36,6 +36,47 @@ static func is_wedge_family(club_name: String) -> bool:
 	return club_name.contains("Wedge")
 
 
+## Bag index for display order (Driver → … → wedges → Putter). Unknown clubs last.
+static func club_bag_rank(club_name: String) -> int:
+	var i := 0
+	for club in BAG:
+		if String(club["name"]) == club_name:
+			return i
+		i += 1
+	if club_name == "Putter":
+		return BAG.size()
+	return 1000
+
+
+## Compact labels for coach / tight UI: 3W, Hy, 5I, PW, SW, Pt.
+static func club_short_name(club_name: String) -> String:
+	match club_name:
+		"Driver":
+			return "Dr"
+		"Hybrid":
+			return "Hy"
+		"Pitching Wedge":
+			return "PW"
+		"Gap/Sand Wedge":
+			return "SW"
+		"Putter":
+			return "Pt"
+		_:
+			if club_name.ends_with("-Iron"):
+				return club_name.replace("-Iron", "I")
+			if club_name.ends_with("-Wood"):
+				return club_name.replace("-Wood", "W")
+			return club_name
+
+
+static func sort_club_names_by_bag(names: Array) -> Array:
+	var out: Array = names.duplicate()
+	out.sort_custom(func(a: Variant, b: Variant) -> bool:
+		return club_bag_rank(str(a)) < club_bag_rank(str(b))
+	)
+	return out
+
+
 ## Realistic full-width (left-right) landing-pattern spread in yards for a
 ## typical mid-handicap amateur, by club category — launch-monitor/on-course
 ## ballpark figures. Longer clubs disperse much wider than short ones, so the
@@ -344,7 +385,7 @@ static func force_factor(power: float, club_max_yards: float = 0.0, lie: String 
 static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 	match quality:
 		ShotResult.ContactQuality.PERFECT:
-			return 1.04
+			return 1.06  # pure reads past committed (~15 yd driver / ~5 yd wedge)
 		ShotResult.ContactQuality.GOOD:
 			return 1.0
 		ShotResult.ContactQuality.THIN:

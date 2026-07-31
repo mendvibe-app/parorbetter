@@ -44,6 +44,8 @@ var last_verdict: Dictionary = {}
 ## (takeaway). Built here (not the .tscn) so it lives in the GlanceRow's
 ## already-safe strip above the swing pad, never over the live gesture area.
 var back_btn: Button
+## Practice rep dots (●○) — total = practice_count + 1 (real).
+var _rep_row: HBoxContainer
 
 
 func _ready() -> void:
@@ -52,6 +54,7 @@ func _ready() -> void:
 	if meter_display:
 		meter_display.bind(tempo_gesture)
 	_setup_back_btn()
+	_setup_rep_row()
 	set_active(false)
 
 
@@ -67,6 +70,48 @@ func _setup_back_btn() -> void:
 		glance.add_child(back_btn)
 		glance.move_child(back_btn, 0)
 	back_btn.pressed.connect(func() -> void: back_requested.emit())
+
+
+func _setup_rep_row() -> void:
+	_rep_row = HBoxContainer.new()
+	_rep_row.name = "RepDots"
+	_rep_row.alignment = BoxContainer.ALIGNMENT_CENTER
+	_rep_row.add_theme_constant_override("separation", 8)
+	_rep_row.visible = false
+	_rep_row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Sit under GlanceRow, above meter/hint — thin strip.
+	_rep_row.set_anchors_preset(Control.PRESET_TOP_WIDE)
+	_rep_row.offset_left = 16.0
+	_rep_row.offset_right = -16.0
+	_rep_row.offset_top = 52.0
+	_rep_row.offset_bottom = 72.0
+	add_child(_rep_row)
+
+
+func set_rep_indicator(practice_left: int, total_practice: int, is_real: bool) -> void:
+	## practice_left includes the current practice rep when is_real is false.
+	if _rep_row == null:
+		return
+	for c in _rep_row.get_children():
+		c.queue_free()
+	if total_practice <= 0 or GameState.range_mode:
+		_rep_row.visible = false
+		return
+	var slots := total_practice + 1
+	var cur := total_practice if is_real else (total_practice - practice_left)
+	cur = clampi(cur, 0, slots - 1)
+	for i in slots:
+		var dot := ColorRect.new()
+		dot.custom_minimum_size = Vector2(14, 14)
+		dot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if i == cur:
+			dot.color = Color(1.0, 0.85, 0.25, 1.0) if is_real else Color(0.45, 0.85, 1.0, 1.0)
+		elif i < cur:
+			dot.color = Color(0.35, 0.55, 0.4, 0.9)
+		else:
+			dot.color = Color(0.2, 0.28, 0.22, 0.75)
+		_rep_row.add_child(dot)
+	_rep_row.visible = true
 
 
 func configure(

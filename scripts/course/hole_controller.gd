@@ -100,8 +100,9 @@ var _pinch_start_dist: float = 0.0
 var _pinch_start_mult: float = 1.0
 var _user_zoom_mult: float = 1.0  ## manual pinch override on top of the auto-framed zoom
 var _magnify_last_ms: int = -1  ## last InputEventMagnifyGesture time; drives idle-release
-var _practice_btn: Button
 var _change_club_btn: BaseButton
+## Practice reps left before the real swing (set on Confirm Aim from GameState).
+var _practice_reps_left: int = 0
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
 var _aim_radius_base_yd: float = 22.0
@@ -158,7 +159,6 @@ func _ready() -> void:
 		confirm_aim_btn.visible = false
 		confirm_aim_btn.pressed.connect(_confirm_aim)
 	shot_routine.back_requested.connect(_on_back_requested)
-	_setup_practice_btn()
 	_setup_change_club_btn()
 	_setup_hole_map()
 	# Bag icon above map in tree (map was covering it); club select stays topmost modal.
@@ -1214,8 +1214,6 @@ func _begin_tap_in_stroke(pin_yd: float) -> void:
 		_club_select.dismiss()
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
-	if _practice_btn:
-		_practice_btn.visible = false
 	if _change_club_btn:
 		_change_club_btn.visible = false
 	_set_green_book_visible(false)
@@ -1248,8 +1246,6 @@ func _begin_club_select() -> void:
 	_set_green_book_visible(false)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
-	if _practice_btn:
-		_practice_btn.visible = false
 	if _change_club_btn:
 		_change_club_btn.visible = false
 	var lie := ball.get_lie()
@@ -1280,8 +1276,6 @@ func _begin_range_swing() -> void:
 		_club_select.dismiss()
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
-	if _practice_btn:
-		_practice_btn.visible = false
 	_set_green_book_visible(false)
 	_refresh_wind_indicator(false)
 	var lie := "Tee"
@@ -1347,8 +1341,6 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	_set_green_book_visible(show_book)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = true
-	if _practice_btn:
-		_practice_btn.visible = true
 	if _change_club_btn:
 		_change_club_btn.visible = not is_putt
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
@@ -1384,30 +1376,11 @@ func _end_aim_phase() -> void:
 	_set_green_book_visible(false)
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
-	if _practice_btn:
-		_practice_btn.visible = false
 	if _change_club_btn:
 		_change_club_btn.visible = false
 	if shot_routine and shot_routine.back_btn:
 		shot_routine.back_btn.visible = false
 
-
-func _setup_practice_btn() -> void:
-	_practice_btn = Button.new()
-	_practice_btn.name = "PracticeSwingButton"
-	_practice_btn.text = "Practice Swing"
-	_practice_btn.visible = false
-	_practice_btn.custom_minimum_size = Vector2(UiScale.TOUCH_MIN * 2.2, UiScale.TOUCH_MIN)
-	if confirm_aim_btn:
-		_practice_btn.add_theme_font_size_override("font_size", confirm_aim_btn.get_theme_font_size("font_size"))
-		# Sit just above Confirm Aim
-		_practice_btn.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-		_practice_btn.offset_left = confirm_aim_btn.offset_left
-		_practice_btn.offset_right = confirm_aim_btn.offset_right
-		_practice_btn.offset_top = confirm_aim_btn.offset_top - 140.0
-		_practice_btn.offset_bottom = confirm_aim_btn.offset_bottom - 140.0
-	ui_layer.add_child(_practice_btn)
-	_practice_btn.pressed.connect(_start_practice_swing)
 
 
 func _setup_change_club_btn() -> void:
@@ -1467,24 +1440,11 @@ func _on_back_requested() -> void:
 	if hole_complete or not GameState.run_active:
 		return
 	shot_routine.cancel_shot()
+	_practice_reps_left = 0
+	if shot_routine.has_method("set_rep_indicator"):
+		shot_routine.set_rep_indicator(0, 0, false)
 	AudioBus.play_ui()
 	_begin_aim_phase(true)
-
-
-func _start_practice_swing() -> void:
-	if not _aiming or hole_complete:
-		return
-	_aiming = false
-	_aim_dragging = false
-	if confirm_aim_btn:
-		confirm_aim_btn.visible = false
-	if _practice_btn:
-		_practice_btn.visible = false
-	if _change_club_btn:
-		_change_club_btn.visible = false
-	_set_green_book_visible(false)
-	AudioBus.play_ui()
-	_start_power_swing(true)
 
 
 func _confirm_aim() -> void:
@@ -1494,14 +1454,22 @@ func _confirm_aim() -> void:
 	_aim_dragging = false
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
-	if _practice_btn:
-		_practice_btn.visible = false
 	if _change_club_btn:
 		_change_club_btn.visible = false
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
-	_start_power_swing(false, true)
+	# Auto practice reps (0–3 per shot type), then real shot. Range never uses confirm-aim.
+	_practice_reps_left = 0 if GameState.range_mode else _practice_count_for_current_shot()
+	var is_practice := _practice_reps_left > 0
+	_start_power_swing(is_practice, not is_practice)
+
+
+func _practice_count_for_current_shot() -> int:
+	var lie := ball.get_lie()
+	var aim_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
+	var club_max := float(_chosen_club.get("max_yards", 0.0))
+	return GameState.practice_swing_count_for(TempoGrade.shot_type_for(lie, aim_yd, club_max))
 
 
 func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) -> void:
@@ -1542,8 +1510,12 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	if not shot_routine.practice_result.is_connected(_on_practice_result):
 		shot_routine.practice_result.connect(_on_practice_result)
 	_set_green_book_visible(false)
+	var total_pr := 0 if GameState.range_mode else _practice_count_for_current_shot()
+	if shot_routine.has_method("set_rep_indicator"):
+		shot_routine.set_rep_indicator(_practice_reps_left, total_pr, not p_practice)
 	if p_practice:
-		feedback.text = "Practice — find your tempo"
+		var done := total_pr - _practice_reps_left + 1
+		feedback.text = "Practice %d/%d — find your tempo" % [clampi(done, 1, maxi(total_pr, 1)), maxi(total_pr, 1)]
 	elif lie == "Green":
 		feedback.text = ""  # club icon/label + hint own the stroke UI
 	else:
@@ -1571,23 +1543,20 @@ func _apply_committed_preview() -> void:
 
 
 func _on_practice_result(verdict: Dictionary) -> void:
+	## Practice rep finished — hold the grade long enough to read, then chain.
 	feedback.text = str(verdict.get("note", "Practice swing"))
-	shot_routine.set_active(false)
 	_power_previewing = false
-	_aiming = true
-	if confirm_aim_btn:
-		confirm_aim_btn.visible = true
-	if _practice_btn:
-		_practice_btn.visible = true
-	_refresh_aim_visuals()
-	var is_putt := ball.get_lie() == "Green"
-	if _change_club_btn:
-		_change_club_btn.visible = not is_putt
-	if is_putt:
-		_refresh_wind_indicator(false)
+	if hole_complete or not GameState.run_active:
+		return
+	# 0.4s was too short to learn from the note / meter; hold chrome until next rep.
+	await get_tree().create_timer(2.2).timeout
+	if hole_complete or not GameState.run_active:
+		return
+	_practice_reps_left = maxi(_practice_reps_left - 1, 0)
+	if _practice_reps_left > 0:
+		_start_power_swing(true, false)
 	else:
-		var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
-		_show_wind_flag(wind)
+		_start_power_swing(false, true)
 
 
 func _set_aim_visuals_visible(on: bool) -> void:

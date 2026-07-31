@@ -117,9 +117,13 @@ def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: fl
         contact = "GOOD"
     if bal < 0.25 and contact == "GOOD" and raw_n > BAND_GOOD:
         contact = "FAT" if err < 0.0 else "THIN"
-    power_mul = min(max(1.0 - abs_n * 0.22, 0.55), 1.0)
-    if contact == "MISS":
-        power_mul = min(power_mul, 0.50)
+    # Distance owned by contact tier; tempo only taxes once out of GOOD.
+    power_mul = 1.0
+    if contact in ("THIN", "FAT"):
+        over = max(abs_n - BAND_GOOD, 0.0)
+        power_mul = min(max(1.0 - over * 0.30, 0.55), 1.0)
+    elif contact == "MISS":
+        power_mul = 0.50
     path = max(min((1.0 if err > 0.01 else (-1.0 if err < -0.01 else 0.0)) * abs_n * 0.35, 1.0), -1.0)
     if bal < 0.35:
         path = max(min(path * (1.0 + (0.35 - bal)), 1.0), -1.0)
@@ -136,10 +140,14 @@ def main() -> int:
     assert "BAND_PERFECT := 0.50" in GRADE
     assert "BAND_GOOD := 1.15" in GRADE
     assert "BAND_THIN_FAT := 1.85" in GRADE
-    assert "abs_n * 0.22" in GRADE
-    assert "abs_n * 0.35" in GRADE
+    # Contact tier owns distance; no continuous abs_n leak inside PERFECT/GOOD.
+    assert "var power_mul := 1.0" in GRADE
+    assert "abs_n - BAND_GOOD" in GRADE
+    assert "abs_n * 0.22" not in GRADE
+    assert "abs_n * 0.35" in GRADE  # path still continuous
     assert "maxf(bal, 0.70)" in GRADE or "max(bal, 0.70)" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
+    assert "return 1.06" in (DIR.parent / "ball" / "ball_physics.gd").read_text(encoding="utf-8")
     # Transition check: graded relative to the swing's own peak speed (drift guard —
     # a hardcoded threshold here would silently defeat the "adapts to any swing speed" design).
     assert "transition_ratio" in GRADE and "transition_pen" in GRADE
@@ -200,17 +208,19 @@ def main() -> int:
     assert gs["contact"] == gf["contact"] == "PERFECT", (gs, gf)
     assert abs(gs["power_mul"] - gf["power_mul"]) < 1e-6
     assert abs(gs["path_error"] - gf["path_error"]) < 1e-6
-    assert gs["power_mul"] <= 1.0 + 1e-9
-    assert gs["power_mul"] >= 0.99  # on-tempo keeps carry
+    assert abs(gs["power_mul"] - 1.0) < 1e-9  # PERFECT: tier owns distance
 
-    # 14-hcp mild miss (~3.8 at full balance) stays GOOD with playable carry
+    # 14-hcp mild miss (~3.8 at full balance) stays GOOD — full carry, path may drift
     mild = dict(slow)
     mild["t_top"] = 0.76
     mild["t_impact"] = 0.96  # 0.76/0.20 = 3.8
     gm = grade(mild, "full")
     assert abs(gm["ratio"] - 3.8) < 0.05, gm
     assert gm["contact"] in ("GOOD", "THIN"), gm
-    assert gm["power_mul"] >= 0.82, gm
+    if gm["contact"] == "GOOD":
+        assert abs(gm["power_mul"] - 1.0) < 1e-9, gm
+    else:
+        assert gm["power_mul"] >= 0.55, gm
     assert gm["path_error"] > 0.0
 
     # Mild tempo + lurch balance must stay playable (not hosel from accel alone).
@@ -227,9 +237,12 @@ def main() -> int:
     assert abs(gsl["ratio"] - 4.23) < 0.05, gsl
     assert gsl["balance"] < 0.6, gsl
     assert gsl["contact"] != "MISS", gsl
-    assert gsl["power_mul"] >= 0.55, gsl
+    if gsl["contact"] in ("PERFECT", "GOOD"):
+        assert abs(gsl["power_mul"] - 1.0) < 1e-9, gsl
+    else:
+        assert gsl["power_mul"] >= 0.55, gsl
 
-    # Playtest best: ~3.5:1 + lurch → GOOD (not THIN), playable carry mul
+    # Playtest best: ~3.5:1 + lurch → GOOD (not THIN), full carry in-band
     best = {
         "t_takeaway": 0.0, "t_top": 0.596, "t_impact": 0.766,  # 3.51:1
         "max_accel": 35.0, "max_jerk": 1.8, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
@@ -238,7 +251,7 @@ def main() -> int:
     assert abs(gb["ratio"] - 3.5) < 0.05, gb
     assert gb["balance"] < 0.6, gb
     assert gb["contact"] in ("PERFECT", "GOOD"), gb
-    assert gb["power_mul"] >= 0.85, gb
+    assert abs(gb["power_mul"] - 1.0) < 1e-9, gb
 
     # Extreme ~6:1 still MISS with low power
     wild = dict(slow)
@@ -247,7 +260,7 @@ def main() -> int:
     gw = grade(wild, "full")
     assert abs(gw["ratio"] - 6.0) < 0.05, gw
     assert gw["contact"] == "MISS", gw
-    assert gw["power_mul"] <= 0.50, gw
+    assert abs(gw["power_mul"] - 0.50) < 1e-9, gw
 
     # Incomplete + off tempo → hard mishit
     incomplete = dict(slow)
@@ -257,24 +270,30 @@ def main() -> int:
     incomplete["follow_through_len"] = 0.0
     gi = grade(incomplete, "full")
     assert gi["contact"] == "MISS", gi
-    assert gi["power_mul"] <= 0.50, gi
+    assert abs(gi["power_mul"] - 0.50) < 1e-9, gi
 
-    # Rushed costs BOTH distance and accuracy (milder than old curve)
+    # Rushed: path left; distance tax only if out of GOOD
     rushed = dict(slow)
     rushed["t_top"] = 0.3
     rushed["t_impact"] = 0.55  # 0.3/0.25 = 1.2
     gr = grade(rushed, "full")
-    assert gr["power_mul"] < 1.0, gr
     assert gr["path_error"] < 0.0, "rushed must pull left (negative path)"
     assert abs(gr["path_error"]) > 0.05
+    if gr["contact"] in ("PERFECT", "GOOD"):
+        assert abs(gr["power_mul"] - 1.0) < 1e-9, gr
+    else:
+        assert gr["power_mul"] < 1.0, gr
 
-    # Dragged → positive path, also distance leak
+    # Dragged → positive path; distance tax only if out of GOOD
     dragged = dict(slow)
     dragged["t_top"] = 0.85
     dragged["t_impact"] = 1.0  # 0.85/0.15 ≈ 5.67
     gd = grade(dragged, "full")
-    assert gd["power_mul"] < 1.0
     assert gd["path_error"] > 0.0, "dragged must push right"
+    if gd["contact"] in ("PERFECT", "GOOD"):
+        assert abs(gd["power_mul"] - 1.0) < 1e-9, gd
+    else:
+        assert gd["power_mul"] < 1.0, gd
 
     # Balance loss tightens, never widens
     calm = balance({"max_accel": 1.0, "max_jerk": 0.1, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False})
