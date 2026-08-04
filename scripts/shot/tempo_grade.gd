@@ -76,8 +76,30 @@ static func ratio(sample: Dictionary) -> float:
 	return bs / ds
 
 
-static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String = "full") -> float:
-	## Gesture qualities → 0..1. tighten scales how harshly spikes hurt (debug knob).
+## Display-only floor: causes below this are not worth a fault line.
+const DIAG_FLOOR := 0.18
+## If top two severities are within this relative gap, keep only the top (no blend).
+const DIAG_TIE_FRAC := 0.10
+
+const FAULT_LINES := {
+	"cast": "Cast at it — released too early",
+	"jerky": "Rough tempo through the swing",
+	"rushed_transition": "Rushed the transition — no pause at the top",
+	"short_backswing": "Backswing too short — take it to the top",
+	"short_finish": "Quit on it before the finish",
+	"incomplete": "Didn't complete the swing",
+	"back_slow": "Backswing — too slow, take it back with more pace",
+	"back_fast": "Backswing — too quick",
+	"down_fast": "Downswing — rushed the transition",
+	"down_slow": "Downswing — lost speed through impact",
+	"ratio_off": "Through too quick for that backswing",
+}
+
+
+static func balance_detail(
+	sample: Dictionary, tighten: float = 1.0, shot_type: String = "full"
+) -> Dictionary:
+	## Same math as legacy balance(); also returns weighted cause severities for copy.
 	var t := maxf(tighten, 0.0)
 	var accel := float(sample.get("max_accel", 0.0))
 	var jerk := float(sample.get("max_jerk", 0.0))
@@ -113,11 +135,28 @@ static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String 
 
 	var accel_w := 0.25 if is_pitch else 0.35
 	var trans_w := 0.10 if is_pitch else 0.15
-	var pen := (
-		accel_pen * accel_w + jerk_pen * 0.15 + transition_pen * trans_w
-		+ short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
-	)
-	return clampf(1.0 - pen, 0.0, 1.0)
+	var cast_s := accel_pen * accel_w
+	var jerky_s := jerk_pen * 0.15
+	var rush_s := transition_pen * trans_w
+	var short_bs_s := short_bs * 0.20
+	var short_ft_s := short_ft * 0.15
+	var pen := cast_s + jerky_s + rush_s + short_bs_s + short_ft_s + incomplete_pen
+	return {
+		"score": clampf(1.0 - pen, 0.0, 1.0),
+		"causes": {
+			"cast": cast_s,
+			"jerky": jerky_s,
+			"rushed_transition": rush_s,
+			"short_backswing": short_bs_s,
+			"short_finish": short_ft_s,
+			"incomplete": incomplete_pen,
+		},
+	}
+
+
+static func balance(sample: Dictionary, tighten: float = 1.0, shot_type: String = "full") -> float:
+	## Gesture qualities → 0..1. tighten scales how harshly spikes hurt (debug knob).
+	return float(balance_detail(sample, tighten, shot_type)["score"])
 
 
 static func tolerance_width(
@@ -157,7 +196,8 @@ static func grade(
 	club_max_yards: float = 0.0
 ) -> Dictionary:
 	var target := target_ratio(shot_type)
-	var bal := balance(sample, balance_tighten, shot_type)
+	var bal_detail: Dictionary = balance_detail(sample, balance_tighten, shot_type)
+	var bal: float = float(bal_detail["score"])
 	var r := ratio(sample)
 	var err := r - target
 	# Mild tempo: don't let a snappy through (accel → lurch) collapse the window into MISS.
@@ -213,14 +253,21 @@ static func grade(
 	var back_ms := int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0)
 	var down_ms := int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0)
 	# Display-only pace vs ghost guide (does not affect contact / power_mul / path).
-	var reads: Dictionary = pace_reads(
-		back_ms, down_ms, guide_back_ms(shot_type, club_max_yards), guide_down_ms(shot_type, club_max_yards)
-	)
+	var g_back := guide_back_ms(shot_type, club_max_yards)
+	var g_down := guide_down_ms(shot_type, club_max_yards)
+	var reads: Dictionary = pace_reads(back_ms, down_ms, g_back, g_down)
 	var back_read := str(reads.get("backswing_read", "on_pace"))
 	var down_read := str(reads.get("downswing_read", "on_pace"))
 	var copy: Dictionary = pace_copy(back_read, down_read, r, target)
 	back_read = str(copy.get("backswing_read", back_read))
 	down_read = str(copy.get("downswing_read", down_read))
+	var causes: Dictionary = bal_detail.get("causes", {})
+	var diag: Dictionary = diagnose_swing(
+		causes, back_read, down_read, r, target, back_ms, down_ms, g_back, g_down
+	)
+	var note := tempo_note(
+		r, target, back_ms, down_ms, short_bs, back_read, down_read, str(copy.get("headline", "")), diag
+	)
 
 	return {
 		"ratio": r,
@@ -230,7 +277,9 @@ static func grade(
 		"contact": contact,
 		"power_mul": power_mul,
 		"path_error": path,
-		"note": tempo_note(r, target, bal, back_ms, down_ms, short_bs, back_read, down_read),
+		"note": note,
+		"fault": str(diag.get("fault", "")),
+		"diagnosis": str(diag.get("line", "")),
 		"backswing_ms": back_ms,
 		"downswing_ms": down_ms,
 		"backswing_read": back_read,
@@ -335,25 +384,111 @@ static func pace_copy(
 	}
 
 
+static func _pace_leg_severity(actual_ms: float, guide_ms: float) -> float:
+	## 0 if on-pace; else overshoot past the guide half-band, normalized ~0..1.
+	var g := maxf(guide_ms, 1.0)
+	var half := g * PACE_TOL_FRAC
+	var over := absf(actual_ms - g) - half
+	if over <= 0.0:
+		return 0.0
+	return clampf(over / maxf(g * 0.5, 1.0), 0.0, 1.0)
+
+
+static func diagnose_swing(
+	causes: Dictionary,
+	back_read: String = "",
+	down_read: String = "",
+	ratio: float = -1.0,
+	target: float = 3.0,
+	back_ms: int = 0,
+	down_ms: int = 0,
+	guide_back: float = 0.0,
+	guide_down: float = 0.0
+) -> Dictionary:
+	## One ranked fault for copy. Balance causes + tempo pace/ratio on one severity scale.
+	var cands: Array = []
+	for key in causes.keys():
+		var sev := float(causes[key])
+		if sev > DIAG_FLOOR and FAULT_LINES.has(key):
+			cands.append({"fault": str(key), "severity": sev, "line": str(FAULT_LINES[key])})
+
+	if guide_back > 0.0 and back_ms > 0:
+		var bs := _pace_leg_severity(float(back_ms), guide_back)
+		if bs > DIAG_FLOOR:
+			if back_read == "slow":
+				cands.append({"fault": "back_slow", "severity": bs, "line": str(FAULT_LINES["back_slow"])})
+			elif back_read == "fast":
+				cands.append({"fault": "back_fast", "severity": bs, "line": str(FAULT_LINES["back_fast"])})
+	if guide_down > 0.0 and down_ms > 0:
+		var ds := _pace_leg_severity(float(down_ms), guide_down)
+		if ds > DIAG_FLOOR:
+			if down_read == "fast":
+				cands.append({"fault": "down_fast", "severity": ds, "line": str(FAULT_LINES["down_fast"])})
+			elif down_read == "slow":
+				cands.append({"fault": "down_slow", "severity": ds, "line": str(FAULT_LINES["down_slow"])})
+
+	if ratio >= 0.0 and target > 0.01:
+		var band := maxf(target * 0.08, 0.2)
+		var r_sev := clampf(absf(ratio - target) / band, 0.0, 1.0)
+		if r_sev > DIAG_FLOOR:
+			var r_line := str(FAULT_LINES["ratio_off"])
+			if ratio < target:
+				r_line = "Rushed to through — brief pause at top"
+			elif ratio > target:
+				r_line = "Through too quick for that backswing — match the %.0f:1" % target
+			cands.append({"fault": "ratio_off", "severity": r_sev, "line": r_line})
+
+	if cands.is_empty():
+		return {"fault": "", "line": "", "severity": 0.0}
+
+	cands.sort_custom(func(a: Dictionary, b: Dictionary) -> bool:
+		return float(a["severity"]) > float(b["severity"])
+	)
+	var top: Dictionary = cands[0]
+	# Tie-break: do not blend two near-equal faults into one sentence.
+	if cands.size() >= 2:
+		var s0 := float(top["severity"])
+		var s1 := float(cands[1]["severity"])
+		if s0 > 0.0 and absf(s0 - s1) / s0 <= DIAG_TIE_FRAC:
+			pass  # still only report top
+	return {
+		"fault": str(top["fault"]),
+		"line": str(top["line"]),
+		"severity": float(top["severity"]),
+	}
+
+
 static func tempo_note(
-	r: float, target: float, bal: float, back_ms: int = 0, down_ms: int = 0, short_bs: float = 0.0,
-	back_read: String = "", down_read: String = ""
+	r: float,
+	target: float,
+	back_ms: int = 0,
+	down_ms: int = 0,
+	short_bs: float = 0.0,
+	back_read: String = "",
+	down_read: String = "",
+	headline: String = "",
+	diag: Dictionary = {}
 ) -> String:
-	var err := r - target
-	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
-	# Short takeaway is a golf miss — surface it over tempo jargon when it's the story.
-	if short_bs >= 0.45:
-		var timing := ""
-		if back_ms > 0 and down_ms > 0:
-			timing = " (%dms back / %dms thru)" % [back_ms, down_ms]
-		return "Tempo %.1f:1%s — backswing too short · take it to the top · %s" % [r, timing, bal_word]
-	var timing2 := ""
+	## One coaching story — no steady/shaky/lurch append.
+	var timing := ""
 	if back_ms > 0 and down_ms > 0:
-		timing2 = " (%dms back / %dms thru)" % [back_ms, down_ms]
+		timing = " (%dms back / %dms thru)" % [back_ms, down_ms]
+	var dline := str(diag.get("line", ""))
+
+	# Short takeaway is a golf miss — surface it once, no second fault tail.
+	if short_bs >= 0.45:
+		return "Tempo %.1f:1%s — backswing too short · take it to the top" % [r, timing]
+
+	if not dline.is_empty():
+		return "Tempo %.1f:1%s — %s" % [r, timing, dline]
+
+	# Clean (or below speak floor): ratio context only, silence on swing-quality word.
+	if not headline.is_empty():
+		return "Tempo %.1f:1%s — %s" % [r, timing, headline]
 	if not back_read.is_empty() and not down_read.is_empty():
 		var copy: Dictionary = pace_copy(back_read, down_read, r, target)
-		return "Tempo %.1f:1%s — %s · %s" % [r, timing2, str(copy["headline"]), bal_word]
-	# Legacy ratio-only note (no absolute pace attached).
+		return "Tempo %.1f:1%s — %s" % [r, timing, str(copy["headline"])]
+	var err := r - target
 	var tempo_word: String
 	if absf(err) <= target * 0.08:
 		tempo_word = "on tempo"
@@ -363,4 +498,4 @@ static func tempo_note(
 		tempo_word = "through too quick — finish through the ball"
 	else:
 		tempo_word = "pull/pause too long vs through — don't linger at top"
-	return "Tempo %.1f:1%s — %s · %s" % [r, timing2, tempo_word, bal_word]
+	return "Tempo %.1f:1%s — %s" % [r, timing, tempo_word]

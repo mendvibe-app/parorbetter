@@ -342,9 +342,9 @@ static func generate_hole(
 	wind_mag *= rng.randf_range(0.85, 1.15)
 	var wind_angle := rng.randf_range(0.0, TAU)
 	var wind := Vector2(cos(wind_angle), sin(wind_angle)) * wind_mag
-	# Prefer crosswind-ish Y components for readable UI (horizontal on portrait).
+	# Full-circle wind (head/tail = cross) — no Y attenuation.
 	wind.x = clampf(wind.x, -60.0, 60.0)
-	wind.y = clampf(wind.y * 0.35, -20.0, 20.0)
+	wind.y = clampf(wind.y, -60.0, 60.0)
 
 	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else (
 		lerpf(0.10, 0.48, rng.randf()) * float(mods.get("slope_mult", 1.0))

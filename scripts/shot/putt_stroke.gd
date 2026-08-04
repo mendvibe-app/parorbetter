@@ -127,7 +127,9 @@ static func grade(
 	var frac_err := actual - target
 	var abs_n := absf(frac_err) / maxf(band, 0.001)
 
-	var bal := TempoGrade.balance(sample, balance_tighten, "putt")
+	var bal_detail: Dictionary = TempoGrade.balance_detail(sample, balance_tighten, "putt")
+	var bal: float = float(bal_detail["score"])
+	var causes: Dictionary = bal_detail.get("causes", {})
 	# Matched halves — follow should match backswing, but only up to what fits past address on-pad
 	# (drawn cue = this cap). Don't punish a full finish the pad can't show.
 	var follow_cap := float(sample.get("follow_cap_frac", 1.0))
@@ -166,7 +168,14 @@ static func grade(
 
 	var target_yd := committed_power * club_max_yd
 	var rolled_yd := clampf(committed_power * power_mul, 0.05, 1.0) * club_max_yd
-	var note := putt_note(target_yd, rolled_yd, path, bal, tempo_bias, abs_n, contact, actual, follow, match_target)
+	# Match-pen short finish isn't in balance causes — boost short_finish when follow dies.
+	if match_pen > 0.35:
+		causes = causes.duplicate()
+		causes["short_finish"] = maxf(float(causes.get("short_finish", 0.0)), match_pen * 0.4)
+	var diag: Dictionary = TempoGrade.diagnose_swing(causes)
+	var note := putt_note(
+		target_yd, rolled_yd, path, tempo_bias, abs_n, contact, actual, follow, match_target, diag
+	)
 
 	return {
 		"ratio": actual / maxf(target, 0.01),  # F1-friendly stand-in (not a tempo ratio)
@@ -183,6 +192,8 @@ static func grade(
 		"path_error": path,
 		"tempo_bias": tempo_bias,
 		"note": note,
+		"fault": str(diag.get("fault", "")),
+		"diagnosis": str(diag.get("line", "")),
 		"backswing_ms": int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0),
 		"downswing_ms": int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0),
 	}
@@ -192,15 +203,15 @@ static func putt_note(
 	target_yd: float,
 	rolled_yd: float,
 	path: float,
-	bal: float,
 	tempo_bias: float,
 	abs_n: float,
 	contact: ShotResult.ContactQuality,
 	actual_frac: float = -1.0,
 	follow_frac: float = -1.0,
-	follow_need: float = -1.0
+	follow_need: float = -1.0,
+	diag: Dictionary = {}
 ) -> String:
-	var bal_word := "steady" if bal >= PURE_BALANCE else ("shaky" if bal >= 0.4 else "lurch")
+	## One coaching story — no steady/shaky/lurch.
 	var line_word := ""
 	if absf(path) > 0.35:
 		line_word = " · pushed right" if path > 0.0 else " · pulled left"
@@ -218,22 +229,27 @@ static func putt_note(
 	else:
 		ft_core += " — %d ft long" % int(round(delta_ft))
 
+	var dline := str(diag.get("line", ""))
+
 	# Short leave + unfinished through — need is pad-capped matched follow (drawn = graded).
 	var need := follow_need if follow_need > 0.0 else actual_frac
 	var short_through := (
 		actual_frac > 0.05 and follow_frac >= 0.0 and follow_frac < need * 0.65
 	)
 	if delta_ft < -1.0 and short_through:
-		return "%s · didn't finish through the ball (%s)%s" % [ft_core, bal_word, line_word]
+		# Already named the finish miss — don't also append short_finish/cast.
+		return "%s · didn't finish through the ball%s" % [ft_core, line_word]
 
-	# Amplitude was in band but tempo spoiled it — lead with the golf why.
+	# Amplitude was in band but tempo spoiled it — lead with the golf why (once).
 	if abs_n <= BAND_GOOD and absf(tempo_bias) > 0.02:
 		var why := "jabbed through" if tempo_bias > 0.0 else "didn't finish through the ball"
-		return "%s · %s (%s)%s" % [ft_core, why, bal_word, line_word]
+		return "%s · %s%s" % [ft_core, why, line_word]
 
-	if contact == ShotResult.ContactQuality.PERFECT or abs_n <= BAND_PERFECT:
-		return "%s · %s%s" % [ft_core, bal_word, line_word]
-	return "%s · %s%s" % [ft_core, bal_word, line_word]
+	if not dline.is_empty():
+		return "%s · %s%s" % [ft_core, dline, line_word]
+
+	# Clean: distance/line only (silence = positive swing quality).
+	return "%s%s" % [ft_core, line_word]
 
 
 static func _tempo_bias(sample: Dictionary, bal: float, match_pen: float) -> float:

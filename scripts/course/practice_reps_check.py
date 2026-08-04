@@ -39,12 +39,23 @@ def main() -> None:
     assert "_start_power_swing(is_practice" in confirm or "_start_power_swing(" in confirm
     prac = HC.split("func _on_practice_result")[1].split("func ")[0]
     assert "_practice_reps_left" in prac
-    assert "_start_power_swing(true" in prac
+    assert "_start_power_swing(true, true)" in prac
     assert "_start_power_swing(false, true)" in prac
     assert "_aiming = true" not in prac  # no return to aim between reps
     # Feedback dwell long enough to read (not the old 0.4s flash)
     assert "create_timer(2.2)" in prac or "create_timer(2." in prac
     assert "create_timer(0.4)" not in prac
+    # Single-surface practice coaching: no full note on fairway/hint
+    assert 'verdict.get("note"' not in prac and "verdict.get('note'" not in prac
+    assert "Practice ·" in prac or 'Practice ·' in prac
+    assert 'hint_label.text = str(verdict.get("note"' not in SR
+    meter = (ROOT / "scripts/shot/meter_display.gd").read_text(encoding="utf-8")
+    assert "pace_copy" in meter or "back_line" in meter
+    assert 'title = str(_verdict.get("note"' not in meter
+    # Back available during practice (until takeaway), not practice-locked off
+    assert "back_btn.visible = p_allow_back" in SR
+    assert "and not p_practice" not in SR.split("if back_btn:")[1].split("func ")[0]
+    assert "_start_power_swing(is_practice, true)" in confirm or "_start_power_swing(is_practice, true)" in HC
 
     # Range ignored
     assert "range_mode" in confirm

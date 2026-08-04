@@ -122,14 +122,17 @@ func _draw_putt_amplitude() -> void:
 	var area := Rect2(Vector2.ZERO, size)
 	var target := float(_verdict.get("target_frac", putt_target_frac))
 	var band := PuttStroke.BAND_HALF
+	# Short title only — full note is F1/result material, not meter chrome.
 	var title := str(_verdict.get("note", "Stroke"))
+	if title.length() > 28:
+		title = title.substr(0, 26) + "…"
 	draw_string(
 		UiScale.FONT,
-		area.position + Vector2(12.0, 28.0),
+		area.position + Vector2(12.0, 22.0),
 		title,
 		HORIZONTAL_ALIGNMENT_LEFT,
 		-1,
-		UiScale.CAPTION,
+		UiScale.CAPTION * 0.55,
 		Color(0.7, 0.9, 0.95, 0.95),
 	)
 
@@ -160,30 +163,117 @@ func _draw_putt_amplitude() -> void:
 		draw_circle(Vector2(x_n, strip.position.y + strip.size.y * 0.5), 10.0, needle_c)
 
 
+func _pace_color(read: String) -> Color:
+	match read:
+		"on_pace":
+			return Color(0.35, 0.92, 0.45)
+		"slow", "fast":
+			return Color(0.95, 0.85, 0.25)
+		_:
+			return Color(0.95, 0.35, 0.3)
+
+
+func _contact_label(contact: Variant) -> String:
+	if contact == null:
+		return ""
+	match int(contact):
+		ShotResult.ContactQuality.PERFECT:
+			return "PERFECT"
+		ShotResult.ContactQuality.GOOD:
+			return "GOOD"
+		ShotResult.ContactQuality.THIN:
+			return "THIN"
+		ShotResult.ContactQuality.FAT:
+			return "FAT"
+		ShotResult.ContactQuality.MISS:
+			return "MISS"
+		_:
+			return ""
+
+
+func _contact_color(tag: String) -> Color:
+	match tag:
+		"PERFECT":
+			return Color(1.0, 0.92, 0.35)
+		"GOOD":
+			return Color(0.35, 0.92, 0.45)
+		"THIN", "FAT":
+			return Color(0.95, 0.85, 0.25)
+		"MISS":
+			return Color(0.95, 0.35, 0.3)
+		_:
+			return Color(0.85, 0.92, 0.8)
+
+
 func _draw_tempo_ratio() -> void:
 	var area := Rect2(Vector2.ZERO, size)
 	var target := TempoGrade.target_ratio(shot_type)
 	var tol := TempoGrade.base_tolerance(shot_type) * maxf(timing_scale, 0.35)
-
-	var title := "Tempo ~%.0f:1%s" % [target, "  PRACTICE" if practice_mode else ""]
-	if not _verdict.is_empty():
-		title = str(_verdict.get("note", title))
-	draw_string(
-		UiScale.FONT,
-		area.position + Vector2(12.0, 28.0),
-		title,
-		HORIZONTAL_ALIGNMENT_LEFT,
-		-1,
-		UiScale.CAPTION,
-		Color(0.85, 0.92, 0.8, 0.95),
-	)
-
-	# Compact ratio strip for short meter height
-	var strip := Rect2(area.position + Vector2(24.0, 40.0), Vector2(area.size.x - 48.0, 28.0))
-	draw_texture_rect(TEX_TRACK, strip, false)
-
 	var r_min := 0.5
 	var r_max := 5.5
+
+	var ratio := -1.0
+	if not _verdict.is_empty():
+		ratio = float(_verdict.get("ratio", -1.0))
+		target = float(_verdict.get("target", target))
+		tol = maxf(float(_verdict.get("tolerance", tol)), 0.01)
+	elif tempo_gesture:
+		ratio = tempo_gesture.live_ratio()
+
+	# Post-commit practice/range: structured coaching (not the long note string thrice).
+	var strip_y := 40.0
+	if not _verdict.is_empty():
+		var back_read := str(_verdict.get("backswing_read", "on_pace"))
+		var down_read := str(_verdict.get("downswing_read", "on_pace"))
+		var back_line := str(_verdict.get("back_line", ""))
+		var down_line := str(_verdict.get("down_line", ""))
+		if back_line.is_empty() or down_line.is_empty():
+			var copy: Dictionary = TempoGrade.pace_copy(back_read, down_read, ratio, target)
+			back_line = str(copy.get("back_line", "Backswing — on pace"))
+			down_line = str(copy.get("down_line", "Downswing — on pace"))
+			back_read = str(copy.get("backswing_read", back_read))
+			down_read = str(copy.get("downswing_read", down_read))
+		var fs := UiScale.CAPTION * 0.5
+		var left := 12.0
+		var y0 := area.position.y + 16.0
+		var c1 := _pace_color(back_read)
+		draw_rect(Rect2(left, y0, 5.0, 12.0), c1, true)
+		draw_string(UiScale.FONT, Vector2(left + 10.0, y0 + 11.0), back_line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c1)
+		var y1 := y0 + 18.0
+		var c2 := _pace_color(down_read)
+		draw_rect(Rect2(left, y1, 5.0, 12.0), c2, true)
+		draw_string(UiScale.FONT, Vector2(left + 10.0, y1 + 11.0), down_line, HORIZONTAL_ALIGNMENT_LEFT, -1, fs, c2)
+		var y2 := y1 + 18.0
+		var ratio_txt := "%.1f:1  (tgt %.0f:1)" % [ratio if ratio >= 0.0 else target, target]
+		var tag := _contact_label(_verdict.get("contact", null))
+		if not tag.is_empty():
+			ratio_txt += "  ·  %s" % tag
+		draw_string(
+			UiScale.FONT,
+			Vector2(left + 10.0, y2 + 11.0),
+			ratio_txt,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			fs,
+			_contact_color(tag) if not tag.is_empty() else Color(0.85, 0.92, 0.8, 0.95),
+		)
+		strip_y = y2 + 18.0
+	else:
+		var title := "Tempo ~%.0f:1%s" % [target, "  PRACTICE" if practice_mode else ""]
+		draw_string(
+			UiScale.FONT,
+			area.position + Vector2(12.0, 28.0),
+			title,
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			UiScale.CAPTION,
+			Color(0.85, 0.92, 0.8, 0.95),
+		)
+
+	# Compact ratio strip
+	var strip := Rect2(area.position + Vector2(24.0, strip_y), Vector2(area.size.x - 48.0, 22.0))
+	draw_texture_rect(TEX_TRACK, strip, false)
+
 	var band_lo := target - tol
 	var band_hi := target + tol
 	var x_lo := strip.position.x + strip.size.x * clampf((band_lo - r_min) / (r_max - r_min), 0.0, 1.0)
@@ -197,18 +287,12 @@ func _draw_tempo_ratio() -> void:
 		Color(1.0, 1.0, 1.0, 0.95), 3.0, true
 	)
 
-	var ratio := -1.0
-	if not _verdict.is_empty():
-		ratio = float(_verdict.get("ratio", -1.0))
-	elif tempo_gesture:
-		ratio = tempo_gesture.live_ratio()
-
 	if ratio >= 0.0:
 		var x_n := strip.position.x + strip.size.x * clampf((ratio - r_min) / (r_max - r_min), 0.0, 1.0)
 		var needle_c := Color(0.95, 0.9, 0.35)
-		if tempo_gesture:
+		if _verdict.is_empty() and tempo_gesture:
 			needle_c = tempo_gesture.trail_color()
-		elif not _verdict.is_empty():
+		else:
 			var abs_n := absf(ratio - target) / maxf(tol, 0.01)
 			if abs_n <= TempoGrade.BAND_PERFECT:
 				needle_c = Color(0.35, 0.92, 0.45)
@@ -217,17 +301,8 @@ func _draw_tempo_ratio() -> void:
 			else:
 				needle_c = Color(0.95, 0.35, 0.3)
 		var nsz := TEX_NEEDLE.get_size()
-		var nd := 22.0
+		var nd := 20.0
 		var ns := nd / maxf(nsz.x, 1.0)
 		draw_set_transform(Vector2(x_n, strip.position.y + strip.size.y * 0.5), 0.0, Vector2(ns, ns))
 		draw_texture(TEX_NEEDLE, -nsz * 0.5, needle_c)
 		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
-		draw_string(
-			UiScale.FONT,
-			Vector2(x_n - 24.0, strip.position.y - 8.0),
-			"%.1f:1" % ratio,
-			HORIZONTAL_ALIGNMENT_LEFT,
-			-1,
-			UiScale.CAPTION,
-			needle_c,
-		)

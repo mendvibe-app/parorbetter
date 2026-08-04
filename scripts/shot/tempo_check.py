@@ -51,7 +51,7 @@ def ratio(t_takeaway: float, t_top: float, t_impact: float) -> float:
     return bs / ds
 
 
-def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> float:
+def balance_detail(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> dict:
     t = max(tighten, 0.0)
     accel = float(sample.get("max_accel", 0.0))
     jerk = float(sample.get("max_jerk", 0.0))
@@ -76,11 +76,27 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
     transition_pen = min(max((transition_ratio - tr_lo) / max(tr_hi - tr_lo, 0.05), 0.0), 1.0) * t
     accel_w = 0.25 if is_pitch else 0.35
     trans_w = 0.10 if is_pitch else 0.15
-    pen = (
-        accel_pen * accel_w + jerk_pen * 0.15 + transition_pen * trans_w
-        + short_bs * 0.20 + short_ft * 0.15 + incomplete_pen
-    )
-    return min(max(1.0 - pen, 0.0), 1.0)
+    cast_s = accel_pen * accel_w
+    jerky_s = jerk_pen * 0.15
+    rush_s = transition_pen * trans_w
+    short_bs_s = short_bs * 0.20
+    short_ft_s = short_ft * 0.15
+    pen = cast_s + jerky_s + rush_s + short_bs_s + short_ft_s + incomplete_pen
+    return {
+        "score": min(max(1.0 - pen, 0.0), 1.0),
+        "causes": {
+            "cast": cast_s,
+            "jerky": jerky_s,
+            "rushed_transition": rush_s,
+            "short_backswing": short_bs_s,
+            "short_finish": short_ft_s,
+            "incomplete": incomplete_pen,
+        },
+    }
+
+
+def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> float:
+    return float(balance_detail(sample, tighten, shot_type)["score"])
 
 
 def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_scale: float = 1.0) -> float:
@@ -148,6 +164,13 @@ def main() -> int:
     assert "maxf(bal, 0.70)" in GRADE or "max(bal, 0.70)" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
     assert "return 1.06" in (DIR.parent / "ball" / "ball_physics.gd").read_text(encoding="utf-8")
+    # Unified diagnosis: balance_detail + diagnose_swing; no bal_word / lurch in notes
+    assert "func balance_detail" in GRADE
+    assert "func diagnose_swing" in GRADE
+    assert "bal_word" not in GRADE
+    assert '"lurch"' not in GRADE and "'lurch'" not in GRADE
+    assert "Cast at it" in GRADE
+    assert "Rushed the transition" in GRADE
     # Transition check: graded relative to the swing's own peak speed (drift guard —
     # a hardcoded threshold here would silently defeat the "adapts to any swing speed" design).
     assert "transition_ratio" in GRADE and "transition_pen" in GRADE
@@ -171,6 +194,10 @@ def main() -> int:
     assert "live_coach" in METER and "GameState.range_mode" in METER
     assert "layout_shot_chrome" in ROUTINE
     assert "SHOT_PAD_TOP_COMPACT" in (DIR.parent / "ui" / "ui_scale.gd").read_text(encoding="utf-8")
+    # Pad size is shot-type only — not show_meter — so practice pad == real pad.
+    layout = ROUTINE.split("func layout_shot_chrome")[1].split("func ")[0]
+    assert "SHOT_PAD_TOP_COMPACT if (shot_type == \"putt\"" in layout or "shot_type == \"putt\"" in layout
+    assert "pad_top := UiScale.SHOT_PAD_TOP if show_meter" not in layout
     # Takeaway starts on axis lock (not finger-down) — pitch ghost wait no longer inflates 2:1.
     assert "VEL_TOP_EPS_PITCH" in GESTURE
     begin_fn = GESTURE.split("func _begin")[1].split("func ")[0]
@@ -296,9 +323,17 @@ def main() -> int:
         assert gd["power_mul"] < 1.0, gd
 
     # Balance loss tightens, never widens
-    calm = balance({"max_accel": 1.0, "max_jerk": 0.1, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False})
-    lurch = balance({"max_accel": 40.0, "max_jerk": 2.5, "backswing_len": 0.05, "follow_through_len": 0.0, "incomplete": True})
+    calm_s = {"max_accel": 1.0, "max_jerk": 0.1, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False}
+    lurch_s = {"max_accel": 40.0, "max_jerk": 2.5, "backswing_len": 0.05, "follow_through_len": 0.0, "incomplete": True}
+    calm = balance(calm_s)
+    lurch = balance(lurch_s)
     assert calm > lurch
+    assert abs(balance(calm_s) - balance_detail(calm_s)["score"]) < 1e-12
+    assert abs(balance(lurch_s) - balance_detail(lurch_s)["score"]) < 1e-12
+    cast_causes = balance_detail(
+        {"max_accel": 40.0, "max_jerk": 0.2, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False}
+    )["causes"]
+    assert cast_causes["cast"] > 0.18
     tw_calm = tolerance_width("full", calm)
     tw_lurch = tolerance_width("full", lurch)
     assert tw_lurch < tw_calm, (tw_lurch, tw_calm)

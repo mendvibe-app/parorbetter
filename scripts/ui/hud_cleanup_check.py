@@ -16,8 +16,8 @@ CLUB_SEL = (ROOT / "scripts/shot/club_select.gd").read_text(encoding="utf-8")
 
 
 def main() -> int:
-    assert 'HOLE %d · PAR %d · %d YDS' in HUD, "header must show hole · par · yards"
-    assert "hole.yardage" in HUD
+    assert "HOLE %d · PAR %d" in HUD and "YDS" in HUD, "header must show hole · par · yards"
+    assert "tee_yards" in HUD or "yardage" in HUD
     assert "form_label()" not in HUD, "form text retired from AdaptLabel"
     assert "get_aim_radius_yards" not in HUD, "○radius text retired from AdaptLabel"
     assert "Strokes %d" in HUD
@@ -42,6 +42,15 @@ def main() -> int:
     assert "wind_aim_hint" not in FLAG, "advice sentence retired; direction reads from lean"
     assert "MAX_LEAN" in FLAG
     assert "pin_flag.png" in FLAG
+    # Cross lean from x; head/tail glyph from y (no generation bias).
+    assert "_wind.x" in FLAG
+    assert "_wind.y" in FLAG
+    assert "INTO" in FLAG and "HELP" in FLAG
+    assert "_refresh_axis_glyph" in FLAG
+
+    gen = (ROOT / "scripts/course/hole_generator.gd").read_text(encoding="utf-8")
+    assert "wind.y * 0.35" not in gen
+    assert "clampf(wind.y, -60.0, 60.0)" in gen
 
     assert "lie_tee.png" in ICONS
     assert "club_putter.png" in ICONS

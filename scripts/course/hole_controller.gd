@@ -1460,9 +1460,10 @@ func _confirm_aim() -> void:
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
 	# Auto practice reps (0–3 per shot type), then real shot. Range never uses confirm-aim.
+	# Back stays available on practice reps too (until takeaway) so club/aim can change.
 	_practice_reps_left = 0 if GameState.range_mode else _practice_count_for_current_shot()
 	var is_practice := _practice_reps_left > 0
-	_start_power_swing(is_practice, not is_practice)
+	_start_power_swing(is_practice, true)
 
 
 func _practice_count_for_current_shot() -> int:
@@ -1543,18 +1544,33 @@ func _apply_committed_preview() -> void:
 
 
 func _on_practice_result(verdict: Dictionary) -> void:
-	## Practice rep finished — hold the grade long enough to read, then chain.
-	feedback.text = str(verdict.get("note", "Practice swing"))
+	## Practice rep finished — meter shows coaching; fairway only a short badge.
+	var contact: Variant = verdict.get("contact", null)
+	var tag := ""
+	if contact != null:
+		match int(contact):
+			ShotResult.ContactQuality.PERFECT:
+				tag = "PERFECT"
+			ShotResult.ContactQuality.GOOD:
+				tag = "GOOD"
+			ShotResult.ContactQuality.THIN:
+				tag = "THIN"
+			ShotResult.ContactQuality.FAT:
+				tag = "FAT"
+			ShotResult.ContactQuality.MISS:
+				tag = "MISS"
+	feedback.text = "Practice · %s" % tag if not tag.is_empty() else "Practice"
+	feedback.modulate = Color(0.85, 0.95, 0.75)
 	_power_previewing = false
 	if hole_complete or not GameState.run_active:
 		return
-	# 0.4s was too short to learn from the note / meter; hold chrome until next rep.
+	# Hold long enough to read structured meter lines (not a fairway wall of text).
 	await get_tree().create_timer(2.2).timeout
 	if hole_complete or not GameState.run_active:
 		return
 	_practice_reps_left = maxi(_practice_reps_left - 1, 0)
 	if _practice_reps_left > 0:
-		_start_power_swing(true, false)
+		_start_power_swing(true, true)
 	else:
 		_start_power_swing(false, true)
 

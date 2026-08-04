@@ -13,12 +13,13 @@ var _extra: String = ""
 var _tip_until_msec: int = 0
 
 var _flag: TextureRect
+var _axis: Label  ## Head/tail cue (↑ INTO / ↓ HELP); lean still owns crosswind.
 var _tip: Label
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	custom_minimum_size = Vector2(96, FLAG_H + 8.0)
+	custom_minimum_size = Vector2(96, FLAG_H + 28.0)
 
 	_flag = TextureRect.new()
 	_flag.texture = TEX_FLAG
@@ -26,10 +27,25 @@ func _ready() -> void:
 	_flag.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	_flag.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_flag.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_flag.offset_bottom = -4.0
+	_flag.offset_bottom = -22.0
 	# Pivot near pole base (texture center-x) so lean reads as a flagstick.
 	_flag.pivot_offset = Vector2(custom_minimum_size.x * 0.5, FLAG_H - 8.0)
 	add_child(_flag)
+
+	_axis = Label.new()
+	_axis.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_axis.add_theme_font_size_override("font_size", int(UiScale.CAPTION * 0.55))
+	_axis.add_theme_color_override("font_color", Color(0.75, 0.92, 1.0, 1.0))
+	_axis.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
+	_axis.anchor_top = 1.0
+	_axis.anchor_bottom = 1.0
+	_axis.offset_left = -48.0
+	_axis.offset_right = 48.0
+	_axis.offset_top = -20.0
+	_axis.offset_bottom = 2.0
+	_axis.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_axis.visible = false
+	add_child(_axis)
 
 	_tip = Label.new()
 	_tip.visible = false
@@ -99,9 +115,27 @@ func _process(_delta: float) -> void:
 		# Flutter amplitude scales with strength so a wind-4 breeze barely ripples.
 		wave = sin(t * speed * TAU) * deg_to_rad(12.0 * lean_amt)
 	_flag.rotation = lean + wave
+	_refresh_axis_glyph()
 
 	if _tip.visible and Time.get_ticks_msec() >= _tip_until_msec:
 		_tip.visible = false
+
+
+func _refresh_axis_glyph() -> void:
+	## Head/tail at a glance. Physics: wind_yards = -wind.y * 0.35 → +y helps, −y into.
+	if _axis == null:
+		return
+	var ay := _wind.y
+	if absf(ay) <= 0.5:
+		_axis.visible = false
+		return
+	_axis.visible = true
+	if ay > 0.0:
+		_axis.text = "↓ HELP"
+	else:
+		_axis.text = "↑ INTO"
+	var a := clampf(absf(ay) / 40.0, 0.35, 1.0)
+	_axis.modulate = Color(1.0, 1.0, 1.0, a)
 
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -119,6 +153,10 @@ func _on_gui_input(event: InputEvent) -> void:
 func _show_tip() -> void:
 	var lines: PackedStringArray = PackedStringArray()
 	lines.append("%d mph" % int(roundf(_wind.length())))
+	if absf(_wind.y) > 0.5:
+		lines.append("helping" if _wind.y > 0.0 else "into the wind")
+	elif absf(_wind.x) > 0.5:
+		lines.append("crosswind")
 	if not _extra.is_empty():
 		lines.append(_extra)
 	_tip.text = "\n".join(lines)

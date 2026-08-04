@@ -127,7 +127,12 @@ def main() -> int:
     assert "func yd_to_ft" in PUTT
     assert "Target %d ft → %d" in PUTT
     assert "didn't finish through the ball" in PUTT
-    assert 'visible = p_type != "putt"' in METER or "visible = p_type != \"putt\"" in METER
+    # Unified diagnosis — no steady/shaky/lurch on putt notes
+    assert "bal_word" not in PUTT
+    assert '"lurch"' not in PUTT and "'lurch'" not in PUTT
+    assert "diagnose_swing" in PUTT
+    assert "balance_detail" in PUTT
+    assert 'p_type != "putt"' in METER
     assert "Address · feel your pace · through the ball." in ROUTINE
 
     # Absolute map: 10 ft and 70 ft (near the new 75 ft ceiling) sit at different pad marks
@@ -172,8 +177,8 @@ def main() -> int:
     assert arc_allowance(0.0) == ARC_FLOOR
     assert "ARC_FLOOR := 0.10" in PUTT
     assert "ARC_SCALE := 0.16" in PUTT
-    assert "0.22 if _is_putt()" in GESTURE or "y := 0.22 if _is_putt()" in GESTURE
-    assert "0.92 if _is_putt()" in GESTURE or "y := 0.92 if _is_putt()" in GESTURE
+    assert "y = 0.22" in GESTURE and "_is_putt()" in GESTURE
+    assert "0.92" in GESTURE and "_is_putt()" in GESTURE
     assert "72.0 / maxf(tex_size.x" in GESTURE
 
     assert "MATCH_TOL" in PUTT

@@ -223,7 +223,8 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	if controls:
 		controls.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if back_btn:
-		back_btn.visible = p_allow_back and not p_practice
+		# Same re-do window on practice as real — exit sequence before takeaway.
+		back_btn.visible = p_allow_back
 
 
 func set_active(on: bool) -> void:
@@ -234,13 +235,18 @@ func set_active(on: bool) -> void:
 
 
 func layout_shot_chrome() -> void:
-	## Collapse meter band on scored full/pitch so the pad isn't floating under empty chrome.
+	## Meter/hint may hide or shift; pad size is shot-type only so practice = real.
 	var show_meter := (
 		(practice_mode or GameState.range_mode)
 		and shot_type != "putt" and shot_type != "chip"
 	)
 	var hint_top := UiScale.HINT_TOP_WITH_METER if show_meter else UiScale.HINT_TOP_NO_METER
-	var pad_top := UiScale.SHOT_PAD_TOP if show_meter else UiScale.SHOT_PAD_TOP_COMPACT
+	# Pad size follows shot type only (putt/chip stay compact) — never practice-vs-real,
+	# so the gesture area a player rehearses on is identical to the one they're scored on.
+	var pad_top := (
+		UiScale.SHOT_PAD_TOP_COMPACT if (shot_type == "putt" or shot_type == "chip")
+		else UiScale.SHOT_PAD_TOP
+	)
 	if meter_display:
 		meter_display.offset_top = UiScale.METER_TOP
 		meter_display.offset_bottom = UiScale.METER_BOTTOM
@@ -401,7 +407,8 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	_haptic_impact(contact)
 
 	if practice_mode:
-		hint_label.text = str(verdict.get("note", "Practice swing"))
+		# Meter owns structured coaching; keep hint clear (no triple note dump).
+		hint_label.text = ""
 		if meter_display:
 			meter_display.show_verdict(verdict)
 		phase = Phase.DONE
