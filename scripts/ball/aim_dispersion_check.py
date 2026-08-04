@@ -67,14 +67,15 @@ def main() -> int:
     assert "AIM_RADIUS_WEAK_YD" not in GS
     assert "AIM_RADIUS_MID_YD" not in GS
     assert "AIM_RADIUS_PRO_YD" not in GS
-    assert "func get_aim_radius_yards(on_green: bool = false, club_max_yards: float = 0.0) -> float:" in GS
+    assert "func get_aim_radius_yards(" in GS
+    assert "club_max_yards" in GS
     assert "BallPhysics.lateral_spread_range_yards(club_max_yards)" in GS
     # Putting is a separate mechanic (green-read, not carry dispersion) — untouched.
     assert "PUTT_RADIUS_WEAK_YD" in GS and "PUTT_RADIUS_PRO_YD" in GS
 
-    # Both non-putt call sites must thread the chosen club's max_yards through.
-    assert "get_aim_radius_yards(false, club_max)" in HOLE
-    assert 'get_aim_radius_yards(lie == "Green", club_max)' in HOLE
+    # Aim radius threads club max (via helper or direct); force widens forced clubs.
+    assert "club_max" in HOLE and "get_aim_radius_yards" in HOLE
+    assert "_aim_radius_for_club" in HOLE or "get_aim_radius_yards(false, club_max)" in HOLE
 
     print("aim_dispersion_check: ok")
     return 0

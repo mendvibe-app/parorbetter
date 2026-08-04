@@ -38,6 +38,8 @@ var _height: float = 0.0
 var _height_peak: float = 0.0
 ## Highest _height observed this flight (F1 debug; ≈ peak if full flight).
 var _height_max: float = 0.0
+## Punch flight: can duck under canopy band (see tree collision).
+var _punch_flight: bool = false
 var _last_safe_pos: Vector2 = Vector2.ZERO
 var _lie: String = "Tee"
 ## Rough severity: Buried / Average / SittingUp when toggle on; else "".
@@ -239,6 +241,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_height = 0.0
 	_height_peak = 0.0
 	_height_max = 0.0
+	_punch_flight = false
 	_is_putt = false
 	_is_perfect_shot = false
 	state = State.IDLE
@@ -280,12 +283,14 @@ func launch(
 	_air_duration = launch_data["airborne_time"]
 	_air_timer = 0.0
 	_height = 0.0
-	var loft_h := clampf(float(launch_data.get("loft", 0.9)), 0.4, 1.55)
+	var loft_h := clampf(float(launch_data.get("loft", 0.9)), 0.35, 1.55)
 	_height_peak = (28.0 + velocity.length() * 0.02) * loft_h
 	_height_max = 0.0
+	_punch_flight = shot_type == "punch"
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
 	if _is_putt:
 		_height_peak = 0.0
+		_punch_flight = false
 	wind = Vector2.ZERO if _is_putt else p_wind
 	green_slope = p_slope
 	_slope_hole = p_hole
@@ -629,14 +634,17 @@ func _set_trail_dry(v: float) -> void:
 
 
 func _on_area_entered(other: Area2D) -> void:
-	# Trees: roll always blocks; flight only if below canopy (apex can carry over).
+	# Trees: roll always blocks. Flight: over canopy, or punch under the foliage band.
 	if other.is_in_group("tree"):
 		if state == State.SETTLED or state == State.IDLE:
 			return
 		if state == State.FLIGHT:
-			var need := float(other.get_meta("canopy_h", 30.0))
-			if _height >= need:
-				return  # over
+			var canopy := float(other.get_meta("canopy_h", 30.0))
+			if _height >= canopy:
+				return  # over the top
+			# Punch: stay in the under-foliage band (top-down disk = canopy footprint).
+			if _punch_flight and _height <= canopy * BallPhysics.PUNCH_UNDER_CANOPY_FRAC:
+				return  # under
 		_apply_lie_string("Trees", false)
 		velocity = Vector2.ZERO
 		state = State.SETTLED

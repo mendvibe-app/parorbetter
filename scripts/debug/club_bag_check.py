@@ -145,6 +145,33 @@ def main() -> None:
     assert "_aim_tree_clearance" in hc
     assert "canopy_h" in hc
     assert "_tint_cone_colors" in hc
+    # Apex/canopy rebalance: wedges loft higher; tall still hardest canopy.
+    assert '"loft_mul": 1.42' in phys or "1.42" in phys  # PW
+    assert '"loft_mul": 1.52' in phys or "1.52" in phys  # Gap
+    assert "TREE_CANOPY_H" in hc and "42.0" in hc  # tall wall
+    # Club-fit: force shortens distance; aim radius can scale with force
+    assert "true_power" in (root / "shot" / "shot_result.gd").read_text(encoding="utf-8")
+    assert "dist_mul" in phys or "0.88" in phys
+    assert "_preserve_aim_line" in hc
+    assert "_refit_aim_along_bearing" in hc
+    gs = (root / "autoload" / "game_state.gd").read_text(encoding="utf-8")
+    assert "force: float" in gs or "force =" in gs.split("func get_aim_radius_yards")[1][:400]
+    # Punch-out: low flight under trees
+    assert "PUNCH_LOFT_SCALE" in phys
+    assert 'shot_type == "punch"' in phys
+    assert "_punch_mode" in hc
+    assert "_setup_punch_btn" in hc
+    sr = (root / "shot" / "shot_routine.gd").read_text(encoding="utf-8")
+    assert "punch_mode" in sr
+    assert "func flight_shot_type" in sr
+    ball_gd = (root / "ball" / "ball.gd").read_text(encoding="utf-8")
+    assert "_punch_flight" in ball_gd
+    assert "PUNCH_UNDER_CANOPY_FRAC" in ball_gd or "PUNCH_UNDER_CANOPY_FRAC" in phys
+    # Shot shape from swing path
+    assert "_shape_authority" in sr
+    assert "swing_shape" in sr
+    assert "max_lateral" in sr
+    assert "intended_shape * 0.40" in phys or "intended_shape * 0.4" in phys
 
     print("club_bag_check: ok")
 

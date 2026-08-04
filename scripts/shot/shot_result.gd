@@ -3,11 +3,13 @@ extends RefCounted
 
 enum ContactQuality { PERFECT, GOOD, THIN, FAT, MISS }
 
-var power: float = 0.5  ## 0–1
+var power: float = 0.5  ## 0–1 (committed × tempo after grade)
 var stance_stability: float = 1.0  ## 0–1
 var path_error: float = 0.0  ## −1 (hook/left) … +1 (slice/right)
 var contact_quality: ContactQuality = ContactQuality.GOOD
 var intended_shape: float = 0.0  ## draw negative, fade positive
+## Uncapped solve % before overclub floor — force_factor for club-fit uses this when > 0.
+var true_power: float = 0.0
 
 
 func contact_label() -> String:

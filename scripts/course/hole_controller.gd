@@ -67,8 +67,8 @@ const TREE_TEXTURES := [
 ]
 ## Clear height (same units as ball._height peak). Ball carries if _height >= this in flight.
 ## Index matches TREE_TEXTURES: round, pine, cluster, oak, airy, dark, broad, tall.
-## Short ~26–28 (wedge apex clears, driver does not); tall ~42–44 (rare wedge clear).
-const TREE_CANOPY_H: Array[float] = [28.0, 42.0, 32.0, 34.0, 26.0, 33.0, 30.0, 44.0]
+## Short ~22–28 (mid-iron/wedge); pine rare full-wedge; tall ~42 hard wall.
+const TREE_CANOPY_H: Array[float] = [24.0, 38.0, 28.0, 32.0, 22.0, 30.0, 26.0, 42.0]
 ## Portrait course framing: dark rough belt just outside fairway + tree line on it.
 ## Camera aims to keep this corridor ~half of screen width (not oceans of mid-rough).
 const SIDE_BELT_W := 58.0
@@ -105,8 +105,13 @@ var _pinch_start_mult: float = 1.0
 var _user_zoom_mult: float = 1.0  ## manual pinch override on top of the auto-framed zoom
 var _magnify_last_ms: int = -1  ## last InputEventMagnifyGesture time; drives idle-release
 var _change_club_btn: BaseButton
+var _punch_btn: Button
+## Trees only — low flight under canopy (apex carry + more roll).
+var _punch_mode: bool = false
 ## Practice reps left before the real swing (set on Confirm Aim from GameState).
 var _practice_reps_left: int = 0
+## True when opening club select from aim — keep bearing, refit distance for new club.
+var _preserve_aim_line: bool = false
 var _aim_target: Vector2 = Vector2.ZERO
 var _aim_radius_yd: float = 22.0
 var _aim_radius_base_yd: float = 22.0
@@ -164,10 +169,13 @@ func _ready() -> void:
 		confirm_aim_btn.pressed.connect(_confirm_aim)
 	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_change_club_btn()
+	_setup_punch_btn()
 	_setup_hole_map()
 	# Bag icon above map in tree (map was covering it); club select stays topmost modal.
 	if _change_club_btn:
 		ui_layer.move_child(_change_club_btn, -1)
+	if _punch_btn:
+		ui_layer.move_child(_punch_btn, -1)
 	ui_layer.move_child(_club_select, -1)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
@@ -1245,6 +1253,7 @@ func _begin_tap_in_stroke(pin_yd: float) -> void:
 
 
 func _begin_club_select() -> void:
+	_preserve_aim_line = _aiming
 	_aiming = false
 	_aim_dragging = false
 	_selecting_club = true
@@ -1255,6 +1264,8 @@ func _begin_club_select() -> void:
 		confirm_aim_btn.visible = false
 	if _change_club_btn:
 		_change_club_btn.visible = false
+	if _punch_btn:
+		_punch_btn.visible = false
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
@@ -1269,9 +1280,12 @@ func _on_club_chosen(club: Dictionary) -> void:
 	_chosen_club = club
 	AudioBus.play_club_bag()
 	if GameState.range_mode:
+		_preserve_aim_line = false
 		_begin_range_swing()
 	else:
-		_begin_aim_phase()
+		var keep := _preserve_aim_line
+		_preserve_aim_line = false
+		_begin_aim_phase(keep)
 
 
 func _begin_range_swing() -> void:
@@ -1312,6 +1326,37 @@ func _begin_range_swing() -> void:
 	_start_power_swing(false)
 
 
+func _aim_force_preview(club_max: float, lie: String, wind: Vector2, severity: String) -> float:
+	## Force from uncapped true % so overclub (floored to pocket) still widens the circle.
+	var aim_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
+	if aim_yd < 1.0:
+		aim_yd = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
+	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
+	return BallPhysics.force_factor(float(solved["true_pct"]), club_max, lie)
+
+
+func _aim_radius_for_club(lie: String, club_max: float, wind: Vector2, severity: String) -> float:
+	var on_green := lie == "Green"
+	var force := 0.0 if on_green else _aim_force_preview(club_max, lie, wind, severity)
+	return GameState.get_aim_radius_yards(on_green, club_max, force)
+
+
+func _refit_aim_along_bearing(club_max: float, wind: Vector2, severity: String) -> void:
+	## Keep aim bearing; set lock distance to this club's sensible carry (clearance club-swap).
+	var from := ball.global_position
+	var bearing := _aim_target - from
+	if bearing.length_squared() < 1.0:
+		bearing = _cup_pos - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	var pin_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
+	var lie := ball.get_lie()
+	var solved := BallPhysics.solve_committed_power(pin_yd, club_max, lie, wind, severity)
+	var est := BallPhysics.estimate_carry_yards(float(solved["power"]), club_max, lie, severity)
+	_aim_target = AimControl.point_along_bearing(from, bearing, est)
+	_aim_lock_yards = est
+
+
 func _begin_aim_phase(restore_aim: bool = false) -> void:
 	_aiming = true
 	_aim_dragging = false
@@ -1325,12 +1370,9 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 		_chosen_club = BallPhysics.pick_club(pin_yd, lie, ball.get_lie_severity())
 	var club_max := float(_chosen_club["max_yards"])
 	_power_previewing = false
-	_aim_radius_base_yd = GameState.get_aim_radius_yards(lie == "Green", club_max)
-	_aim_radius_yd = _aim_radius_base_yd
-	# restore_aim (the post-Confirm "back" path): keep the last aim point/lock
-	# distance instead of resetting to the default target — the player already
-	# picked a line, they're just backing off the swing, not restarting aim.
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
+	var severity := ball.get_lie_severity()
+	# restore_aim: keep bearing (club-change or back from swing). Refit lock distance for club.
 	if not restore_aim:
 		_aim_target = AimControl.default_aim_target(
 			ball.global_position,
@@ -1338,11 +1380,14 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 			lie,
 			club_max,
 			wind,
-			ball.get_lie_severity()
+			severity
 		)
 		_aim_target = AimControl.clamp_aim(_aim_target)
-		# Lock radial distance during aim — player picks line/shape, not yardage yet.
 		_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
+	else:
+		_refit_aim_along_bearing(club_max, wind, severity)
+	_aim_radius_base_yd = _aim_radius_for_club(lie, club_max, wind, severity)
+	_aim_radius_yd = _aim_radius_base_yd
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
 	_set_green_book_visible(show_book)
@@ -1350,6 +1395,7 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 		confirm_aim_btn.visible = true
 	if _change_club_btn:
 		_change_club_btn.visible = not is_putt
+	_sync_punch_btn()
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
 		_refresh_wind_indicator(false)
@@ -1423,6 +1469,58 @@ func _park_change_club_btn() -> void:
 	_change_club_btn.offset_left = -right - s
 	_change_club_btn.offset_top = top
 	_change_club_btn.offset_bottom = top + s
+	_park_punch_btn(top + s + gap, right)
+
+
+func _setup_punch_btn() -> void:
+	## Trees aim only — toggle low punch under canopy.
+	_punch_btn = Button.new()
+	_punch_btn.name = "PunchButton"
+	_punch_btn.visible = false
+	_punch_btn.toggle_mode = true
+	_punch_btn.text = "Punch"
+	_punch_btn.tooltip_text = "Low flight under trees · more roll"
+	_punch_btn.focus_mode = Control.FOCUS_NONE
+	_punch_btn.z_index = 6
+	_punch_btn.custom_minimum_size = Vector2(120, UiScale.TOUCH_MIN * 0.55)
+	_punch_btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
+	ui_layer.add_child(_punch_btn)
+	_punch_btn.toggled.connect(_on_punch_toggled)
+
+
+func _park_punch_btn(top: float, right: float) -> void:
+	if _punch_btn == null:
+		return
+	var w := 128.0
+	var h := UiScale.TOUCH_MIN * 0.55
+	_punch_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_punch_btn.offset_right = -right
+	_punch_btn.offset_left = -right - w
+	_punch_btn.offset_top = top
+	_punch_btn.offset_bottom = top + h
+
+
+func _on_punch_toggled(on: bool) -> void:
+	_punch_mode = on and ball != null and ball.get_lie() == "Trees"
+	_punch_btn.button_pressed = _punch_mode
+	_punch_btn.text = "Punch ON" if _punch_mode else "Punch"
+	AudioBus.play_ui()
+	if _aiming:
+		_refresh_aim_visuals()
+
+
+func _sync_punch_btn() -> void:
+	if _punch_btn == null:
+		return
+	var trees := ball != null and ball.get_lie() == "Trees"
+	_punch_btn.visible = trees and _aiming and not hole_complete
+	if not trees:
+		_punch_mode = false
+		_punch_btn.button_pressed = false
+		_punch_btn.text = "Punch"
+	else:
+		_punch_btn.button_pressed = _punch_mode
+		_punch_btn.text = "Punch ON" if _punch_mode else "Punch"
 
 
 func _on_change_club_pressed() -> void:
@@ -1463,6 +1561,8 @@ func _confirm_aim() -> void:
 		confirm_aim_btn.visible = false
 	if _change_club_btn:
 		_change_club_btn.visible = false
+	if _punch_btn:
+		_punch_btn.visible = false
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
@@ -1498,6 +1598,7 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	var shape_label := AimControl.aim_offset_label(ball.global_position, _aim_target, _cup_pos)
 	var club_name := String(_chosen_club.get("name", ""))
 	var club_max := float(_chosen_club.get("max_yards", -1.0))
+	var punch := _punch_mode and lie == "Trees"
 	shot_routine.configure(
 		lie,
 		aim_yd,
@@ -1509,7 +1610,8 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 		_aim_radius_yd,
 		club_name,
 		club_max,
-		ball.get_lie_severity()
+		ball.get_lie_severity(),
+		punch
 	)
 	# Landing preview locked to committed carry (gesture can only subtract).
 	_power_previewing = not p_practice
@@ -1526,6 +1628,8 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 		feedback.text = "Practice %d/%d — find your tempo" % [clampi(done, 1, maxi(total_pr, 1)), maxi(total_pr, 1)]
 	elif lie == "Green":
 		feedback.text = ""  # club icon/label + hint own the stroke UI
+	elif punch:
+		feedback.text = "Punch · low flight · more roll"
 	else:
 		feedback.text = "%s · nail the tempo" % club_name
 
@@ -1657,7 +1761,7 @@ func _aim_shape_bend() -> float:
 			return 0.0
 
 
-func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float) -> String:
+func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float, punch: bool = false) -> String:
 	## "none" | "clear" | "blocked" — clean-strike prediction for aim cone tint.
 	if _trees.is_empty() or club_max <= 0.0:
 		return "none"
@@ -1671,7 +1775,8 @@ func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float) -> String:
 	)
 	if carry_yd < 2.0:
 		return "none"
-	var shot_type := TempoGrade.shot_type_for(lie, aim_yd, club_max)
+	# Flight type for apex: punch ducks under; full/pitch for normal.
+	var shot_type := "punch" if punch else TempoGrade.shot_type_for(lie, aim_yd, club_max)
 	var total_px := BallPhysics.yards_to_pixels(carry_yd)
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var peak := BallPhysics.estimate_height_peak(club_max, carry_yd, shot_type)
@@ -1749,7 +1854,9 @@ func _refresh_aim_visuals() -> void:
 			from, to, _aim_shape_bend(), 10.0 * inv_z, radius_px, _power_previewing
 		)
 		var club_max := float(_chosen_club.get("max_yards", 0.0))
-		var clearance := _aim_tree_clearance(from, to, club_max)
+		var clearance := _aim_tree_clearance(
+			from, to, club_max, _punch_mode and ball.get_lie() == "Trees"
+		)
 		var cols: PackedColorArray = _tint_cone_colors(cone["colors"], clearance)
 		_aim_cone.polygon = cone["points"]
 		_aim_cone.vertex_colors = cols
@@ -1995,7 +2102,8 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"aim_radius_yd": _aim_radius_yd,
 		"aim_offset": aim_offset,
 		"form": GameState.get_form(),
-		"shot_type": shot_routine.shot_type,
+		"shot_type": shot_routine.flight_shot_type(),
+		"punch": shot_routine.punch_mode,
 	}
 	# Full-shot flight owns the screen (up-and-in + tracer); glance waits for settle.
 	# Putts stay short — keep the live glance.
@@ -2004,7 +2112,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 	var slope: Vector2 = course_root.get_meta("slope", hole.green_slope)
 	ball.launch(
 		result, _aim_target, shot_routine.club_max_yards, wind, slope, hole, _green_center,
-		shot_routine.shot_type
+		shot_routine.flight_shot_type()
 	)
 	_follow_ball()
 	# Panel owns the glance — don't stack the same tempo text on Feedback.

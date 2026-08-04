@@ -318,7 +318,9 @@ func get_form() -> float:
 ## club_max_yards picks the real-world dispersion bucket (driver disperses far wider
 ## than a wedge); form then interpolates within that club's low(skilled)-high(weak)
 ## range, same piecewise weak→mid→pro shape as before.
-func get_aim_radius_yards(on_green: bool = false, club_max_yards: float = 0.0) -> float:
+func get_aim_radius_yards(
+	on_green: bool = false, club_max_yards: float = 0.0, force: float = 0.0
+) -> float:
 	var form := get_form()
 	if on_green:
 		return lerpf(PUTT_RADIUS_WEAK_YD, PUTT_RADIUS_PRO_YD, form)
@@ -327,9 +329,15 @@ func get_aim_radius_yards(on_green: bool = false, club_max_yards: float = 0.0) -
 	var weak_yd := spread.y * 0.5
 	var mid_yd := (pro_yd + weak_yd) * 0.5
 	# Piecewise: weak→mid→pro
+	var r: float
 	if form < 0.5:
-		return lerpf(weak_yd, mid_yd, form / 0.5)
-	return lerpf(mid_yd, pro_yd, (form - 0.5) / 0.5)
+		r = lerpf(weak_yd, mid_yd, form / 0.5)
+	else:
+		r = lerpf(mid_yd, pro_yd, (form - 0.5) / 0.5)
+	# Club-fit: forced swings open the landing circle (in-pocket force=0 → unchanged).
+	if force > 0.0:
+		r *= lerpf(1.0, 1.45, clampf(force, 0.0, 1.0))
+	return r
 
 
 func form_label() -> String:

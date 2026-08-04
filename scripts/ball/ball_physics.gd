@@ -14,13 +14,13 @@ const BAG: Array[Dictionary] = [
 	{"name": "Driver", "max_yards": 260.0, "loft_mul": 0.62},
 	{"name": "3-Wood", "max_yards": 235.0, "loft_mul": 0.70},
 	{"name": "Hybrid", "max_yards": 210.0, "loft_mul": 0.78},
-	{"name": "5-Iron", "max_yards": 190.0, "loft_mul": 0.88},
-	{"name": "6-Iron", "max_yards": 175.0, "loft_mul": 0.94},
-	{"name": "7-Iron", "max_yards": 160.0, "loft_mul": 1.00},
-	{"name": "8-Iron", "max_yards": 145.0, "loft_mul": 1.05},
-	{"name": "9-Iron", "max_yards": 130.0, "loft_mul": 1.12},
-	{"name": "Pitching Wedge", "max_yards": 110.0, "loft_mul": 1.20},
-	{"name": "Gap/Sand Wedge", "max_yards": 85.0, "loft_mul": 1.28},
+	{"name": "5-Iron", "max_yards": 190.0, "loft_mul": 0.90},
+	{"name": "6-Iron", "max_yards": 175.0, "loft_mul": 0.98},
+	{"name": "7-Iron", "max_yards": 160.0, "loft_mul": 1.05},
+	{"name": "8-Iron", "max_yards": 145.0, "loft_mul": 1.15},
+	{"name": "9-Iron", "max_yards": 130.0, "loft_mul": 1.28},
+	{"name": "Pitching Wedge", "max_yards": 110.0, "loft_mul": 1.42},
+	{"name": "Gap/Sand Wedge", "max_yards": 85.0, "loft_mul": 1.52},
 ]
 
 
@@ -45,7 +45,9 @@ static func estimate_height_peak(
 	if club_max_yards <= 0.0 or total_yards <= 0.5:
 		return 0.0
 	var loft := 0.9 * club_loft_mul(club_max_yards)
-	loft = clampf(loft, 0.4, 1.55)
+	if shot_type == "punch":
+		loft *= PUNCH_LOFT_SCALE
+	loft = clampf(loft, 0.35, 1.55)
 	var power := clampf(total_yards / maxf(club_max_yards, 1.0), 0.05, 1.0)
 	var air_time := lerpf(0.55, 1.15, power) * loft
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
@@ -154,6 +156,14 @@ static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 	return Vector2(8.0, 18.0)  # Gap / Sand / Lob wedges
 
 
+## Punch: lower apex (canopy duck) + more roll. Playtest knobs.
+const PUNCH_LOFT_SCALE := 0.48
+const PUNCH_AIR_FRAC_SCALE := 0.72
+const PUNCH_SPIN_SCALE := 0.55
+## Flight under foliage if height ≤ this × canopy_h (see ball tree collision).
+const PUNCH_UNDER_CANOPY_FRAC := 0.88
+
+
 ## Carry share of total distance by club category (rest is roll). Same yard buckets
 ## as lateral_spread_range_yards. Full-swing defaults — short game overrides below.
 static func air_distance_fraction(club_max_yards: float, shot_type: String = "full") -> float:
@@ -165,6 +175,9 @@ static func air_distance_fraction(club_max_yards: float, shot_type: String = "fu
 	if shot_type == "pitch":
 		# More carry than chip, still more release than a stock full wedge.
 		return clampf(lerpf(full, 0.72, 0.55), 0.68, 0.82)
+	if shot_type == "punch":
+		# Flatter flight — less carry share, more runout after land.
+		return clampf(full * PUNCH_AIR_FRAC_SCALE, 0.52, 0.78)
 	return full
 
 
@@ -475,7 +488,11 @@ static func launch_velocity(
 		dir = Vector2(0, -1)
 
 	var is_putt := lie == "Green"
-	var force := 0.0 if is_putt else force_factor(result.power, club_max_yards, lie)
+	# Club-fit force from true (uncapped) solve % when present — floored overclub power is always ≥ pocket.
+	var force_p := result.power
+	if result.true_power > 0.0:
+		force_p = result.true_power
+	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie)
 	# Putts: tempo power_mul already leaked distance — don't stack contact ×0.4.
 	var power_mul := result.power * lie_multiplier(lie, severity)
 	if not is_putt:
@@ -484,6 +501,11 @@ static func launch_velocity(
 	if force > 0.0 and result.power > POWER_POCKET_HI:
 		power_mul *= lerpf(1.0, 0.94, force)
 	var total_yards := club_max_yards * power_mul
+	# Forced swings lose distance control (bias short + path wobble). In-pocket: no change.
+	if force > 0.0 and not is_putt:
+		var dist_mul := lerpf(1.0, 0.88, force)
+		dist_mul *= 1.0 + clampf(result.path_error, -1.0, 1.0) * force * 0.04
+		total_yards *= dist_mul
 	var total_px := yards_to_pixels(total_yards)
 
 	if is_putt:
@@ -525,6 +547,8 @@ static func launch_velocity(
 		loft = 0.55 * club_loft
 	elif result.contact_quality == ShotResult.ContactQuality.FAT:
 		loft = 1.05 * club_loft
+	if shot_type == "punch":
+		loft *= PUNCH_LOFT_SCALE
 
 	var air_time := lerpf(0.55, 1.15, clampf(result.power, 0.0, 1.0)) * loft
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
@@ -537,8 +561,12 @@ static func launch_velocity(
 	var stab_term := 1.35 - result.stance_stability * 0.5
 	# Forcing a club (wrong bag choice, then mash/baby) taxes line the way it does IRL.
 	var force_mul := 1.0 + force * 0.9
-	var lateral := (result.path_error * 0.55 + result.intended_shape * 0.25) * stab_term * force_mul
-	var spin := result.path_error * (1.2 - result.stance_stability * 0.5) * (1.0 + force * 0.7)
+	# path_error = tempo miss; intended_shape = hole bias + swing path blend (shot_routine).
+	var lateral := (result.path_error * 0.50 + result.intended_shape * 0.40) * stab_term * force_mul
+	var spin := (
+		result.path_error * (1.05 - result.stance_stability * 0.45)
+		+ result.intended_shape * 0.55
+	) * (1.0 + force * 0.7)
 	# Even a pure path leaks offline when the swing is forced.
 	lateral += force * 0.18 * (1.0 if result.path_error >= 0.0 else -1.0)
 	match result.contact_quality:
@@ -553,6 +581,10 @@ static func launch_velocity(
 		_:
 			pass
 	spin *= spin_grip_mul(club_max_yards)
+	if shot_type == "punch":
+		# Punch trades shape control for a low flight — less sidespin authority.
+		spin *= PUNCH_SPIN_SCALE
+		lateral *= 0.85
 	# Short greenside pitches: full-swing path/spin scale on ~3–15 yd total speed makes
 	# the ball go sideways/back (playtest: plan 3 yd, path +1, actual flies offline).
 	var line_scale := short_shot_line_scale(total_yards)

@@ -30,6 +30,8 @@ var committed_power: float = 0.75
 ## Uncapped solve % (club select / overclub UI); physics uses committed_power.
 var true_power_pct: float = 0.75
 var shot_type: String = "full"
+## Trees punch: low flight (launch uses "punch"); gesture/grade still full/pitch.
+var punch_mode: bool = false
 var last_verdict: Dictionary = {}
 
 @onready var info_label: Label = $GlanceRow/InfoLabel
@@ -125,7 +127,8 @@ func configure(
 	p_aim_radius_yd: float = 22.0,
 	p_club_name: String = "",
 	p_club_max_yards: float = -1.0,
-	p_severity: String = ""
+	p_severity: String = "",
+	p_punch: bool = false
 ) -> void:
 	timing_scale = p_timing
 	suggested_shape = p_shape
@@ -134,6 +137,7 @@ func configure(
 	remaining_yards = aim_distance_yd
 	pin_yards = pin_distance_yd
 	aim_radius_yd = p_aim_radius_yd
+	punch_mode = p_punch and lie == "Trees"
 	if GameState.debug_timing_scale != null:
 		timing_scale = float(GameState.debug_timing_scale)
 	timing_scale *= BallPhysics.lie_timing_scale(lie, p_severity)
@@ -151,6 +155,7 @@ func configure(
 	)
 	committed_power = float(solved["power"])
 	true_power_pct = float(solved["true_pct"])
+	# Gesture/grade type; launch uses flight_shot_type() for punch loft/roll.
 	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
 
 	# Green: feet (how golfers read putts). Full/pitch stay yards.
@@ -165,9 +170,29 @@ func configure(
 	if club_icon:
 		club_icon.texture = HudIcons.club_texture(club_name)
 	if club_label:
-		club_label.text = club_name
+		club_label.text = ("Punch · %s" % club_name) if punch_mode else club_name
 	if tempo_gesture:
 		tempo_gesture.set_lie_preview(lie, p_severity)
+
+
+func flight_shot_type() -> String:
+	## Physics flight identity (punch lowers apex); not the tempo pad type.
+	if punch_mode and shot_type != "putt" and shot_type != "chip":
+		return "punch"
+	return shot_type
+
+
+static func _shape_authority(contact: ShotResult.ContactQuality) -> float:
+	## Mishits don't produce clean intentional draws (real golf + affordance).
+	match contact:
+		ShotResult.ContactQuality.PERFECT:
+			return 1.0
+		ShotResult.ContactQuality.GOOD:
+			return 0.85
+		ShotResult.ContactQuality.THIN, ShotResult.ContactQuality.FAT:
+			return 0.38
+		_:
+			return 0.12
 
 
 func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
@@ -193,12 +218,16 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	if practice_mode:
 		if shot_type == "putt" or shot_type == "chip":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
+		elif punch_mode:
+			hint_label.text = "PRACTICE PUNCH — low flight · same 3:1 · keep it under."
 		else:
 			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(shot_type)
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
 		hint_label.text = "CHIP — feel the distance · small stroke · through the ball."
+	elif punch_mode:
+		hint_label.text = "PUNCH — low · through the ball · more roll after."
 	elif shot_type == "pitch":
 		hint_label.text = "PITCH ~2:1 — address · to the top · through the ball."
 	else:
@@ -287,7 +316,9 @@ func force_result(perfect: bool) -> void:
 	var path := 0.0 if perfect else 0.65
 	var stab := 1.0 if perfect else 0.35
 	var power_amt := committed_power if perfect else committed_power * 0.55
-	_emit_result(ShotResult.make(power_amt, stab, path, contact, suggested_shape))
+	var forced := ShotResult.make(power_amt, stab, path, contact, suggested_shape)
+	forced.true_power = true_power_pct
+	_emit_result(forced)
 
 
 func _on_tempo_moment(name: String) -> void:
@@ -404,6 +435,27 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	if current_lie == "Green":
 		path = clampf(path * 1.1, -1.0, 1.0)
 
+	# Full/pitch/punch: blend hole suggested_shape with gesture path (max_lateral).
+	# Putt/chip already own line via PuttStroke — don't double-count.
+	var shape := suggested_shape
+	var swing_shape := 0.0
+	if shot_type != "putt" and shot_type != "chip":
+		var lat := float(sample.get("max_lateral", 0.0))
+		# ~0.16–0.20 pad half-width saturates intentional shape.
+		swing_shape = clampf(lat / 0.18, -1.0, 1.0)
+		if GameState.force_perfect:
+			shape = suggested_shape
+			swing_shape = 0.0
+		else:
+			var auth := _shape_authority(contact)
+			# Blend: hole bias still matters; swipe can fight or amplify it.
+			shape = clampf(suggested_shape * 0.45 + swing_shape * 0.75 * auth, -1.0, 1.0)
+			if punch_mode:
+				shape *= 0.55  # punch already softens spin in physics
+		verdict["swing_shape"] = swing_shape
+		verdict["shape_blend"] = shape
+		GameState.last_tempo_metrics = verdict
+
 	_haptic_impact(contact)
 
 	if practice_mode:
@@ -416,7 +468,9 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		practice_result.emit(verdict)
 		return
 
-	_emit_result(ShotResult.make(power, bal, path, contact, suggested_shape))
+	var out := ShotResult.make(power, bal, path, contact, shape)
+	out.true_power = true_power_pct
+	_emit_result(out)
 
 
 func _haptic_impact(contact: ShotResult.ContactQuality) -> void:

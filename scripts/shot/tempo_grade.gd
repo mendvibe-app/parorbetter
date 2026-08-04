@@ -48,6 +48,7 @@ static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: floa
 
 
 static func target_ratio(shot_type: String) -> float:
+	# Punch uses full 3:1; only putt/pitch are short-game tempo.
 	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" else TARGET_FULL
 
 
