@@ -161,7 +161,15 @@ func _process(_delta: float) -> void:
 			tempo_line,
 		]
 	else:
-		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\n%s\nPwr %d%%  Bal %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s" % [
+		var h_peak := float(m.get("height_peak", -1.0))
+		var h_max := float(m.get("height_max", -1.0))
+		var height_line := "Apex —"
+		if h_peak >= 0.0 or h_max >= 0.0:
+			height_line = "Apex peak %.1f · max %.1f (canopy short~26–28 tall~42–44)" % [
+				h_peak if h_peak >= 0.0 else 0.0,
+				h_max if h_max >= 0.0 else 0.0,
+			]
+		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\n%s\nPwr %d%%  Bal %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s\n%s" % [
 			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
@@ -176,6 +184,7 @@ func _process(_delta: float) -> void:
 			str(m.get("lie", "")),
 			int(float(m.get("planned_yd", 0.0))),
 			("%d yd" % int(float(m.get("actual_yd")))) if m.has("actual_yd") else "—",
+			height_line,
 		]
 	club_coach_label.text = _club_coach_dump()
 

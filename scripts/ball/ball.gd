@@ -36,6 +36,8 @@ var _air_duration: float = 1.0
 var _height: float = 0.0
 ## Peak visual loft this flight (club loft × base). Used for tree carry checks.
 var _height_peak: float = 0.0
+## Highest _height observed this flight (F1 debug; ≈ peak if full flight).
+var _height_max: float = 0.0
 var _last_safe_pos: Vector2 = Vector2.ZERO
 var _lie: String = "Tee"
 ## Rough severity: Buried / Average / SittingUp when toggle on; else "".
@@ -236,6 +238,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	spin = 0.0
 	_height = 0.0
 	_height_peak = 0.0
+	_height_max = 0.0
 	_is_putt = false
 	_is_perfect_shot = false
 	state = State.IDLE
@@ -279,6 +282,7 @@ func launch(
 	_height = 0.0
 	var loft_h := clampf(float(launch_data.get("loft", 0.9)), 0.4, 1.55)
 	_height_peak = (28.0 + velocity.length() * 0.02) * loft_h
+	_height_max = 0.0
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
 	if _is_putt:
 		_height_peak = 0.0
@@ -341,6 +345,16 @@ func air_progress() -> float:
 	if state != State.FLIGHT:
 		return 0.0
 	return clampf(_air_timer / maxf(_air_duration, 0.01), 0.0, 1.0)
+
+
+func flight_height_peak() -> float:
+	## Planned apex (formula at launch).
+	return _height_peak
+
+
+func flight_height_max() -> float:
+	## Highest loft seen this flight (for F1 / tree-carry tuning).
+	return _height_max
 
 
 func get_last_safe() -> Vector2:
@@ -460,6 +474,8 @@ func _process_flight(delta: float) -> void:
 	_air_timer += delta
 	var t := _air_timer / maxf(_air_duration, 0.01)
 	_height = sin(clampf(t, 0.0, 1.0) * PI) * _height_peak
+	if _height > _height_max:
+		_height_max = _height
 
 	velocity += wind * delta * 6.0
 	# Curve offline relative to launch. Scale by forward speed so weak short pitches

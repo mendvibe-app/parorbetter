@@ -37,6 +37,49 @@ static func club_loft_mul(club_max_yards: float) -> float:
 			best_mul = float(club.get("loft_mul", 1.0))
 	return best_mul
 
+
+## Clean-strike apex estimate (GOOD contact, same units as ball._height / canopy_h).
+static func estimate_height_peak(
+	club_max_yards: float, total_yards: float, shot_type: String = "full"
+) -> float:
+	if club_max_yards <= 0.0 or total_yards <= 0.5:
+		return 0.0
+	var loft := 0.9 * club_loft_mul(club_max_yards)
+	loft = clampf(loft, 0.4, 1.55)
+	var power := clampf(total_yards / maxf(club_max_yards, 1.0), 0.05, 1.0)
+	var air_time := lerpf(0.55, 1.15, power) * loft
+	var air_frac := air_distance_fraction(club_max_yards, shot_type)
+	var air_px := yards_to_pixels(total_yards) * air_frac
+	var speed := air_px / maxf(air_time, 0.05)
+	return (28.0 + speed * 0.02) * loft
+
+
+## Height along the flight arc at distance `along_px` from the ball (0 on ground/roll).
+static func estimate_height_at_along(
+	along_px: float, total_px: float, air_frac: float, height_peak: float
+) -> float:
+	if height_peak <= 0.0 or total_px <= 1.0 or along_px < 0.0:
+		return 0.0
+	var air_px := total_px * clampf(air_frac, 0.05, 1.0)
+	if along_px >= air_px:
+		return 0.0  # landed / rolling — trees block on ground
+	var t := clampf(along_px / maxf(air_px, 0.01), 0.0, 1.0)
+	return sin(t * PI) * height_peak
+
+
+## Closest-point distance along segment from→to to disk (c,r). -1 if no hit.
+static func segment_hits_disk(from: Vector2, to: Vector2, c: Vector2, r: float) -> float:
+	var along := to - from
+	var len_sq := along.length_squared()
+	if len_sq < 0.0001:
+		return 0.0 if from.distance_to(c) <= r else -1.0
+	var t := clampf((c - from).dot(along) / len_sq, 0.0, 1.0)
+	var closest := from + along * t
+	if closest.distance_to(c) > r:
+		return -1.0
+	return along.length() * t
+
+
 ## Sensible swing pocket — outside this, force_factor > 0 (accuracy tax).
 const POWER_POCKET_LO := 0.60
 const POWER_POCKET_HI := 0.92

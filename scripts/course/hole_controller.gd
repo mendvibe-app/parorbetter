@@ -980,9 +980,9 @@ func _add_tree(center: Vector2, radius: float, variant: int) -> void:
 	spr.rotation = randf_range(-0.12, 0.12)
 	spr.z_index = 1
 	course_root.add_child(spr)
-	_trees.append({"c": center, "r": radius * 0.72})  # collision tighter than canopy art
-	var tree_area := _add_circle(course_root, center, radius * 0.72, Color(0, 0, 0, 0), "tree")
 	var canopy := TREE_CANOPY_H[vi] if vi < TREE_CANOPY_H.size() else 30.0
+	_trees.append({"c": center, "r": radius * 0.72, "canopy_h": canopy})
+	var tree_area := _add_circle(course_root, center, radius * 0.72, Color(0, 0, 0, 0), "tree")
 	tree_area.set_meta("canopy_h", canopy)
 
 
@@ -1657,6 +1657,63 @@ func _aim_shape_bend() -> float:
 			return 0.0
 
 
+func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float) -> String:
+	## "none" | "clear" | "blocked" — clean-strike prediction for aim cone tint.
+	if _trees.is_empty() or club_max <= 0.0:
+		return "none"
+	var lie := ball.get_lie()
+	var severity := ball.get_lie_severity()
+	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
+	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
+	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
+	var carry_yd := BallPhysics.estimate_carry_yards(
+		float(solved["power"]), club_max, lie, severity
+	)
+	if carry_yd < 2.0:
+		return "none"
+	var shot_type := TempoGrade.shot_type_for(lie, aim_yd, club_max)
+	var total_px := BallPhysics.yards_to_pixels(carry_yd)
+	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
+	var peak := BallPhysics.estimate_height_peak(club_max, carry_yd, shot_type)
+	# Segment ends at carry land point along aim bearing (not past club max).
+	var bearing := to - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	var land := from + bearing.normalized() * total_px
+	var any_hit := false
+	var any_block := false
+	for tr in _trees:
+		var c: Vector2 = tr["c"]
+		var r: float = float(tr["r"])
+		var canopy: float = float(tr.get("canopy_h", 30.0))
+		var along := BallPhysics.segment_hits_disk(from, land, c, r)
+		if along < 0.0:
+			continue
+		any_hit = true
+		var h := BallPhysics.estimate_height_at_along(along, total_px, air_frac, peak)
+		if h < canopy:
+			any_block = true
+	if not any_hit:
+		return "none"
+	return "blocked" if any_block else "clear"
+
+
+func _tint_cone_colors(cols: PackedColorArray, kind: String) -> PackedColorArray:
+	if kind == "none" or cols.is_empty():
+		return cols
+	var tint := Color(1.0, 0.92, 0.4, 1.0)
+	if kind == "blocked":
+		tint = Color(0.95, 0.32, 0.28, 1.0)
+	elif kind == "clear":
+		tint = Color(0.35, 0.88, 0.42, 1.0)
+	var out := PackedColorArray()
+	for i in cols.size():
+		var c := cols[i]
+		var mixed := c.lerp(Color(tint.r, tint.g, tint.b, c.a), 0.72)
+		out.append(mixed)
+	return out
+
+
 func _refresh_aim_visuals() -> void:
 	var from := ball.global_position
 	var to := _aim_target
@@ -1691,8 +1748,11 @@ func _refresh_aim_visuals() -> void:
 		var cone: Dictionary = AimControl.make_aim_cone(
 			from, to, _aim_shape_bend(), 10.0 * inv_z, radius_px, _power_previewing
 		)
+		var club_max := float(_chosen_club.get("max_yards", 0.0))
+		var clearance := _aim_tree_clearance(from, to, club_max)
+		var cols: PackedColorArray = _tint_cone_colors(cone["colors"], clearance)
 		_aim_cone.polygon = cone["points"]
-		_aim_cone.vertex_colors = cone["colors"]
+		_aim_cone.vertex_colors = cols
 		# Each flank is stroked as its own open polyline (skip the near-ball base) —
 		# the two flanks end tangent to the landing circle rather than meeting each
 		# other, so they must stay unconnected or the join would draw a straight
@@ -1713,15 +1773,26 @@ func _refresh_aim_visuals() -> void:
 			edge_r.append(pts[3])
 		_aim_cone_edge.points = edge_l
 		_aim_cone_edge.width = (2.4 if _power_previewing else 1.8) / maxf(camera.zoom.x, 0.35)
-		_aim_cone_edge.default_color = Color(1.0, 0.92, 0.4, 0.55 if _power_previewing else 0.28)
+		var edge_a := 0.55 if _power_previewing else 0.28
+		var edge_col := Color(1.0, 0.92, 0.4, edge_a)
+		if clearance == "blocked":
+			edge_col = Color(0.95, 0.35, 0.3, edge_a + 0.15)
+		elif clearance == "clear":
+			edge_col = Color(0.4, 0.9, 0.45, edge_a + 0.12)
+		_aim_cone_edge.default_color = edge_col
 		_aim_cone_edge_r.points = edge_r
 		_aim_cone_edge_r.width = _aim_cone_edge.width
-		_aim_cone_edge_r.default_color = _aim_cone_edge.default_color
+		_aim_cone_edge_r.default_color = edge_col
 		_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
 		_pin_ref_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
 		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.22)
 		_aim_circle.points = AimControl.make_circle_points(to, radius_px)
-		_aim_circle.default_color = Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
+		var circle_col := Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
+		if clearance == "blocked":
+			circle_col = Color(0.95, 0.4, 0.32, 0.9)
+		elif clearance == "clear":
+			circle_col = Color(0.45, 0.92, 0.5, 0.9)
+		_aim_circle.default_color = circle_col
 		_set_aim_visuals_visible(true)
 	if _aiming:
 		_set_green_book_visible(_should_show_green_book())
@@ -2170,6 +2241,9 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		_last_report.set_actual(actual)
 		GameState.last_shot_metrics["actual_yd"] = actual
 		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
+		# Apex debug for tree-carry playtest (same units as canopy_h).
+		GameState.last_shot_metrics["height_peak"] = ball.flight_height_peak()
+		GameState.last_shot_metrics["height_max"] = ball.flight_height_max()
 		# Panel owns the report; clearing Feedback avoids the stacked double-text bug.
 		feedback.text = ""
 		if shot_result_panel and shot_result_panel.has_method("show_final"):

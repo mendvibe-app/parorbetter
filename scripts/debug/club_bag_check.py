@@ -138,6 +138,13 @@ def main() -> None:
     assert 'get_meta("canopy_h"' in ball or 'get_meta("canopy_h",' in ball
     assert "TREE_CANOPY_H" in hc
     assert 'set_meta("canopy_h"' in hc
+    # Aim clearance prediction (clean-strike cone tint)
+    assert "func estimate_height_peak" in phys
+    assert "func estimate_height_at_along" in phys
+    assert "func segment_hits_disk" in phys
+    assert "_aim_tree_clearance" in hc
+    assert "canopy_h" in hc
+    assert "_tint_cone_colors" in hc
 
     print("club_bag_check: ok")
 
