@@ -65,6 +65,10 @@ const TREE_TEXTURES := [
 	preload("res://assets/background/tree_broad.png"),
 	preload("res://assets/background/tree_tall.png"),
 ]
+## Clear height (same units as ball._height peak). Ball carries if _height >= this in flight.
+## Index matches TREE_TEXTURES: round, pine, cluster, oak, airy, dark, broad, tall.
+## Short ~26–28 (wedge apex clears, driver does not); tall ~42–44 (rare wedge clear).
+const TREE_CANOPY_H: Array[float] = [28.0, 42.0, 32.0, 34.0, 26.0, 33.0, 30.0, 44.0]
 ## Portrait course framing: dark rough belt just outside fairway + tree line on it.
 ## Camera aims to keep this corridor ~half of screen width (not oceans of mid-rough).
 const SIDE_BELT_W := 58.0
@@ -966,7 +970,8 @@ func _place_tree_group(
 
 
 func _add_tree(center: Vector2, radius: float, variant: int) -> void:
-	var tex: Texture2D = TREE_TEXTURES[variant % TREE_TEXTURES.size()]
+	var vi := variant % TREE_TEXTURES.size()
+	var tex: Texture2D = TREE_TEXTURES[vi]
 	var spr := Sprite2D.new()
 	spr.texture = tex
 	spr.position = center
@@ -976,7 +981,9 @@ func _add_tree(center: Vector2, radius: float, variant: int) -> void:
 	spr.z_index = 1
 	course_root.add_child(spr)
 	_trees.append({"c": center, "r": radius * 0.72})  # collision tighter than canopy art
-	_add_circle(course_root, center, radius * 0.72, Color(0, 0, 0, 0), "tree")
+	var tree_area := _add_circle(course_root, center, radius * 0.72, Color(0, 0, 0, 0), "tree")
+	var canopy := TREE_CANOPY_H[vi] if vi < TREE_CANOPY_H.size() else 30.0
+	tree_area.set_meta("canopy_h", canopy)
 
 
 func _add_fog_band() -> void:

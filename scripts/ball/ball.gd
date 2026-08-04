@@ -34,6 +34,8 @@ var _green_center: Vector2 = Vector2.ZERO
 var _air_timer: float = 0.0
 var _air_duration: float = 1.0
 var _height: float = 0.0
+## Peak visual loft this flight (club loft × base). Used for tree carry checks.
+var _height_peak: float = 0.0
 var _last_safe_pos: Vector2 = Vector2.ZERO
 var _lie: String = "Tee"
 ## Rough severity: Buried / Average / SittingUp when toggle on; else "".
@@ -233,6 +235,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	velocity = Vector2.ZERO
 	spin = 0.0
 	_height = 0.0
+	_height_peak = 0.0
 	_is_putt = false
 	_is_perfect_shot = false
 	state = State.IDLE
@@ -274,7 +277,11 @@ func launch(
 	_air_duration = launch_data["airborne_time"]
 	_air_timer = 0.0
 	_height = 0.0
+	var loft_h := clampf(float(launch_data.get("loft", 0.9)), 0.4, 1.55)
+	_height_peak = (28.0 + velocity.length() * 0.02) * loft_h
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
+	if _is_putt:
+		_height_peak = 0.0
 	wind = Vector2.ZERO if _is_putt else p_wind
 	green_slope = p_slope
 	_slope_hole = p_hole
@@ -452,7 +459,7 @@ func _traveled_along() -> float:
 func _process_flight(delta: float) -> void:
 	_air_timer += delta
 	var t := _air_timer / maxf(_air_duration, 0.01)
-	_height = sin(clampf(t, 0.0, 1.0) * PI) * (28.0 + velocity.length() * 0.02)
+	_height = sin(clampf(t, 0.0, 1.0) * PI) * _height_peak
 
 	velocity += wind * delta * 6.0
 	# Curve offline relative to launch. Scale by forward speed so weak short pitches
@@ -606,10 +613,14 @@ func _set_trail_dry(v: float) -> void:
 
 
 func _on_area_entered(other: Area2D) -> void:
-	# Trees block air and roll — designed hazards, not ground-only surfaces.
+	# Trees: roll always blocks; flight only if below canopy (apex can carry over).
 	if other.is_in_group("tree"):
 		if state == State.SETTLED or state == State.IDLE:
 			return
+		if state == State.FLIGHT:
+			var need := float(other.get_meta("canopy_h", 30.0))
+			if _height >= need:
+				return  # over
 		_apply_lie_string("Trees", false)
 		velocity = Vector2.ZERO
 		state = State.SETTLED
@@ -617,7 +628,7 @@ func _on_area_entered(other: Area2D) -> void:
 		AudioBus.set_roll_intensity(0.0)
 		settled.emit(global_position, _lie)
 		return
-	# Loft is visual-only — ground groups (water/sand/fairway/…) only count on ROLL.
+	# Ground groups (water/sand/fairway/…) only count on ROLL.
 	if state != State.ROLL:
 		return
 	if other.is_in_group("cup"):
@@ -655,8 +666,6 @@ func _on_area_entered(other: Area2D) -> void:
 		return
 	if other.is_in_group("sand"):
 		_apply_lie_string("Sand", false)
-	elif other.is_in_group("tree"):
-		_apply_lie_string("Trees", false)
 	elif other.is_in_group("green"):
 		_apply_lie_string("Green", false)
 	elif other.is_in_group("tee"):

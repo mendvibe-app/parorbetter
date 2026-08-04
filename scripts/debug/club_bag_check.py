@@ -118,12 +118,11 @@ def main() -> None:
     # Display order + short labels (coach / tight UI)
     from pathlib import Path
 
-    phys = (Path(__file__).resolve().parents[1] / "ball" / "ball_physics.gd").read_text(
-        encoding="utf-8"
-    )
-    coach = (Path(__file__).resolve().parents[1] / "ui" / "coach_screen.gd").read_text(
-        encoding="utf-8"
-    )
+    root = Path(__file__).resolve().parents[1]
+    phys = (root / "ball" / "ball_physics.gd").read_text(encoding="utf-8")
+    coach = (root / "ui" / "coach_screen.gd").read_text(encoding="utf-8")
+    ball = (root / "ball" / "ball.gd").read_text(encoding="utf-8")
+    hc = (root / "course" / "hole_controller.gd").read_text(encoding="utf-8")
     assert "func club_short_name" in phys
     assert "func sort_club_names_by_bag" in phys
     assert 'return "3W"' in phys or 'replace("-Wood", "W")' in phys
@@ -131,6 +130,14 @@ def main() -> None:
     assert "sort_club_names_by_bag" in coach
     assert "club_short_name" in coach
     assert "names.sort()" not in coach  # alpha scramble (5-Iron before Driver)
+    # Tree apex carry: per-club loft_mul + canopy height-aware collision
+    assert "loft_mul" in phys
+    assert "func club_loft_mul" in phys
+    assert "club_loft_mul(club_max_yards)" in phys
+    assert "_height_peak" in ball
+    assert 'get_meta("canopy_h"' in ball or 'get_meta("canopy_h",' in ball
+    assert "TREE_CANOPY_H" in hc
+    assert 'set_meta("canopy_h"' in hc
 
     print("club_bag_check: ok")
 

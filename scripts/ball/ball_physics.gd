@@ -9,18 +9,33 @@ const PX_PER_YARD := 2.25
 const AIR_DISTANCE_FRACTION := 0.78
 
 ## Full bag, longest → shortest. Neighbor max gaps ~15–25 yd so overlap is real.
+## loft_mul scales visual apex + air_time (wedges fly higher for tree carries).
 const BAG: Array[Dictionary] = [
-	{"name": "Driver", "max_yards": 260.0},
-	{"name": "3-Wood", "max_yards": 235.0},
-	{"name": "Hybrid", "max_yards": 210.0},
-	{"name": "5-Iron", "max_yards": 190.0},
-	{"name": "6-Iron", "max_yards": 175.0},
-	{"name": "7-Iron", "max_yards": 160.0},
-	{"name": "8-Iron", "max_yards": 145.0},
-	{"name": "9-Iron", "max_yards": 130.0},
-	{"name": "Pitching Wedge", "max_yards": 110.0},
-	{"name": "Gap/Sand Wedge", "max_yards": 85.0},
+	{"name": "Driver", "max_yards": 260.0, "loft_mul": 0.62},
+	{"name": "3-Wood", "max_yards": 235.0, "loft_mul": 0.70},
+	{"name": "Hybrid", "max_yards": 210.0, "loft_mul": 0.78},
+	{"name": "5-Iron", "max_yards": 190.0, "loft_mul": 0.88},
+	{"name": "6-Iron", "max_yards": 175.0, "loft_mul": 0.94},
+	{"name": "7-Iron", "max_yards": 160.0, "loft_mul": 1.00},
+	{"name": "8-Iron", "max_yards": 145.0, "loft_mul": 1.05},
+	{"name": "9-Iron", "max_yards": 130.0, "loft_mul": 1.12},
+	{"name": "Pitching Wedge", "max_yards": 110.0, "loft_mul": 1.20},
+	{"name": "Gap/Sand Wedge", "max_yards": 85.0, "loft_mul": 1.28},
 ]
+
+
+## Club apex/air loft scale by bag max_yards (launch has yards, not always name).
+static func club_loft_mul(club_max_yards: float) -> float:
+	if club_max_yards <= 0.0:
+		return 1.0
+	var best_mul := 1.0
+	var best_d := 1.0e9
+	for club in BAG:
+		var d := absf(float(club["max_yards"]) - club_max_yards)
+		if d < best_d:
+			best_d = d
+			best_mul = float(club.get("loft_mul", 1.0))
+	return best_mul
 
 ## Sensible swing pocket — outside this, force_factor > 0 (accuracy tax).
 const POWER_POCKET_LO := 0.60
@@ -461,11 +476,12 @@ static func launch_velocity(
 			"is_putt": true,
 		}
 
-	var loft := 0.9
+	var club_loft := club_loft_mul(club_max_yards)
+	var loft := 0.9 * club_loft
 	if result.contact_quality == ShotResult.ContactQuality.THIN:
-		loft = 0.55
+		loft = 0.55 * club_loft
 	elif result.contact_quality == ShotResult.ContactQuality.FAT:
-		loft = 1.05
+		loft = 1.05 * club_loft
 
 	var air_time := lerpf(0.55, 1.15, clampf(result.power, 0.0, 1.0)) * loft
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
