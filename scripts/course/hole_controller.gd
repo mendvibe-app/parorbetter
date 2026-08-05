@@ -127,6 +127,7 @@ var _wind_flag: WindFlag
 var _last_report: ShotReport
 var _last_result: ShotResult
 var _club_select: ClubSelect
+var scorecard: ScoreCard
 ## Locked putt framing for the roll (set at stroke start, cleared on settle).
 var _putt_cam_active: bool = false
 var _putt_cam_zoom: Vector2 = Vector2.ONE
@@ -170,12 +171,15 @@ func _ready() -> void:
 	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_change_club_btn()
 	_setup_punch_btn()
+	_setup_scorecard()
 	_setup_hole_map()
 	# Bag icon above map in tree (map was covering it); club select stays topmost modal.
 	if _change_club_btn:
 		ui_layer.move_child(_change_club_btn, -1)
 	if _punch_btn:
 		ui_layer.move_child(_punch_btn, -1)
+	if scorecard:
+		ui_layer.move_child(scorecard, -1)
 	ui_layer.move_child(_club_select, -1)
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
@@ -282,6 +286,16 @@ func _setup_aim_visuals() -> void:
 
 
 func load_hole(hole_index: int) -> void:
+	if scorecard:
+		if GameState.is_stroke_play():
+			if hole_index <= 1:
+				scorecard.show_for_stroke_play()
+			else:
+				scorecard.visible = true
+				if scorecard._tab_btn:
+					scorecard._tab_btn.visible = true
+		else:
+			scorecard.hide_card()
 	GameState.exit_range_mode()
 	GameState.exit_green_mode()
 	_end_aim_phase()
@@ -303,6 +317,8 @@ func load_hole(hole_index: int) -> void:
 
 func load_range() -> void:
 	## Flat fairway tee — swing practice, no aim phase, infinite reset.
+	if scorecard:
+		scorecard.hide_card()
 	_end_aim_phase()
 	GameState.enter_range_mode()
 	hole = _make_range_hole()
@@ -324,6 +340,8 @@ func load_range() -> void:
 
 func load_practice_green() -> void:
 	## Putting green — aim + putt loop, infinite reset to practice spot.
+	if scorecard:
+		scorecard.hide_card()
 	_end_aim_phase()
 	GameState.enter_green_mode()
 	hole = _make_practice_green_hole()
@@ -1472,6 +1490,13 @@ func _park_change_club_btn() -> void:
 	_park_punch_btn(top + s + gap, right)
 
 
+func _setup_scorecard() -> void:
+	scorecard = ScoreCard.new()
+	scorecard.name = "ScoreCard"
+	ui_layer.add_child(scorecard)
+	scorecard.hide_card()
+
+
 func _setup_punch_btn() -> void:
 	## Trees aim only — toggle low punch under canopy.
 	_punch_btn = Button.new()
@@ -2516,6 +2541,8 @@ func _on_holed_out() -> void:
 	var diff := strokes - hole.par
 	var result := Scoring.result_from_diff(diff)
 	GameState.add_score_to_par(diff)
+	if GameState.is_stroke_play() and scorecard:
+		scorecard.reveal_hole(GameState.hole_scores.size() - 1, diff)
 	var life_delta := GameState.apply_hole_result_lives(result)
 	_update_hud()
 	feedback.text = _hole_result_feedback(result, diff, life_delta)

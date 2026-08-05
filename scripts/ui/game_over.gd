@@ -6,6 +6,9 @@ signal restart_pressed
 @onready var detail: Label = $Panel/Detail
 @onready var restart_btn: Button = $Panel/RestartButton
 
+var _score_host: Control
+var _scorecard: ScoreCard
+
 
 func _ready() -> void:
 	visible = false
@@ -13,6 +16,17 @@ func _ready() -> void:
 		AudioBus.play_ui()
 		restart_pressed.emit()
 	)
+	_score_host = Control.new()
+	_score_host.name = "ScoreHost"
+	_score_host.custom_minimum_size = Vector2(0, 300)
+	_score_host.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	$Panel.add_child(_score_host)
+	$Panel.move_child(_score_host, restart_btn.get_index())
+	_scorecard = ScoreCard.new()
+	_scorecard.name = "SummaryScoreCard"
+	_score_host.add_child(_scorecard)
+	_scorecard.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_scorecard.visible = false
 
 
 func show_result(deepest: int, reason: String) -> void:
@@ -20,6 +34,11 @@ func show_result(deepest: int, reason: String) -> void:
 	if GameState.is_stroke_play() or (reason == "course_complete" and GameState.stroke_play_mode):
 		_show_stroke_complete()
 		return
+	if _score_host:
+		_score_host.visible = false
+	if _scorecard:
+		_scorecard.hide_card()
+		_scorecard.visible = false
 	if reason == "course_complete":
 		title.text = "COURSE CLEAR"
 		detail.text = "Survival — finished all %d holes.\nScore %s · Deepest: %d" % [
@@ -43,32 +62,18 @@ func _show_stroke_complete() -> void:
 	if GameState.handicap_index() != null:
 		lines.append("Net  %s" % GameState.format_score_to_par(GameState.net_score_to_par))
 		lines.append(GameState.handicap_label())
-	var card := _hole_card_line()
-	if not card.is_empty():
-		lines.append("")
-		lines.append(card)
 	detail.text = "\n".join(lines)
-
-
-func _hole_card_line() -> String:
-	## Compact hole-by-hole score-to-par (e.g. +1 E -1 …).
-	if GameState.hole_scores.is_empty():
-		return ""
-	var parts: PackedStringArray = PackedStringArray()
-	for d in GameState.hole_scores:
-		parts.append(GameState.format_score_to_par(int(d)))
-	# Break into lines of 6 for readability on mobile.
-	var rows: PackedStringArray = PackedStringArray()
-	var i := 0
-	while i < parts.size():
-		var chunk: PackedStringArray = PackedStringArray()
-		for j in mini(6, parts.size() - i):
-			chunk.append(parts[i + j])
-		rows.append(" ".join(chunk))
-		i += 6
-	return "\n".join(rows)
+	if _score_host:
+		_score_host.visible = true
+	if _scorecard:
+		_scorecard.present_embedded()
 
 
 func hide_panel() -> void:
 	AudioBus.stop_water_hazard()
 	visible = false
+	if _scorecard:
+		_scorecard.hide_card()
+		_scorecard.visible = false
+	if _score_host:
+		_score_host.visible = false
