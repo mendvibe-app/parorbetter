@@ -29,4 +29,21 @@ must('is_in_group("tree")' in BALL, "ball hits trees")
 must('"Trees"' in BALL and '"Trees"' in PHYS, "Trees lie")
 must("lie == \"Trees\"" in PHYS or 'lie == "Trees"' in PHYS, "trees club gate")
 must("return 0.58" in PHYS, "trees distance mult")
+# Trees must not stamp into bunkers (playtest: canopy mid-sand).
+must("func _clears_bunkers" in CTRL, "_clears_bunkers")
+must("_clears_bunkers(" in CTRL, "tree place checks bunkers")
+must("BUNKER_TREE_PAD" in CTRL, "bunker-tree pad")
+
+
+def clears_bunkers(center, radius, bunkers, pad=6.0) -> bool:
+    for c, r in bunkers:
+        if (center[0] - c[0]) ** 2 + (center[1] - c[1]) ** 2 < (r + radius + pad) ** 2:
+            return False
+    return True
+
+
+bunkers = [((650.0, 380.0), 40.0)]
+must(not clears_bunkers((650.0, 380.0), 20.0, bunkers), "tree in bunker blocked")
+must(not clears_bunkers((690.0, 380.0), 20.0, bunkers), "tree lip blocked")
+must(clears_bunkers((750.0, 380.0), 20.0, bunkers), "tree clear of bunker")
 print("tree_hazard_check: OK")

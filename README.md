@@ -4,11 +4,15 @@ Minimal Godot 4 mobile golf prototype — tempo-ratio swing, aim circles, lives,
 
 ## Requirements
 
-- [Godot 4.3+](https://godotengine.org/) (4.x)
+- **[Godot 4.7.x](https://godotengine.org/)** (matches `project.godot` features — not older 4.3)
+- **Python 3** for contract checks (`scripts/**/*_check.py`)
+- Optional: Pillow (`pip install pillow`) for a few image-based checks
+
+**New machine / resume after a break:** see **[GETTING_STARTED.md](GETTING_STARTED.md)** (clone, verify, MCP, what not to commit).
 
 ## Run
 
-1. Open this folder in Godot (`project.godot`).
+1. Open this folder in Godot 4.7 (`project.godot`).
 2. Press **F5** (or Play).
 
 ## Controls

@@ -39,14 +39,18 @@ def main() -> int:
 
     assert "class_name WindFlag" in FLAG
     assert "mph" in FLAG, "tap tip is just the speed"
-    assert "wind_aim_hint" not in FLAG, "advice sentence retired; direction reads from lean"
-    assert "MAX_LEAN" in FLAG
-    assert "pin_flag.png" in FLAG
-    # Cross lean from x; head/tail glyph from y (no generation bias).
-    assert "_wind.x" in FLAG
-    assert "_wind.y" in FLAG
-    assert "INTO" in FLAG and "HELP" in FLAG
-    assert "_refresh_axis_glyph" in FLAG
+    assert "wind_aim_hint" not in FLAG, "advice sentence retired; cloth shows direction"
+    # HUD + course pin share paint_flag cloth (plans/wind_direction_speed.png).
+    assert "func _draw" in FLAG
+    assert "static func paint_flag" in FLAG
+    assert "STRENGTH_NORM" in FLAG
+    assert "CROSS_REACH" in FLAG
+    assert "INTO_SCALE_MAX" in FLAG and "DOWN_SCALE_MIN" in FLAG
+    assert "stream_rotation" not in FLAG
+    assert "_refresh_axis_glyph" not in FLAG
+    assert "↑ INTO" not in FLAG and "↓ HELP" not in FLAG
+    assert "_axis" not in FLAG
+    assert "pin_flag.png" not in FLAG, "cloth is drawn, not pin texture"
 
     gen = (ROOT / "scripts/course/hole_generator.gd").read_text(encoding="utf-8")
     assert "wind.y * 0.35" not in gen

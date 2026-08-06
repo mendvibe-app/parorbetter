@@ -561,14 +561,10 @@ static func launch_velocity(
 	var stab_term := 1.35 - result.stance_stability * 0.5
 	# Forcing a club (wrong bag choice, then mash/baby) taxes line the way it does IRL.
 	var force_mul := 1.0 + force * 0.9
-	# path_error = tempo miss; intended_shape = hole bias + swing path blend (shot_routine).
-	var lateral := (result.path_error * 0.50 + result.intended_shape * 0.40) * stab_term * force_mul
-	var spin := (
-		result.path_error * (1.05 - result.stance_stability * 0.45)
-		+ result.intended_shape * 0.55
-	) * (1.0 + force * 0.7)
-	# Even a pure path leaks offline when the swing is forced.
-	lateral += force * 0.18 * (1.0 if result.path_error >= 0.0 else -1.0)
+	# Unified direction (full/pitch/punch): path_error == intended_shape from shot_routine
+	# (swipe + gated tempo pull). Putt returns earlier with its own path_error.
+	var lateral := result.intended_shape * 0.85 * stab_term * force_mul
+	var spin := result.intended_shape * 0.95 * (1.0 + force * 0.7)
 	match result.contact_quality:
 		ShotResult.ContactQuality.THIN:
 			spin *= 1.35

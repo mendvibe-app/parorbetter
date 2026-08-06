@@ -19,3 +19,13 @@ Thumbs.db
 # Python (contract-check scripts)
 __pycache__/
 *.pyc
+
+# Local scratch / debug dumps (never ship)
+_tmp_*/
+_green_dbg/
+_pixellab_init/
+_pixellab_out/
+*.b64
+android/build/
+debug/*.png
+debug/*.png.import

@@ -38,6 +38,12 @@ const ACCEL_LO_FULL := 28.0
 const ACCEL_SPAN_FULL := 40.0
 const ACCEL_LO_PITCH := 32.0
 const ACCEL_SPAN_PITCH := 40.0
+## Rushed tempo past GOOD band → outside-in nudge on swipe (not independent path).
+const TRANSITION_PULL_MAX_FULL := 0.20
+const TRANSITION_PULL_MAX_PITCH := 0.12
+const TRANSITION_PULL_SCALE := 0.35  ## scales abs_n past BAND_GOOD; hard-cap pull_max
+## Random direction jitter when balance < 0.35 (shot_routine).
+const BALANCE_DISPERSION_MAX := 0.15
 
 
 static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
@@ -259,10 +265,13 @@ static func grade(
 	elif contact == ShotResult.ContactQuality.MISS:
 		power_mul = 0.50
 
-	# Path: slight errors → mild curve; disaster → wild. Amplify only on true lurch.
-	var path := clampf(signf(err if absf(err) > 0.01 else 0.0) * abs_n * 0.35, -1.0, 1.0)
-	if bal < 0.35:
-		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
+	# OTT / out-to-in magnitude (always ≥ 0). Applied as +pull on swing_shape so
+	# shape moves toward fade/slice (+), not draw (−). Only when rushed past GOOD.
+	var pull_max := TRANSITION_PULL_MAX_PITCH if shot_type == "pitch" else TRANSITION_PULL_MAX_FULL
+	var transition_pull := 0.0
+	if err < 0.0:
+		var over_band := maxf(abs_n - BAND_GOOD, 0.0)
+		transition_pull = clampf(over_band * TRANSITION_PULL_SCALE, 0.0, pull_max)
 
 	var floor_bs := bs_floor(shot_type)
 	var short_bs := clampf((floor_bs - float(sample.get("backswing_len", 0.0))) / floor_bs, 0.0, 1.0)
@@ -296,7 +305,9 @@ static func grade(
 		"tolerance": tol,
 		"contact": contact,
 		"power_mul": power_mul,
-		"path_error": path,
+		## Full/pitch: path_error set in shot_routine from unified shape; grade leaves 0.
+		"path_error": 0.0,
+		"transition_pull": transition_pull,
 		"note": note,
 		"fault": str(diag.get("fault", "")),
 		"diagnosis": str(diag.get("line", "")),

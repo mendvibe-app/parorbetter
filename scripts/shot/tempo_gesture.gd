@@ -156,7 +156,10 @@ var _accel_ring: Array = []
 var _prev_seg_dir: Vector2 = Vector2.ZERO
 var _follow_through: float = 0.0
 var _last_pos: Vector2 = Vector2.ZERO
-## Signed pad-normalized peak lateral (perp to stroke axis). + = right of lane.
+## Signed pad-normalized peak lateral (perp to stroke axis).
+## Geometry: axis down-pad, perp = left; finger RIGHT of lane → lat < 0.
+## Map: negative = in-to-out pad path = draw/hook (left); positive = out-to-in = fade/slice (right).
+## Confirmed via axis/perp math (pad-right → −lat → draw); live pad-right smoke on playtest.
 var _max_lateral: float = 0.0
 var _marker_crossed: bool = false
 ## msec when axis locked — brief ball pop-in scale.
@@ -647,8 +650,8 @@ func _update(pos: Vector2) -> void:
 	if not had_top:
 		_peak_vel = maxf(_peak_vel, absf(_vel))
 
-	# Lateral (perp to stroke axis) — putt line grade. Putt axis = lane.
-	var perp := Vector2(-_axis.y, _axis.x)
+	# Lateral (perp to stroke axis) — putt line + full shape. See _max_lateral doc.
+	var perp := Vector2(-_axis.y, _axis.x)  # left of down-pad axis
 	var lat := delta.dot(perp) / maxf(size.y, 1.0)
 	if absf(lat) > absf(_max_lateral):
 		_max_lateral = lat

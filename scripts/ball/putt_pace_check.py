@@ -160,6 +160,10 @@ def main() -> int:
     assert "BALL_R_PUTT := 1.0" in BALL
     assert "PUTT_BREAK_LATERAL := 90.0" in BALL
     assert "PUTT_BREAK_ALONG := 55.0" in BALL
+    # Cup capture: speed gate (lip-out) + center-in-cup; no hot teleport makes.
+    assert "CUP_CAPTURE_MAX_SPEED" in BALL
+    assert "_try_cup_capture" in BALL
+    assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
     # Mid-slope 40 ft must bend ~2 ball-widths (was sub-pixel at K=22)
     px_per_yd = 2.25
     travel_px = (40.0 / 3.0) * px_per_yd
@@ -169,7 +173,15 @@ def main() -> int:
     assert bend >= 4.0, bend
     assert bend / (1.0 * 2.0) >= 1.8, bend  # ≥ ~1.8 ball diameters
     assert "_sync_pin_flag_visible" in HOLE
-    assert "12.0 / fh" in HOLE or "12.0 / float" in HOLE
+    assert "PIN_FLAG_H_PX" in HOLE
+    assert "course_pin_flag.gd" in HOLE or "CoursePinFlagScr" in HOLE
+    assert "get_lie() == \"Green\"" in HOLE or 'get_lie() == "Green"' in HOLE
+    # Pin out on green only — not _is_putt_context (28 yd yank).
+    sync = HOLE.split("func _sync_pin_flag_visible")[1].split("func ")[0]
+    assert "_is_putt_context" not in sync
+    assert "_update_pin_flag_wind" in HOLE
+    assert "set_wind" in HOLE
+    assert "stream_rotation" not in HOLE
     # Fairway must not run through putting surface (rectangular texture patch)
     fairway_fn = HOLE.split("func _add_bent_fairway")[1].split("func ")[0]
     assert "top_y := GREEN_Y + maxf(hole.green_radius_y" in fairway_fn

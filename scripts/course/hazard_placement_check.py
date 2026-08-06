@@ -101,6 +101,11 @@ def main() -> int:
     # Greenside sand always places (no if _clears_green skip).
     assert "elif kind == \"sand\":" in CTRL or "elif kind == 'sand':" in CTRL
 
+    # Trees clear bunkers; sand lie uses paint (not full circle).
+    assert "func _clears_bunkers" in CTRL
+    assert "func _on_painted_sand" in CTRL
+    assert "SAND_COLLISION_FRAC" in CTRL
+
     # Cape + Leven water hazards epic.
     assert 'ROLE_DIAGONAL := "diagonal"' in DATA
     assert 'ROLE_SHORELINE := "shoreline"' in DATA

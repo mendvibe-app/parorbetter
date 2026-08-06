@@ -1,51 +1,139 @@
 class_name WindFlag
 extends Control
 
-## Flagstick glance for wind: lean + wave from vector; tap for advice sentence.
+## HUD wind glance: rigid pole + cloth reshape (direction + strength).
+## Visual truth: plans/wind_direction_speed.png
+## Course pin shares paint_flag() — same modes and colors.
 
-const TEX_FLAG := preload("res://assets/greens/pin_flag.png")
 const TIP_SEC := 2.2
-const MAX_LEAN := 0.61  ## ~35°
 const FLAG_H := 120.0
+const CALM := 0.5
+
+const STRENGTH_NORM := 40.0  ## mph at which tautness maxes out
+
+## Layout in “design space” (height FLAG_H); paint_flag scales by height_px / FLAG_H.
+const POLE_TOP_Y := 10.0
+const POLE_BOTTOM_Y := FLAG_H - 6.0
+const ATTACH_Y := POLE_TOP_Y + 6.0
+const FLAG_LOCAL_H := 24.0
+const POLE_W := 4.0
+
+const CROSS_REACH_MIN := 14.0
+const CROSS_REACH_MAX := 46.0
+const CROSS_DROOP_MIN := 2.0
+const CROSS_DROOP_MAX := 10.0
+
+const BILLOW_BASE := 10.0
+const INTO_SCALE_MAX := 1.9
+const DOWN_SCALE_MIN := 0.22  ## high downwind ≈ sliver (mockup), not zero
+
+const COLOR_POLE := Color(0.95, 0.95, 0.97)
+const COLOR_FRONT := Color(0.886, 0.294, 0.290)  ## cross + into
+const COLOR_BEHIND := Color(0.639, 0.176, 0.176)  ## downwind muted
+
+
+## Shared by HUD + course pin.
+## origin = pole foot in ci local space; Y+ is down; pole extends toward −Y.
+static func paint_flag(
+	ci: CanvasItem, origin: Vector2, wind: Vector2, t_sec: float, height_px: float
+) -> void:
+	var s := height_px / FLAG_H
+	var pole_h := (POLE_BOTTOM_Y - POLE_TOP_Y) * s
+	var attach_up := (POLE_BOTTOM_Y - ATTACH_Y) * s
+	var cloth_h := FLAG_LOCAL_H * s
+	var pole_w := maxf(POLE_W * s, 1.5)
+
+	var foot := origin
+	var top := origin + Vector2(0.0, -pole_h)
+	var attach := origin + Vector2(0.0, -attach_up)
+
+	var ax := absf(wind.x)
+	var ay := absf(wind.y)
+	var use_cross := ax >= ay
+	var strength_amt := clampf(wind.length() / STRENGTH_NORM, 0.0, 1.0)
+	var flutter := sin(t_sec * (1.5 + strength_amt * 3.0)) * 1.5 * strength_amt * s
+
+	if wind.length() < CALM:
+		_paint_pole(ci, top, foot, pole_w)
+		_paint_pennant(
+			ci,
+			attach,
+			attach + Vector2(0.0, cloth_h * 0.55),
+			attach
+			+ Vector2(
+				-CROSS_REACH_MIN * 0.55 * s,
+				cloth_h * 0.35 * 0.55 + CROSS_DROOP_MAX * 0.6 * s
+			),
+			COLOR_FRONT
+		)
+		return
+
+	if use_cross:
+		var side := signf(wind.x) if ax > CALM else -1.0
+		if side == 0.0:
+			side = -1.0
+		var cross_amt := clampf(ax / STRENGTH_NORM, 0.0, 1.0)
+		var reach := lerpf(CROSS_REACH_MIN, CROSS_REACH_MAX, cross_amt) * s
+		var droop := lerpf(CROSS_DROOP_MAX, CROSS_DROOP_MIN, cross_amt) * s
+		_paint_pole(ci, top, foot, pole_w)
+		_paint_pennant(
+			ci,
+			attach,
+			attach + Vector2(0.0, cloth_h),
+			attach + Vector2(side * reach + flutter, cloth_h * 0.35 + droop),
+			COLOR_FRONT
+		)
+	elif wind.y < -CALM:
+		var fwd_amt := clampf(ay / STRENGTH_NORM, 0.0, 1.0)
+		var sc := lerpf(1.0, INTO_SCALE_MAX, fwd_amt)
+		_paint_pole(ci, top, foot, pole_w)
+		_paint_billow(ci, attach, cloth_h, sc, flutter, COLOR_FRONT, s)
+	else:
+		var fwd2 := clampf(ay / STRENGTH_NORM, 0.0, 1.0)
+		var sc2 := lerpf(1.0, DOWN_SCALE_MIN, fwd2)
+		_paint_billow(ci, attach, cloth_h, sc2, flutter * 0.5, COLOR_BEHIND, s)
+		_paint_pole(ci, top, foot, pole_w)
+
+
+static func _paint_pole(ci: CanvasItem, from: Vector2, to: Vector2, width: float) -> void:
+	ci.draw_line(from, to, COLOR_POLE, width, true)
+
+
+static func _paint_pennant(
+	ci: CanvasItem, top: Vector2, bottom: Vector2, tip: Vector2, color: Color
+) -> void:
+	ci.draw_colored_polygon(PackedVector2Array([top, tip, bottom]), color)
+
+
+static func _paint_billow(
+	ci: CanvasItem,
+	attach: Vector2,
+	cloth_h: float,
+	scale: float,
+	flutter: float,
+	color: Color,
+	s: float
+) -> void:
+	var h := cloth_h * scale
+	var top := attach
+	var bot := attach + Vector2(0.0, h)
+	var bulge := BILLOW_BASE * scale * s + flutter
+	var tip_a := attach + Vector2(bulge, h * 0.28)
+	var tip_b := attach + Vector2(bulge * 0.85, h * 0.72)
+	ci.draw_colored_polygon(PackedVector2Array([top, tip_a, tip_b, bot]), color)
+
 
 var _wind: Vector2 = Vector2.ZERO
 var _extra: String = ""
 var _tip_until_msec: int = 0
+var _t: float = 0.0
 
-var _flag: TextureRect
-var _axis: Label  ## Head/tail cue (↑ INTO / ↓ HELP); lean still owns crosswind.
 var _tip: Label
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(96, FLAG_H + 28.0)
-
-	_flag = TextureRect.new()
-	_flag.texture = TEX_FLAG
-	_flag.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_flag.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	_flag.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_flag.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	_flag.offset_bottom = -22.0
-	# Pivot near pole base (texture center-x) so lean reads as a flagstick.
-	_flag.pivot_offset = Vector2(custom_minimum_size.x * 0.5, FLAG_H - 8.0)
-	add_child(_flag)
-
-	_axis = Label.new()
-	_axis.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_axis.add_theme_font_size_override("font_size", int(UiScale.CAPTION * 0.55))
-	_axis.add_theme_color_override("font_color", Color(0.75, 0.92, 1.0, 1.0))
-	_axis.set_anchors_preset(Control.PRESET_CENTER_BOTTOM)
-	_axis.anchor_top = 1.0
-	_axis.anchor_bottom = 1.0
-	_axis.offset_left = -48.0
-	_axis.offset_right = 48.0
-	_axis.offset_top = -20.0
-	_axis.offset_bottom = 2.0
-	_axis.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_axis.visible = false
-	add_child(_axis)
 
 	_tip = Label.new()
 	_tip.visible = false
@@ -72,15 +160,15 @@ func show_wind(wind: Vector2, extra: String = "") -> void:
 	_extra = extra
 	visible = true
 	set_process(true)
-	_layout_flag_pivot()
+	queue_redraw()
 
 
 func set_wind_vector(wind: Vector2) -> void:
-	## Update lean without clearing tap-tip extra (green book note, etc.).
+	## Update without clearing tap-tip extra (green book note, etc.).
 	_wind = wind
 	visible = true
 	set_process(true)
-	_layout_flag_pivot()
+	queue_redraw()
 
 
 func hide_wind() -> void:
@@ -91,51 +179,17 @@ func hide_wind() -> void:
 	set_process(false)
 
 
-func _layout_flag_pivot() -> void:
-	if _flag == null:
-		return
-	var sz := size
-	if sz.x < 1.0 or sz.y < 1.0:
-		sz = custom_minimum_size
-	_flag.pivot_offset = Vector2(sz.x * 0.5, sz.y - 10.0)
-
-
-func _process(_delta: float) -> void:
-	_layout_flag_pivot()
-	var strength := _wind.length()
-	var t := float(Time.get_ticks_msec()) * 0.001
-	# ponytail: lean capped ~35°; cloth sim if this ever looks silly in a gale.
-	var lean_amt := clampf(strength / 40.0, 0.0, 1.0)
-	# Lean = crosswind only; pure head/tail wind keeps the flag upright (flutter only).
-	var side := signf(_wind.x) if absf(_wind.x) > 0.5 else 0.0
-	var lean := side * lean_amt * MAX_LEAN
-	var wave := 0.0
-	if lean_amt > 0.02:
-		var speed := 1.2 + lean_amt * 3.5
-		# Flutter amplitude scales with strength so a wind-4 breeze barely ripples.
-		wave = sin(t * speed * TAU) * deg_to_rad(12.0 * lean_amt)
-	_flag.rotation = lean + wave
-	_refresh_axis_glyph()
-
+func _process(delta: float) -> void:
+	_t += delta
+	queue_redraw()
 	if _tip.visible and Time.get_ticks_msec() >= _tip_until_msec:
 		_tip.visible = false
 
 
-func _refresh_axis_glyph() -> void:
-	## Head/tail at a glance. Physics: wind_yards = -wind.y * 0.35 → +y helps, −y into.
-	if _axis == null:
-		return
-	var ay := _wind.y
-	if absf(ay) <= 0.5:
-		_axis.visible = false
-		return
-	_axis.visible = true
-	if ay > 0.0:
-		_axis.text = "↓ HELP"
-	else:
-		_axis.text = "↑ INTO"
-	var a := clampf(absf(ay) / 40.0, 0.35, 1.0)
-	_axis.modulate = Color(1.0, 1.0, 1.0, a)
+func _draw() -> void:
+	var w := size.x if size.x > 1.0 else custom_minimum_size.x
+	var foot := Vector2(w * 0.5, POLE_BOTTOM_Y)
+	paint_flag(self, foot, _wind, _t, FLAG_H)
 
 
 func _on_gui_input(event: InputEvent) -> void:

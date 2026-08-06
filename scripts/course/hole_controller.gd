@@ -8,6 +8,8 @@ const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
 ## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
 const CUP_RADIUS := 2.4
+## Course pin height in px (readable from fairway; not survey-true ~7 ft).
+const PIN_FLAG_H_PX := 32.0
 ## Full-shot "up and in" camera — fractions of pre-shot / corridor base (not absolute).
 ## Aim framing got tighter (corridor); absolute 0.55 launch was zooming *out* on hit.
 const FLIGHT_LAUNCH_FRAC := 0.90  ## mild open from aim at launch
@@ -39,8 +41,9 @@ const TEX_WATER := preload("res://assets/terrain/water_tile.png")
 const TEX_WATER_CREEK := preload("res://assets/hazards/water_creek.png")
 const TEX_WATER_POND := preload("res://assets/hazards/water_pond.png")
 const TEX_CUP := preload("res://assets/greens/cup.png")
-const TEX_PIN_FLAG := preload("res://assets/greens/pin_flag.png")
 const TEX_FOG := preload("res://assets/background/fog_overlay.png")
+## Preload so global class_name cache isn't required before first import.
+const CoursePinFlagScr := preload("res://scripts/course/course_pin_flag.gd")
 const GREEN_SHAPE_TEXTURES := {
 	HoleData.GreenShape.OVAL: preload("res://assets/greens/green_oval.png"),
 	HoleData.GreenShape.KIDNEY: preload("res://assets/greens/green_kidney.png"),
@@ -86,10 +89,10 @@ var _active_tee: HoleData.TeeSet = HoleData.TeeSet.WHITE
 var _practice_green_pos: Vector2 = Vector2.ZERO
 var _fairway_half: float = 70.0
 var _flight_zoom_base: float = 1.2  ## captured at full-shot start; flight fracs scale from this
-var _bunkers: Array = []  ## {c: Vector2, r: float} — for settle lie
+var _bunkers: Array = []  ## {c, r, sprite, img} — settle lie via paint alpha
 var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
-var _pin_flag: Sprite2D  ## hidden while putting (pin out — kills scale lie)
+var _pin_flag: Node2D  ## CoursePinFlag — hidden while putting (pin out)
 var _green_sprite: Sprite2D
 var _green_img: Image  ## cached for shape-aware Green lie (silhouette alpha)
 
@@ -461,20 +464,15 @@ func _build_course() -> void:
 	cup_spr.z_index = 2
 	course_root.add_child(cup_spr)
 
-	var flag_spr := Sprite2D.new()
-	flag_spr.texture = TEX_PIN_FLAG
-	flag_spr.centered = false
-	# Pole is authored at texture center (x = 0.5). Base sits on the cup.
-	var fw := float(TEX_PIN_FLAG.get_width())
-	var fh := float(TEX_PIN_FLAG.get_height())
-	flag_spr.offset = Vector2(-fw * 0.5, -fh)
-	flag_spr.position = _cup_pos
-	# ~12 px ≈ 16 ft equiv — readable, not a 64 ft tower next to short putts.
-	flag_spr.scale = Vector2.ONE * (12.0 / fh)
-	flag_spr.z_index = 3
-	course_root.add_child(flag_spr)
-	_pin_flag = flag_spr
+	# Same cloth language as HUD WindFlag; foot planted on the cup.
+	var flag_node: Node2D = CoursePinFlagScr.new()
+	flag_node.name = "CoursePinFlag"
+	flag_node.position = _cup_pos
+	flag_node.set("height_px", PIN_FLAG_H_PX)
+	course_root.add_child(flag_node)
+	_pin_flag = flag_node
 	_sync_pin_flag_visible()
+	_update_pin_flag_wind()
 
 	_place_hazards(adapt_bias)
 
@@ -724,6 +722,20 @@ func _clears_green(center: Vector2, radius: float) -> bool:
 	return dx * dx + dy * dy > 1.0
 
 
+## Trees must not sit in bunkers (pad keeps canopy edge off sand lip).
+const BUNKER_TREE_PAD := 6.0
+## Sand Area2D tighter than visual bbox; paint alpha is the true Sand gate.
+const SAND_COLLISION_FRAC := 0.6
+
+
+func _clears_bunkers(center: Vector2, radius: float) -> bool:
+	for b in _bunkers:
+		var need := float(b["r"]) + radius + BUNKER_TREE_PAD
+		if center.distance_to(b["c"]) < need:
+			return false
+	return true
+
+
 func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
 	for spec in hole.hazards:
 		if typeof(spec) != TYPE_DICTIONARY:
@@ -964,8 +976,10 @@ func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
 	var max_dim := maxf(float(tex.get_width()), float(tex.get_height()))
 	spr.scale = Vector2.ONE * (radius * 2.3 / max_dim)
 	course_root.add_child(spr)
-	_bunkers.append({"c": center, "r": radius})
-	_add_circle(course_root, center, radius, Color(0, 0, 0, 0), "sand")
+	var img: Image = tex.get_image()
+	_bunkers.append({"c": center, "r": radius, "sprite": spr, "img": img})
+	# Broad enter-hint only; Sand lie / friction use paint via ground_lie_at + settle.
+	_add_circle(course_root, center, radius * SAND_COLLISION_FRAC, Color(0, 0, 0, 0), "sand")
 
 
 func _along_from_y(y: float) -> float:
@@ -1051,9 +1065,20 @@ func _place_tree_group(
 			if role == HoleData.ROLE_LANDING and n > 1:
 				lat += float(i) * 8.0
 			c = Vector2(fc.x + s * lat + rng.randf_range(-10.0, 10.0), fc.y + rng.randf_range(-14.0, 14.0))
-		if not _clears_green(c, size * 0.55):
-			continue
 		var r := size * rng.randf_range(0.72, 1.05)
+		# Push off bunkers once or twice, then skip (no trees in sand).
+		var placed := false
+		for attempt in 3:
+			var try_c := c + Vector2(s * float(attempt) * 22.0, 0.0)
+			if not _clears_green(try_c, size * 0.55):
+				continue
+			if not _clears_bunkers(try_c, r * 0.72):
+				continue
+			c = try_c
+			placed = true
+			break
+		if not placed:
+			continue
 		var art_i := art if art >= 0 else rng.randi_range(0, TREE_TEXTURES.size() - 1)
 		if n > 1:
 			art_i = (art_i + i * 2 + rng.randi_range(0, 2)) % TREE_TEXTURES.size()
@@ -1183,9 +1208,23 @@ func _is_putt_context() -> bool:
 
 
 func _sync_pin_flag_visible() -> void:
-	## Pin out on the green — flag height was lying about putt scale.
-	if _pin_flag:
-		_pin_flag.visible = not _is_putt_context()
+	## Pin out only on the putting surface — not for chips/approaches inside 28 yd.
+	if _pin_flag == null:
+		return
+	var on_green := ball != null and ball.get_lie() == "Green"
+	_pin_flag.visible = not on_green
+
+
+func _update_pin_flag_wind() -> void:
+	if _pin_flag == null:
+		return
+	var wind: Vector2 = Vector2.ZERO
+	if course_root:
+		wind = course_root.get_meta("wind", hole.wind_vector if hole else Vector2.ZERO)
+	elif hole:
+		wind = hole.wind_vector
+	if _pin_flag.has_method("set_wind"):
+		_pin_flag.call("set_wind", wind)
 
 
 func _set_green_book_visible(on: bool) -> void:
@@ -2363,6 +2402,7 @@ func _refresh_hole_map() -> void:
 
 func _process(_delta: float) -> void:
 	_sync_pin_flag_visible()
+	_update_pin_flag_wind()
 	if _hole_map and ball:
 		_hole_map.set_ball(ball.global_position)
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
@@ -2506,7 +2546,10 @@ func _classify_lie(pos: Vector2) -> String:
 		if pos.distance_to(tr["c"]) <= float(tr["r"]):
 			return "Trees"
 	for b in _bunkers:
-		if pos.distance_to(b["c"]) <= float(b["r"]):
+		# Cheap reject on design radius; opaque sand pixels are the real gate.
+		if pos.distance_to(b["c"]) > float(b["r"]) * 1.15:
+			continue
+		if _on_painted_sand(pos, b):
 			return "Sand"
 	if _on_painted_green(pos):
 		return "Green"
@@ -2528,6 +2571,24 @@ func _classify_lie(pos: Vector2) -> String:
 	if fx <= _fairway_half + 80.0:
 		return "Rough"
 	return "Rough"
+
+
+func _on_painted_sand(pos: Vector2, bunker: Dictionary) -> bool:
+	## Painted bunker alpha (blob/crescent/cluster) — circle alone over-fires Sand.
+	var spr: Sprite2D = bunker.get("sprite") as Sprite2D
+	var img: Image = bunker.get("img") as Image
+	if spr == null or img == null:
+		return pos.distance_to(bunker["c"]) <= float(bunker["r"]) * SAND_COLLISION_FRAC
+	var sz := Vector2(float(img.get_width()), float(img.get_height()))
+	var sc := spr.scale
+	if absf(sc.x) < 0.001 or absf(sc.y) < 0.001:
+		return false
+	var local := (pos - spr.position) / sc + sz * 0.5
+	var ix := int(local.x)
+	var iy := int(local.y)
+	if ix < 0 or iy < 0 or ix >= int(sz.x) or iy >= int(sz.y):
+		return false
+	return img.get_pixel(ix, iy).a > 0.5
 
 
 func _on_painted_green(pos: Vector2) -> bool:

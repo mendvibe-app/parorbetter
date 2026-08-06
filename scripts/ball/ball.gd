@@ -78,6 +78,9 @@ const BALL_R_PUTT := 1.0
 ## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
 const PUTT_BREAK_LATERAL := 90.0
 const PUTT_BREAK_ALONG := 55.0
+## Max roll speed (px/s) to drop in the cup. Faster → lip out / roll over (no teleport make).
+## Settle stops at <10; this sits above that so dying putts still fall, hot lags don't.
+const CUP_CAPTURE_MAX_SPEED := 32.0
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -598,6 +601,10 @@ func _process_roll(delta: float) -> void:
 	if collision and not _is_putt:
 		velocity = velocity.bounce(collision.get_normal()) * 0.3
 
+	# Cup: re-check every frame so a ball that was too hot on enter can still drop when it dies.
+	if _try_cup_capture():
+		return
+
 	if _lie == "Green":
 		AudioBus.set_roll_intensity(velocity.length() / 400.0)
 	else:
@@ -608,6 +615,9 @@ func _process_roll(delta: float) -> void:
 
 
 func _finish_settle() -> void:
+	# Dying on the lip: one last capture attempt (speed is ~0).
+	if _try_cup_capture():
+		return
 	velocity = Vector2.ZERO
 	state = State.SETTLED
 	set_physics_process(false)
@@ -623,6 +633,30 @@ func _finish_settle() -> void:
 	if _lie != "Water" and _lie != "OOB":
 		_last_safe_pos = global_position
 	settled.emit(global_position, _lie)
+
+
+## True when the ball drops in (emits holed_out). False = miss / too hot / not over cup.
+func _try_cup_capture() -> bool:
+	if state != State.ROLL:
+		return false
+	# Hot putt over the cup → lip out (playtest: ball past hole then teleported in).
+	if velocity.length() > CUP_CAPTURE_MAX_SPEED:
+		return false
+	for other in area.get_overlapping_areas():
+		if not other.is_in_group("cup"):
+			continue
+		# Sensor is ~10px; require ball *center* inside the cup disc.
+		var cs := other.get_child(0) as CollisionShape2D
+		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 3.0
+		if global_position.distance_to(other.global_position) > cup_r:
+			continue
+		velocity = Vector2.ZERO
+		state = State.SETTLED
+		set_physics_process(false)
+		AudioBus.set_roll_intensity(0.0)
+		holed_out.emit()
+		return true
+	return false
 
 
 func _set_trail_dry(v: float) -> void:
@@ -656,16 +690,7 @@ func _on_area_entered(other: Area2D) -> void:
 	if state != State.ROLL:
 		return
 	if other.is_in_group("cup"):
-		# Area overlap includes this ball's ~10px sensor; require center inside the cup.
-		var cs := other.get_child(0) as CollisionShape2D
-		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 3.0
-		if global_position.distance_to(other.global_position) > cup_r:
-			return
-		velocity = Vector2.ZERO
-		state = State.SETTLED
-		set_physics_process(false)
-		AudioBus.set_roll_intensity(0.0)
-		holed_out.emit()
+		_try_cup_capture()
 		return
 	if other.is_in_group("water"):
 		# Putting surface wins — island water volumes can graze the green edge.

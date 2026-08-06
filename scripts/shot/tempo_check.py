@@ -140,10 +140,22 @@ def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: fl
         power_mul = min(max(1.0 - over * 0.30, 0.55), 1.0)
     elif contact == "MISS":
         power_mul = 0.50
-    path = max(min((1.0 if err > 0.01 else (-1.0 if err < -0.01 else 0.0)) * abs_n * 0.35, 1.0), -1.0)
-    if bal < 0.35:
-        path = max(min(path * (1.0 + (0.35 - bal)), 1.0), -1.0)
-    return {"ratio": r, "balance": bal, "tolerance": tol, "contact": contact, "power_mul": power_mul, "path_error": path, "target": target}
+    # Direction pull: only rushed past GOOD band (swipe owns path in shot_routine).
+    pull_max = 0.12 if shot_type == "pitch" else 0.20
+    transition_pull = 0.0
+    if err < 0.0:
+        over_band = max(abs_n - BAND_GOOD, 0.0)
+        transition_pull = min(max(over_band * 0.35, 0.0), pull_max)
+    return {
+        "ratio": r,
+        "balance": bal,
+        "tolerance": tol,
+        "contact": contact,
+        "power_mul": power_mul,
+        "path_error": 0.0,
+        "transition_pull": transition_pull,
+        "target": target,
+    }
 
 
 def main() -> int:
@@ -160,10 +172,20 @@ def main() -> int:
     assert "var power_mul := 1.0" in GRADE
     assert "abs_n - BAND_GOOD" in GRADE
     assert "abs_n * 0.22" not in GRADE
-    assert "abs_n * 0.35" in GRADE  # path still continuous
+    assert "TRANSITION_PULL_MAX_FULL" in GRADE
+    assert "transition_pull" in GRADE
+    assert "over_band" in GRADE  # pull gated past BAND_GOOD
+    # OTT bias applied as +pull (out-to-in / fade side), not −pull (old draw bias).
+    ROUTINE = (DIR / "shot_routine.gd").read_text(encoding="utf-8")
+    assert "swing_shape + pull" in ROUTINE or "modulated := clampf(swing_shape + pull" in ROUTINE
+    assert "max_lateral" in ROUTINE
+    assert "sign:" in (DIR.parent / "debug" / "debug_controls.gd").read_text(encoding="utf-8")
     assert "maxf(bal, 0.70)" in GRADE or "max(bal, 0.70)" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
-    assert "return 1.06" in (DIR.parent / "ball" / "ball_physics.gd").read_text(encoding="utf-8")
+    PHYS = (DIR.parent / "ball" / "ball_physics.gd").read_text(encoding="utf-8")
+    assert "return 1.06" in PHYS
+    assert "intended_shape * 0.85" in PHYS
+    assert "force * 0.18" not in PHYS  # old sign-only path push removed
     # Unified diagnosis: balance_detail + diagnose_swing; no bal_word / lurch in notes
     assert "func balance_detail" in GRADE
     assert "func diagnose_swing" in GRADE
@@ -252,9 +274,11 @@ def main() -> int:
     assert gs["contact"] == gf["contact"] == "PERFECT", (gs, gf)
     assert abs(gs["power_mul"] - gf["power_mul"]) < 1e-6
     assert abs(gs["path_error"] - gf["path_error"]) < 1e-6
+    assert abs(gs["transition_pull"] - gf["transition_pull"]) < 1e-6
     assert abs(gs["power_mul"] - 1.0) < 1e-9  # PERFECT: tier owns distance
+    assert gs["transition_pull"] == 0.0  # on-target: no pull
 
-    # 14-hcp mild miss (~3.8 at full balance) stays GOOD — full carry, path may drift
+    # 14-hcp mild miss (~3.8 at full balance) stays GOOD — full carry; lingering → no pull
     mild = dict(slow)
     mild["t_top"] = 0.76
     mild["t_impact"] = 0.96  # 0.76/0.20 = 3.8
@@ -265,7 +289,7 @@ def main() -> int:
         assert abs(gm["power_mul"] - 1.0) < 1e-9, gm
     else:
         assert gm["power_mul"] >= 0.55, gm
-    assert gm["path_error"] > 0.0
+    assert gm["transition_pull"] == 0.0, "lingering tempo must not pull direction"
 
     # Mild tempo + lurch balance must stay playable (not hosel from accel alone).
     # These legacy samples predate the transition check (no peak_vel/vel_at_top),
@@ -317,24 +341,27 @@ def main() -> int:
     assert gi["contact"] == "MISS", gi
     assert abs(gi["power_mul"] - 0.50) < 1e-9, gi
 
-    # Rushed: path left; distance tax only if out of GOOD
+    # Rushed past GOOD: transition_pull > 0; grade path_error is 0 (swipe owns direction)
     rushed = dict(slow)
     rushed["t_top"] = 0.3
     rushed["t_impact"] = 0.55  # 0.3/0.25 = 1.2
     gr = grade(rushed, "full")
-    assert gr["path_error"] < 0.0, "rushed must pull left (negative path)"
-    assert abs(gr["path_error"]) > 0.05
+    assert abs(gr["path_error"]) < 1e-9, "grade no longer owns path_error"
     if gr["contact"] in ("PERFECT", "GOOD"):
+        assert gr["transition_pull"] == 0.0, "mastery band: no direction pull"
         assert abs(gr["power_mul"] - 1.0) < 1e-9, gr
     else:
+        assert gr["transition_pull"] > 0.0, "rushed past GOOD must pull"
+        assert gr["transition_pull"] <= 0.20 + 1e-9
         assert gr["power_mul"] < 1.0, gr
 
-    # Dragged → positive path; distance tax only if out of GOOD
+    # Lingering: no transition_pull; distance tax only if out of GOOD
     dragged = dict(slow)
     dragged["t_top"] = 0.85
     dragged["t_impact"] = 1.0  # 0.85/0.15 ≈ 5.67
     gd = grade(dragged, "full")
-    assert gd["path_error"] > 0.0, "dragged must push right"
+    assert gd["transition_pull"] == 0.0, "lingering must not pull"
+    assert abs(gd["path_error"]) < 1e-9
     if gd["contact"] in ("PERFECT", "GOOD"):
         assert abs(gd["power_mul"] - 1.0) < 1e-9, gd
     else:
@@ -385,7 +412,12 @@ def main() -> int:
     gf_wrong = grade(putt_ok, "full")
     assert gf_wrong["contact"] != "PERFECT" or abs(gf_wrong["ratio"] - TARGET_FULL) < 0.2
     assert gf_wrong["ratio"] < TARGET_FULL
-    assert gf_wrong["path_error"] <= 0.0 or gf_wrong["contact"] != "PERFECT"
+    assert gf_wrong["transition_pull"] >= 0.0
+    # under full target: pull only if past GOOD band
+    if gf_wrong["contact"] in ("PERFECT", "GOOD"):
+        assert gf_wrong["transition_pull"] == 0.0
+    else:
+        assert gf_wrong["transition_pull"] > 0.0
 
     # Natural short putt length must not get full-swing balance punishment
     short_putt = {

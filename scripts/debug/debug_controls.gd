@@ -244,12 +244,20 @@ func _process(_delta: float) -> void:
 				h_peak if h_peak >= 0.0 else 0.0,
 				h_max if h_max >= 0.0 else 0.0,
 			]
-		var shape_line := ""
-		if t.has("swing_shape") or t.has("shape_blend"):
-			shape_line = "\nShape swipe %+.2f → blend %+.2f" % [
-				float(t.get("swing_shape", 0.0)),
-				float(t.get("shape_blend", 0.0)),
-			]
+		var path_v := float(m.get("path_error", 0.0))
+		var swipe_v := float(t.get("swing_shape", 0.0))
+		var pull_v := float(t.get("transition_pull", 0.0))
+		var blend_v := float(t.get("shape_blend", 0.0))
+		var lat_v := float(t.get("max_lateral", 0.0))
+		var sign_tag := "~0"
+		if absf(swipe_v) > 0.08 and absf(path_v) > 0.08:
+			sign_tag = "SAME" if signf(swipe_v) == signf(path_v) else "FLIP"
+		elif absf(swipe_v) > 0.08 or absf(path_v) > 0.08:
+			sign_tag = "weak"
+		var shape_line := (
+			"\nPath %+.2f  (−draw/L  +fade/R)  sign:%s\nShape lat %+.2f swipe %+.2f pull %+.2f → blend %+.2f"
+			% [path_v, sign_tag, lat_v, swipe_v, pull_v, blend_v]
+		)
 		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\n%s\nPwr %d%%  Bal %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s\n%s%s" % [
 			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
@@ -260,7 +268,7 @@ func _process(_delta: float) -> void:
 			str(m.get("summary", "")),
 			int(float(m.get("power", 0.0)) * 100.0),
 			int(float(m.get("stability", 0.0)) * 100.0),
-			float(m.get("path_error", 0.0)),
+			path_v,
 			str(m.get("contact", "")).to_upper(),
 			str(m.get("lie", "")),
 			int(float(m.get("planned_yd", 0.0))),

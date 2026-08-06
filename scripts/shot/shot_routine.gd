@@ -428,32 +428,58 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 
 	var contact: ShotResult.ContactQuality = verdict["contact"]
 	var bal: float = float(verdict["balance"])
-	var path: float = float(verdict["path_error"])
 	var power := clampf(committed_power * float(verdict["power_mul"]), 0.05, 1.0)
 
-	# Putts: slight line emphasis — physics already scales contact/stance.
-	if current_lie == "Green":
-		path = clampf(path * 1.1, -1.0, 1.0)
-
-	# Full/pitch/punch: blend hole suggested_shape with gesture path (max_lateral).
-	# Putt/chip already own line via PuttStroke — don't double-count.
+	# Direction: putt/chip = PuttStroke path; full family = swipe (+ gated pull) as one signal.
 	var shape := suggested_shape
 	var swing_shape := 0.0
-	if shot_type != "putt" and shot_type != "chip":
-		var lat := float(sample.get("max_lateral", 0.0))
-		# ~0.16–0.20 pad half-width saturates intentional shape.
-		swing_shape = clampf(lat / 0.18, -1.0, 1.0)
-		if GameState.force_perfect:
-			shape = suggested_shape
-			swing_shape = 0.0
-		else:
-			var auth := _shape_authority(contact)
-			# Blend: hole bias still matters; swipe can fight or amplify it.
-			shape = clampf(suggested_shape * 0.45 + swing_shape * 0.75 * auth, -1.0, 1.0)
-			if punch_mode:
-				shape *= 0.55  # punch already softens spin in physics
+	var path: float
+	if shot_type == "putt" or shot_type == "chip":
+		path = float(verdict.get("path_error", 0.0))
+		# Putts: slight line emphasis — physics already scales contact/stance.
+		if current_lie == "Green":
+			path = clampf(path * 1.1, -1.0, 1.0)
+	elif GameState.force_mishit:
+		# Debug QA: always spray — bypass swipe/pull/unify.
+		path = float(verdict.get("path_error", 0.8))
+		shape = path
+		swing_shape = 0.0
 		verdict["swing_shape"] = swing_shape
 		verdict["shape_blend"] = shape
+		verdict["transition_pull"] = 0.0
+		GameState.last_tempo_metrics = verdict
+	elif GameState.force_perfect:
+		shape = suggested_shape
+		swing_shape = 0.0
+		path = shape
+		verdict["swing_shape"] = 0.0
+		verdict["shape_blend"] = shape
+		verdict["transition_pull"] = 0.0
+		GameState.last_tempo_metrics = verdict
+	else:
+		var lat := float(sample.get("max_lateral", 0.0))
+		# lat→shape: − = in-to-out = draw/left; + = out-to-in = fade/right (see tempo_gesture).
+		# ~0.16–0.20 pad half-width saturates intentional shape.
+		swing_shape = clampf(lat / 0.18, -1.0, 1.0)
+		# pull ≥ 0 = OTT/out-to-in bias (fade side +). Only when rushed past GOOD band.
+		var pull := float(verdict.get("transition_pull", 0.0))
+		var dispersion := 0.0
+		if bal < 0.35:
+			dispersion = (
+				randf_range(-1.0, 1.0)
+				* TempoGrade.BALANCE_DISPERSION_MAX
+				* ((0.35 - bal) / 0.35)
+			)
+		var modulated := clampf(swing_shape + pull + dispersion, -1.0, 1.0)
+		var auth := _shape_authority(contact)
+		shape = clampf(suggested_shape * 0.45 + modulated * 0.75 * auth, -1.0, 1.0)
+		if punch_mode:
+			shape *= 0.55  # punch already softens spin in physics
+		path = shape  # path_error == intended_shape for full/pitch/punch
+		verdict["max_lateral"] = lat
+		verdict["swing_shape"] = swing_shape
+		verdict["shape_blend"] = shape
+		verdict["transition_pull"] = pull
 		GameState.last_tempo_metrics = verdict
 
 	_haptic_impact(contact)

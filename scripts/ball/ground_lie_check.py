@@ -59,10 +59,18 @@ def classify_lie(
     green_rx,
     green_ry,
     fairway_half: float,
+    sand_paint: dict[tuple[float, float], bool] | None = None,
 ) -> str:
+    """sand_paint: optional (pos) -> on_sand. Without paint, circle (legacy / no-img fallback)."""
     for c, r in bunkers:
-        if (pos[0] - c[0]) ** 2 + (pos[1] - c[1]) ** 2 <= r * r:
-            return "Sand"
+        if (pos[0] - c[0]) ** 2 + (pos[1] - c[1]) ** 2 > (r * 1.15) ** 2:
+            continue
+        if sand_paint is not None:
+            if sand_paint.get(pos, False):
+                return "Sand"
+        else:
+            if (pos[0] - c[0]) ** 2 + (pos[1] - c[1]) ** 2 <= r * r:
+                return "Sand"
     dx = (pos[0] - green_c[0]) / max(green_rx, 1.0)
     dy = (pos[1] - green_c[1]) / max(green_ry, 1.0)
     if dx * dx + dy * dy <= 1.0:
@@ -93,6 +101,13 @@ def main() -> None:
     assert FRICTION["Rough"] > FRICTION["Fairway"]
     assert FRICTION["Sand"] > FRICTION["Rough"]
 
+    # Paint-gated sand: inside design circle but transparent fringe ≠ Sand.
+    center = (650.0, 380.0)
+    fringe = (690.0, 380.0)  # inside r=50, not on painted sand
+    paint = {center: True, fringe: False}
+    assert classify_lie(center, bunkers, green, 70.0, 60.0, 70.0, paint) == "Sand"
+    assert classify_lie(fringe, bunkers, green, 70.0, 60.0, 70.0, paint) == "Rough"
+
     # Early-hole large peninsula green must not share volume with island water.
     for rx, ry in [(58.0, 58.0), (48.0, 48.0), (36.0, 36.0)]:
         detect_r = (rx + 14.0 + ry + 14.0) * 0.5
@@ -101,6 +116,9 @@ def main() -> None:
 
     # Painted silhouette gates Green (island beach / L cutouts ≠ putter).
     assert "_on_painted_green" in HOLE and "get_pixel" in HOLE
+    # Sand lie matches painted bunker (same pattern as green).
+    assert "_on_painted_sand" in HOLE
+    assert "SAND_COLLISION_FRAC" in HOLE
     from PIL import Image
 
     kidney = Image.open(GREENS / "green_kidney.png").convert("RGBA")
@@ -110,6 +128,17 @@ def main() -> None:
     # Oval center must stay opaque (putting surface).
     oval = Image.open(GREENS / "green_oval.png").convert("RGBA")
     assert oval.getpixel((64, 64))[3] > 200
+
+    # Bunker textures: center-ish sand, transparent corners (circle alone would over-fire).
+    hazards = Path(__file__).resolve().parents[2] / "assets" / "hazards"
+    for name in ("bunker_blob.png", "bunker_crescent.png", "bunker_cluster.png"):
+        bimg = Image.open(hazards / name).convert("RGBA")
+        w, h = bimg.size
+        assert bimg.getpixel((w // 2, h // 2))[3] > 128 or any(
+            bimg.getpixel((x, y))[3] > 128 for x in range(w) for y in range(h)
+        ), f"{name} needs sand pixels"
+        # Corner of texture is transparent fringe (outside painted sand).
+        assert bimg.getpixel((2, 2))[3] < 40, f"{name} corner should be clear"
 
     print("ground_lie_check: ok")
 

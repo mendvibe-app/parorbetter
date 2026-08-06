@@ -171,7 +171,10 @@ def main() -> None:
     assert "_shape_authority" in sr
     assert "swing_shape" in sr
     assert "max_lateral" in sr
-    assert "intended_shape * 0.40" in phys or "intended_shape * 0.4" in phys
+    # Swipe-led unified shape (path_error == intended_shape for full family).
+    assert "intended_shape * 0.85" in phys
+    assert "force * 0.18" not in phys
+    assert "transition_pull" in sr
 
     print("club_bag_check: ok")
 
