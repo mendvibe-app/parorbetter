@@ -9,6 +9,9 @@ var coach_screen: CoachScreen
 
 
 func _ready() -> void:
+	# Bind native haptics singleton once (no-op on desktop; required on device).
+	Haptics.init()
+
 	coach_screen = CoachScreen.new()
 	coach_screen.name = "CoachScreen"
 	$UIOverlay.add_child(coach_screen)

@@ -32,6 +32,12 @@ const BAND_GOOD := 1.15
 const BAND_THIN_FAT := 1.85
 ## Absolute pace vs ghost guide (display only — does not change contact grade).
 const PACE_TOL_FRAC := 0.22
+## Cast / max_accel bands (pad-normalized). Shared with F1 hint + trail color.
+## Calibrated after frame-cap + post-top mute (playtest clean sat at 48 under old 8/24).
+const ACCEL_LO_FULL := 28.0
+const ACCEL_SPAN_FULL := 40.0
+const ACCEL_LO_PITCH := 32.0
+const ACCEL_SPAN_PITCH := 40.0
 
 
 static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
@@ -113,11 +119,10 @@ static func balance_detail(
 	var floor_bs := bs_floor(shot_type)
 	var floor_ft := ft_floor(shot_type)
 
-	# ponytail: accel/jerk thresholds are playtest knobs — calibrate on-device.
-	# Pitch: short lane + snappy 2:1 reverse spikes pad-normalized accel/transition
-	# even when the player is tracking the ghost (debug Bal ~20% + Path+1 MISS).
-	var accel_lo := 14.0 if is_pitch else 8.0
-	var accel_span := 30.0 if is_pitch else 24.0
+	# ponytail: post-cap world — clean swings often sit ~25–45 after top mute;
+	# full cast scales to ACCEL_LO+SPAN (frame cap 72). Old 8/24 maxed everyone at 48.
+	var accel_lo := ACCEL_LO_PITCH if is_pitch else ACCEL_LO_FULL
+	var accel_span := ACCEL_SPAN_PITCH if is_pitch else ACCEL_SPAN_FULL
 	var accel_pen := clampf((accel - accel_lo) / accel_span, 0.0, 1.0) * t
 	var jerk_pen := clampf((jerk - 0.6) / 1.4, 0.0, 1.0) * t
 	var short_bs := clampf((floor_bs - bs_len) / floor_bs, 0.0, 1.0)
@@ -199,7 +204,17 @@ static func grade(
 	var target := target_ratio(shot_type)
 	var bal_detail: Dictionary = balance_detail(sample, balance_tighten, shot_type)
 	var bal: float = float(bal_detail["score"])
-	var r := ratio(sample)
+	var r_raw := ratio(sample)
+	var back_ms := int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0)
+	var down_ms := int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0)
+	var g_back := guide_back_ms(shot_type, club_max_yards)
+	var g_down := guide_down_ms(shot_type, club_max_yards)
+	# Contact ratio: soft-land when through is long vs guide (top backdate / real pause).
+	# Clocks + F1 ratio stay raw; only abs_n / contact / path use r_grade.
+	var r := r_raw
+	if g_down > 1.0 and float(down_ms) > g_down * 1.15 and r_raw < target:
+		var over := clampf((float(down_ms) / g_down - 1.15) / 0.6, 0.0, 1.0)
+		r = lerpf(r_raw, target, over * 0.40)
 	var err := r - target
 	# Mild tempo: don't let a snappy through (accel → lurch) collapse the window into MISS.
 	var base := base_tolerance(shot_type) * maxf(tol_scale, 0.15) * maxf(timing_scale, 0.35)
@@ -239,8 +254,8 @@ static func grade(
 	# a slightly-off ratio must not leak carry (was continuous abs_n tax on every shot).
 	var power_mul := 1.0
 	if contact == ShotResult.ContactQuality.THIN or contact == ShotResult.ContactQuality.FAT:
-		var over := maxf(abs_n - BAND_GOOD, 0.0)
-		power_mul = clampf(1.0 - over * 0.30, 0.55, 1.0)
+		var over_pw := maxf(abs_n - BAND_GOOD, 0.0)
+		power_mul = clampf(1.0 - over_pw * 0.30, 0.55, 1.0)
 	elif contact == ShotResult.ContactQuality.MISS:
 		power_mul = 0.50
 
@@ -251,27 +266,31 @@ static func grade(
 
 	var floor_bs := bs_floor(shot_type)
 	var short_bs := clampf((floor_bs - float(sample.get("backswing_len", 0.0))) / floor_bs, 0.0, 1.0)
-	var back_ms := int((float(sample.get("t_top", 0.0)) - float(sample.get("t_takeaway", 0.0))) * 1000.0)
-	var down_ms := int((float(sample.get("t_impact", 0.0)) - float(sample.get("t_top", 0.0))) * 1000.0)
 	# Display-only pace vs ghost guide (does not affect contact / power_mul / path).
-	var g_back := guide_back_ms(shot_type, club_max_yards)
-	var g_down := guide_down_ms(shot_type, club_max_yards)
 	var reads: Dictionary = pace_reads(back_ms, down_ms, g_back, g_down)
 	var back_read := str(reads.get("backswing_read", "on_pace"))
 	var down_read := str(reads.get("downswing_read", "on_pace"))
-	var copy: Dictionary = pace_copy(back_read, down_read, r, target)
+	# Coaching copy uses raw ratio (matches F1 clocks); contact used r above.
+	var copy: Dictionary = pace_copy(back_read, down_read, r_raw, target)
 	back_read = str(copy.get("backswing_read", back_read))
 	down_read = str(copy.get("downswing_read", down_read))
 	var causes: Dictionary = bal_detail.get("causes", {})
 	var diag: Dictionary = diagnose_swing(
-		causes, back_read, down_read, r, target, back_ms, down_ms, g_back, g_down
+		causes, back_read, down_read, r_raw, target, back_ms, down_ms, g_back, g_down
 	)
 	var note := tempo_note(
-		r, target, back_ms, down_ms, short_bs, back_read, down_read, str(copy.get("headline", "")), diag
+		r_raw, target, back_ms, down_ms, short_bs, back_read, down_read, str(copy.get("headline", "")), diag
+	)
+
+	# Debug-only (F1): guide vs actual downswing + transition speed — not used in grading.
+	var vel_at_top := float(sample.get("vel_at_top", 0.0))
+	var peak_vel := float(sample.get("peak_vel", 0.0))
+	var down_delta_pct := (
+		(float(down_ms) - g_down) / maxf(g_down, 1.0) * 100.0 if g_down > 0.0 else 0.0
 	)
 
 	return {
-		"ratio": r,
+		"ratio": r_raw,  ## matches back/down clocks; contact used soft r when down long
 		"target": target,
 		"balance": bal,
 		"tolerance": tol,
@@ -290,6 +309,10 @@ static func grade(
 		"headline": str(copy.get("headline", "")),
 		"max_accel": float(sample.get("max_accel", 0.0)),
 		"max_jerk": float(sample.get("max_jerk", 0.0)),
+		"guide_back_ms": int(g_back),
+		"guide_down_ms": int(g_down),
+		"down_delta_pct": down_delta_pct,
+		"transition_ratio": vel_at_top / maxf(peak_vel, 0.001),
 	}
 
 
@@ -367,7 +390,16 @@ static func pace_copy(
 		# Lead with the real miss: relationship, not absolute clocks.
 		headline = "Through too quick for that backswing — match the %.0f:1" % target
 	elif not ratio_ok and ratio < target:
-		headline = "Rushed to through — brief pause at top"
+		# Low ratio ≠ always "rushed transition" — after top-backdate, longer down
+		# lowers ratio even when down is on/slow vs guide. Use absolute leg reads.
+		if down_read == "fast":
+			headline = "Rushed to through — brief pause at top"
+		elif down_read == "slow":
+			headline = "Through hanging vs back — match the %.0f:1" % target
+		elif back_read == "fast":
+			headline = "Backswing too quick for that through — match the %.0f:1" % target
+		else:
+			headline = "Under %.0f:1 — longer back or freer through" % target
 	elif br == "slow":
 		headline = back_line
 	elif br == "on_pace" and dr != "on_pace":
@@ -433,10 +465,18 @@ static func diagnose_swing(
 		var r_sev := clampf(absf(ratio - target) / band, 0.0, 1.0)
 		if r_sev > DIAG_FLOOR:
 			var r_line := str(FAULT_LINES["ratio_off"])
-			if ratio < target:
-				r_line = "Rushed to through — brief pause at top"
-			elif ratio > target:
+			if ratio > target:
 				r_line = "Through too quick for that backswing — match the %.0f:1" % target
+			elif ratio < target:
+				# Gate "rushed" on actual fast through, not bare low ratio.
+				if down_read == "fast":
+					r_line = "Rushed to through — brief pause at top"
+				elif down_read == "slow":
+					r_line = "Through hanging vs back — match the %.0f:1" % target
+				elif back_read == "fast":
+					r_line = "Backswing too quick for that through — match the %.0f:1" % target
+				else:
+					r_line = "Under %.0f:1 — longer back or freer through" % target
 			cands.append({"fault": "ratio_off", "severity": r_sev, "line": r_line})
 
 	if cands.is_empty():
@@ -494,7 +534,12 @@ static func tempo_note(
 	if absf(err) <= target * 0.08:
 		tempo_word = "on tempo"
 	elif err < 0.0:
-		tempo_word = "rushed to through — brief pause at top"
+		if down_read == "fast":
+			tempo_word = "rushed to through — brief pause at top"
+		elif down_read == "slow":
+			tempo_word = "through hanging vs back"
+		else:
+			tempo_word = "under target ratio — longer back or freer through"
 	elif back_ms > 0 and down_ms > 0 and float(down_ms) < float(back_ms) / target * 0.92:
 		tempo_word = "through too quick — finish through the ball"
 	else:

@@ -143,6 +143,8 @@ const ARCHETYPES: Dictionary = {
 			"bend": 1.45,
 			"hazard_side": 0.92,
 			"prefer_dogleg": true,
+			"force_cape": true,  ## Cape shoreline water (Leven/Cape epic)
+			"force_water": true,
 		},
 		{
 			"id": "target_green",
@@ -200,6 +202,8 @@ const ARCHETYPES: Dictionary = {
 			"bend": 1.15,
 			"hazard_side": 0.88,
 			"prefer_dogleg": true,
+			"force_cape": true,  ## Cape shoreline water (Leven/Cape epic)
+			"force_water": true,
 		},
 	],
 }
@@ -371,7 +375,9 @@ static func generate_hole(
 		elif rng.randf() < side_p:
 			hazard_bias = HoleData.HazardBias.LEFT if rng.randf() < 0.5 else HoleData.HazardBias.RIGHT
 
-	var hazards := _build_hazards(want_bunker, want_water, layout, t, hazard_bias, rng, corner_position)
+	var hazards := _build_hazards(
+		want_bunker, want_water, layout, t, hazard_bias, rng, corner_position, arch
+	)
 	# Trees are hole design, not decoration — density by archetype (links open vs parkland chute).
 	for tr in _build_trees(layout, t, hazard_bias, rng, arch, corner_position):
 		hazards.append(tr)
@@ -731,7 +737,8 @@ static func _build_hazards(
 	t: float,
 	bias: HoleData.HazardBias,
 	rng: RandomNumberGenerator,
-	corner_position: float = 0.5
+	corner_position: float = 0.5,
+	arch: Dictionary = {}
 ) -> Array:
 	var side := 1
 	if bias == HoleData.HazardBias.LEFT:
@@ -743,17 +750,34 @@ static func _build_hazards(
 
 	var out: Array = []
 	var is_island := layout == HoleData.LayoutStyle.ISLAND
+	var is_dogleg := (
+		layout == HoleData.LayoutStyle.DOGLEG_LEFT
+		or layout == HoleData.LayoutStyle.DOGLEG_RIGHT
+	)
+	var dogleg_inside := -1 if layout == HoleData.LayoutStyle.DOGLEG_LEFT else 1
 
 	if is_island and want_water:
 		out.append(_haz("water", HoleData.ROLE_ISLAND_RING, 0, 0.05, 70.0, 0))
 
+	# Cape before sand so _cull_hazards(3) cannot drop the identity water.
+	var force_cape := is_dogleg and bool(arch.get("force_cape", false))
+	if want_water and not is_island and force_cape:
+		out.append(_haz(
+			"water",
+			HoleData.ROLE_SHORELINE,
+			dogleg_inside,
+			corner_position,
+			lerpf(40.0, 56.0, t),
+			0
+		))
+
 	if want_bunker:
 		var greenside_p := lerpf(0.55, 0.9, t)
 		var landing_p := 0.35 if layout == HoleData.LayoutStyle.STANDARD else 0.7
-		if layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT:
+		if is_dogleg:
 			landing_p = 0.85
 			# Inside of dogleg.
-			side = -1 if layout == HoleData.LayoutStyle.DOGLEG_LEFT else 1
+			side = dogleg_inside
 		if layout == HoleData.LayoutStyle.CHUTE:
 			landing_p = 0.4
 			greenside_p = 0.75
@@ -765,11 +789,12 @@ static func _build_hazards(
 		if rng.randf() < greenside_p:
 			out.append(_haz("sand", HoleData.ROLE_GREENSIDE, side, 0.08, lerpf(32.0, 44.0, t), 1))
 			added_sand = true
-			if t >= 0.55 and rng.randf() < 0.4:
+			# Skip opposite greenside when Cape already holds a hazard slot.
+			if t >= 0.55 and rng.randf() < 0.4 and not force_cape:
 				out.append(_haz("sand", HoleData.ROLE_GREENSIDE, -side, 0.1, 30.0, 2))
 		if (not added_sand or t >= 0.35) and rng.randf() < landing_p:
 			var along := rng.randf_range(0.42, 0.62)
-			if layout == HoleData.LayoutStyle.DOGLEG_LEFT or layout == HoleData.LayoutStyle.DOGLEG_RIGHT:
+			if is_dogleg:
 				# Guard the actual corner/elbow, not just "somewhere along the bend"
 				# (Sharpened Dogleg Corners epic).
 				along = clampf(corner_position + rng.randf_range(-0.05, 0.05), 0.12, 0.88)
@@ -778,14 +803,33 @@ static func _build_hazards(
 		if not added_sand:
 			out.append(_haz("sand", HoleData.ROLE_LANDING, side, 0.5, 42.0, 0))
 
-	if want_water and not is_island:
+	if want_water and not is_island and not force_cape:
 		if layout == HoleData.LayoutStyle.CHUTE:
 			out.append(_haz("water", HoleData.ROLE_EDGE, -1, 0.4, 50.0, 0))
 			out.append(_haz("water", HoleData.ROLE_EDGE, 1, 0.4, 50.0, 0))
 		elif rng.randf() < lerpf(0.45, 0.75, t):
-			out.append(_haz(
-				"water", HoleData.ROLE_CARRY, 0, rng.randf_range(0.28, 0.48), lerpf(22.0, 36.0, t), 0
-			))
+			# Leven diagonal ~40% of dogleg carries; keep straight carry in rotation.
+			if is_dogleg and rng.randf() < 0.4:
+				var d_along := clampf(
+					corner_position + rng.randf_range(-0.05, 0.05), 0.12, 0.88
+				)
+				out.append(_haz(
+					"water",
+					HoleData.ROLE_DIAGONAL,
+					dogleg_inside,
+					d_along,
+					lerpf(22.0, 36.0, t),
+					0
+				))
+			else:
+				out.append(_haz(
+					"water",
+					HoleData.ROLE_CARRY,
+					0,
+					rng.randf_range(0.28, 0.48),
+					lerpf(22.0, 36.0, t),
+					0
+				))
 		else:
 			out.append(_haz(
 				"water", HoleData.ROLE_EDGE, side, rng.randf_range(0.25, 0.45), lerpf(40.0, 58.0, t), 0

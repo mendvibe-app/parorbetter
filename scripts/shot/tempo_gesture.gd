@@ -11,6 +11,14 @@ signal live_changed  ## ratio / status changed — meter redraws
 
 ## Touch EMA — lower = snappier/jittery, higher = smoother/laggier.
 static var EMA_ALPHA: float = 0.35
+## Single-frame bombs still hit 100+; cap above cast full-scale so cast can max without noise.
+const ACCEL_FRAME_CAP := 72.0
+## Wall-clock after *confirm* top (not backdated _t_top) — skip reverse + early-down spike.
+const POST_TOP_ACCEL_EXCLUDE_SEC := 0.10
+## 0 = pure peak-disp top (long down / low ratio); 1 = pure confirm (old late top).
+const TOP_CONFIRM_BLEND := 0.35
+## Cast uses max of N-frame mean accel — raw max pegged the cap every swing.
+const ACCEL_SMOOTH_N := 3
 
 const DEADZONE_FRAC := 0.10
 const VEL_TOP_EPS := 40.0
@@ -130,15 +138,21 @@ var _vel: float = 0.0
 var _prev_vel: float = 0.0
 var _prev_t: float = 0.0
 var _peak_disp: float = 0.0
+## Wall-clock of last displacement peak — true physical top proxy (EMA lags vel).
+var _t_peak_disp: float = 0.0
 
 var _t_takeaway: float = -1.0
 var _t_top: float = -1.0
+## Wall-clock when top was *confirmed* (for post-top accel guard; ≠ backdated _t_top).
+var _t_top_confirmed: float = -1.0
 var _t_impact: float = -1.0
 var had_top: bool = false
 var _top_flash_until: int = 0
 
 var _max_accel: float = 0.0
 var _max_jerk: float = 0.0
+## Last ACCEL_SMOOTH_N pad-normalized |accel| samples (for cast peak).
+var _accel_ring: Array = []
 var _prev_seg_dir: Vector2 = Vector2.ZERO
 var _follow_through: float = 0.0
 var _last_pos: Vector2 = Vector2.ZERO
@@ -319,7 +333,9 @@ func _putt_trail_color() -> Color:
 	if not _axis_locked:
 		return Color(0.45, 0.7, 0.85, 0.75)
 	# Mirror TempoGrade.balance accel/jerk pens (putt-aware thresholds).
-	var accel_n := clampf((_max_accel - 8.0) / 24.0, 0.0, 1.0)
+	var accel_n := clampf(
+		(_max_accel - TempoGrade.ACCEL_LO_FULL) / TempoGrade.ACCEL_SPAN_FULL, 0.0, 1.0
+	)
 	var jerk_n := clampf((_max_jerk - 0.6) / 1.4, 0.0, 1.0)
 	var rough := maxf(accel_n, jerk_n)
 	if rough <= 0.25:
@@ -341,14 +357,17 @@ func reset() -> void:
 	_vel = 0.0
 	_prev_vel = 0.0
 	_peak_disp = 0.0
+	_t_peak_disp = 0.0
 	peak_pos = top_hint()
 	_t_takeaway = -1.0
 	_t_top = -1.0
+	_t_top_confirmed = -1.0
 	_t_impact = -1.0
 	had_top = false
 	_top_flash_until = 0
 	_max_accel = 0.0
 	_max_jerk = 0.0
+	_accel_ring.clear()
 	_prev_seg_dir = Vector2.ZERO
 	_follow_through = 0.0
 	_max_lateral = 0.0
@@ -623,7 +642,7 @@ func _update(pos: Vector2) -> void:
 	_prev_vel = _vel
 	_vel = (_disp - _prev_disp) / dt
 	var accel := (_vel - _prev_vel) / dt
-	var accel_n := absf(accel) / maxf(size.y, 1.0)
+	var accel_n := minf(absf(accel) / maxf(size.y, 1.0), ACCEL_FRAME_CAP)
 
 	if not had_top:
 		_peak_vel = maxf(_peak_vel, absf(_vel))
@@ -648,6 +667,7 @@ func _update(pos: Vector2) -> void:
 	if _disp >= _peak_disp:
 		_peak_disp = _disp
 		peak_pos = _smoothed
+		_t_peak_disp = now
 	trail.append(_smoothed)
 	while trail.size() > 64:
 		trail.remove_at(0)
@@ -673,18 +693,38 @@ func _update(pos: Vector2) -> void:
 		if reversing or peaked:
 			had_top = true
 			_vel_at_top = absf(_vel)
-			_t_top = now
+			# Peak top fixes late confirm; blend a little back toward confirm so
+			# pure peak doesn't over-lengthen down_ms (playtest Δ% +50%, ratios ~2:1).
+			if _t_peak_disp > 0.0:
+				_t_top = lerpf(_t_peak_disp, now, TOP_CONFIRM_BLEND)
+			else:
+				_t_top = now
+			if _t_takeaway >= 0.0:
+				_t_top = maxf(_t_top, _t_takeaway)
+			_t_top_confirmed = now
 			_top_flash_until = Time.get_ticks_msec() + 320
 			moment.emit("top")
 			live_changed.emit()
 
-	# The frame where velocity actually reverses direction is guaranteed to show
-	# a sharp accel/jerk value regardless of swing quality — that's just what a
-	# reversal is. Fold both into the running max everywhere EXCEPT that one
-	# frame, so a controlled pause at the top doesn't register as a violent spike.
+	# Reversal spikes accel/jerk. Exclude: (1) pending top before confirm,
+	# (2) confirm frame, (3) short wall window after confirm (spike often lands here).
+	# Cast peak = max of short rolling mean (raw max pegged ACCEL_FRAME_CAP every swing).
 	var is_top_frame := not was_had_top and had_top
-	if not is_top_frame:
-		_max_accel = maxf(_max_accel, accel_n)
+	var pending_top := not had_top and _disp < _peak_disp - _deadzone() * 0.05
+	var post_top_guard := (
+		had_top
+		and _t_top_confirmed >= 0.0
+		and (now - _t_top_confirmed) < POST_TOP_ACCEL_EXCLUDE_SEC
+	)
+	if not is_top_frame and not pending_top and not post_top_guard:
+		_accel_ring.append(accel_n)
+		while _accel_ring.size() > ACCEL_SMOOTH_N:
+			_accel_ring.remove_at(0)
+		var acc_sum := 0.0
+		for v in _accel_ring:
+			acc_sum += float(v)
+		var acc_smooth := acc_sum / float(_accel_ring.size())
+		_max_accel = maxf(_max_accel, acc_smooth)
 		if have_jerk:
 			_max_jerk = maxf(_max_jerk, jerk_ang)
 

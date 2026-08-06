@@ -100,6 +100,18 @@ def main() -> int:
     assert "GREEN_HAZARD_CLEAR_EXTRA" in CTRL
     # Greenside sand always places (no if _clears_green skip).
     assert "elif kind == \"sand\":" in CTRL or "elif kind == 'sand':" in CTRL
+
+    # Cape + Leven water hazards epic.
+    assert 'ROLE_DIAGONAL := "diagonal"' in DATA
+    assert 'ROLE_SHORELINE := "shoreline"' in DATA
+    assert "ROLE_DIAGONAL" in GEN and "ROLE_SHORELINE" in GEN
+    assert "_place_diagonal_creek" in CTRL
+    assert "_place_shoreline" in CTRL
+    assert "rotation_deg" in CTRL
+    assert "force_cape" in GEN
+    assert re.search(r'"force_cape"\s*:\s*true', GEN)
+    assert "_use_sharp_dogleg" in CTRL  # Cape gated on sharp dogleg
+
     print("hazard_placement_check: ok")
     return 0
 

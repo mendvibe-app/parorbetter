@@ -57,9 +57,75 @@ func _ready() -> void:
 		GameState.set_lives(int(lives_spin.value))
 	)
 	_setup_practice_count_row()
+	_setup_haptic_smoke_btn()
+	_setup_copy_metrics_btn()
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
+
+
+func _setup_copy_metrics_btn() -> void:
+	## Clipboard dump of the live metrics label (and club coach) for paste into chat/notes.
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	if vbox == null:
+		return
+	var btn := Button.new()
+	btn.name = "CopyMetricsBtn"
+	btn.text = "Copy metrics"
+	btn.tooltip_text = "Copy F1 metrics text to clipboard"
+	btn.pressed.connect(_copy_metrics_to_clipboard)
+	var metrics_node := vbox.get_node_or_null("Metrics")
+	if metrics_node:
+		vbox.add_child(btn)
+		vbox.move_child(btn, metrics_node.get_index() + 1)
+	else:
+		vbox.add_child(btn)
+
+
+func _copy_metrics_to_clipboard() -> void:
+	var parts: PackedStringArray = PackedStringArray()
+	if metrics:
+		parts.append(metrics.text)
+	if club_coach_label and not club_coach_label.text.is_empty():
+		parts.append("--- club coach ---")
+		parts.append(club_coach_label.text)
+	var dump := "\n".join(parts).strip_edges()
+	if dump.is_empty():
+		dump = "(no metrics yet)"
+	DisplayServer.clipboard_set(dump)
+	AudioBus.play_ui()
+	var btn := $Panel/Margin/Root/Scroll/VBox.get_node_or_null("CopyMetricsBtn") as Button
+	if btn:
+		var prev := btn.text
+		btn.text = "Copied!"
+		get_tree().create_timer(1.0).timeout.connect(func() -> void:
+			if is_instance_valid(btn):
+				btn.text = prev
+		)
+
+
+func _setup_haptic_smoke_btn() -> void:
+	## Device smoke: F1 → Haptic medium (native plugin or duration fallback).
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	if vbox == null:
+		return
+	var btn := Button.new()
+	btn.name = "HapticSmokeBtn"
+	btn.text = "Haptic medium (smoke)"
+	btn.pressed.connect(func() -> void:
+		Haptics.init()
+		if Haptics.ready():
+			Haptics.medium()
+		else:
+			Input.vibrate_handheld(20)
+		AudioBus.play_ui()
+	)
+	var buttons := vbox.get_node_or_null("Buttons")
+	if buttons:
+		vbox.add_child(btn)
+		vbox.move_child(btn, buttons.get_index() + 1)
+	else:
+		vbox.add_child(btn)
 
 
 func _setup_practice_count_row() -> void:
@@ -138,17 +204,26 @@ func _process(_delta: float) -> void:
 			]
 		else:
 			var tgt := float(t.get("target", 3.0))
-			var accel_hint := "clean<14" if tgt < 2.5 else "clean<8"
-			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms%s\naccel %.1f (%s)  jerk %.2f\n%s" % [
+			var accel_hint := (
+				"clean<%d" % int(TempoGrade.ACCEL_LO_PITCH)
+				if tgt < 2.5
+				else "clean<%d" % int(TempoGrade.ACCEL_LO_FULL)
+			)
+			# guide/Δ/transV: transition-timing verify (debug only; negative Δ = shorter than guide)
+			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms (guide %d/%dms, Δ%+.0f%%)%s\naccel %.1f (%s)  jerk %.2f  transV %.2f\n%s" % [
 				float(t.get("ratio", 0.0)),
 				tgt,
 				int(float(t.get("balance", 0.0)) * 100.0),
 				int(t.get("backswing_ms", 0)),
 				int(t.get("downswing_ms", 0)),
+				int(t.get("guide_back_ms", 0)),
+				int(t.get("guide_down_ms", 0)),
+				float(t.get("down_delta_pct", 0.0)),
 				type_bit,
 				float(t.get("max_accel", 0.0)),
 				accel_hint,
 				float(t.get("max_jerk", 0.0)),
+				float(t.get("transition_ratio", 0.0)),
 				str(t.get("note", "")),
 			]
 	if m.is_empty():

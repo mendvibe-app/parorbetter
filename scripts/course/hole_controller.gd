@@ -760,6 +760,12 @@ func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
 			HoleData.ROLE_CARRY:
 				if kind == "water":
 					_place_carry_creek(along, size)
+			HoleData.ROLE_DIAGONAL:
+				if kind == "water":
+					_place_diagonal_creek(along, size, side if side != 0 else 1)
+			HoleData.ROLE_SHORELINE:
+				if kind == "water":
+					_place_shoreline(side if side != 0 else 1)
 			HoleData.ROLE_EDGE:
 				if kind == "tree":
 					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
@@ -839,16 +845,74 @@ func _place_carry_creek(along: float, half_h: float) -> void:
 	_add_water_sprite(rect.get_center(), Vector2(w, h), TEX_WATER_CREEK)
 
 
+## Leven: diagonal band across landing (Cape + Leven water hazards epic).
+const DIAGONAL_ANGLE_DEG := 30.0
+const DIAGONAL_SIDE_BIAS := 18.0  ## px toward inside cut so risk/reward reads
+
+
+func _place_diagonal_creek(along: float, half_h: float, side: int) -> void:
+	var s := float(side if side != 0 else 1)
+	var w := _fairway_half * 2.0 + 24.0  ## narrower than carry so the angle is legible
+	var h := maxf(half_h, 18.0)
+	var fc := _fairway_center_at(along)
+	var center := Vector2(fc.x + s * DIAGONAL_SIDE_BIAS, fc.y)
+	if not _clears_green(center, maxf(w, h) * 0.35):
+		along = minf(along + 0.12, 0.7)
+		fc = _fairway_center_at(along)
+		center = Vector2(fc.x + s * DIAGONAL_SIDE_BIAS, fc.y)
+	# Sign of angle follows side so left/right doglegs both cut across the fairway.
+	var rot := DIAGONAL_ANGLE_DEG * s
+	_add_water_sprite(center, Vector2(w, h), TEX_WATER_CREEK, rot)
+
+
+## Cape: two panels along sharp-dogleg elbow (reads as one shoreline).
+const SHORE_MARGIN := 8.0  ## px outside fairway edge
+const SHORE_WIDTH := 52.0
+const SHORE_PINCH := 0.3  ## 0=tight at green, 1=tight at tee
+
+
+func _place_shoreline(side: int) -> void:
+	if not _use_sharp_dogleg():
+		return
+	var s := float(side if side != 0 else 1)
+	var cp := clampf(hole.corner_position, 0.05, 0.95)
+	var p_green := _fairway_center_at(0.0)
+	var p_corner := _fairway_center_at(cp)
+	var p_tee := _fairway_center_at(1.0)
+	# Green-end panel (tighter via pinch).
+	_place_shore_segment(p_green, p_corner, s, lerpf(SHORE_MARGIN * 0.55, SHORE_MARGIN * 1.15, SHORE_PINCH))
+	# Tee-end panel (looser).
+	_place_shore_segment(p_corner, p_tee, s, lerpf(SHORE_MARGIN * 1.15, SHORE_MARGIN * 0.55, SHORE_PINCH))
+
+
+func _place_shore_segment(a: Vector2, b: Vector2, side: float, margin: float) -> void:
+	var delta := b - a
+	var length := delta.length()
+	if length < 12.0:
+		return
+	var bearing := delta.angle()
+	# Outward normal in 2D (perp of direction); side ±1 chooses shore bank.
+	var normal := Vector2(-sin(bearing), cos(bearing)) * side
+	var mid := (a + b) * 0.5
+	var center := mid + normal * (_fairway_half + margin + SHORE_WIDTH * 0.5)
+	var span := Vector2(length * 1.05, SHORE_WIDTH)
+	if not _clears_green(center, maxf(span.x, span.y) * 0.28):
+		return
+	_add_water_sprite(center, span, TEX_WATER, rad_to_deg(bearing))
+
+
 func _place_edge_pond(center: Vector2, size: float) -> void:
 	if not _clears_green(center, size):
 		return
 	_add_water_sprite(center, Vector2(size * 1.6, size * 1.2), TEX_WATER_POND)
 
 
-func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D) -> void:
+func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D, rotation_deg: float = 0.0) -> void:
+	var rot := deg_to_rad(rotation_deg)
 	var spr := Sprite2D.new()
 	spr.texture = tex
 	spr.position = center
+	spr.rotation = rot
 	spr.scale = Vector2(
 		span.x / float(tex.get_width()),
 		span.y / float(tex.get_height())
@@ -858,11 +922,12 @@ func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D) -> void:
 	var area := Area2D.new()
 	area.collision_layer = 2
 	area.collision_mask = 0
+	area.position = center
+	area.rotation = rot
 	var cs := CollisionShape2D.new()
 	var shape := RectangleShape2D.new()
 	shape.size = span
 	cs.shape = shape
-	area.position = center
 	area.add_child(cs)
 	area.monitoring = false
 	area.monitorable = true

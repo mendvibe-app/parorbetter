@@ -18,6 +18,8 @@ const ROLE_LANDING := "landing"
 const ROLE_CARRY := "carry"
 const ROLE_EDGE := "edge"
 const ROLE_ISLAND_RING := "island_ring"
+const ROLE_DIAGONAL := "diagonal"  ## Leven: angled band across landing
+const ROLE_SHORELINE := "shoreline"  ## Cape: elbow-hugging water panels
 
 @export var hole_number: int = 1
 @export var par: int = 4

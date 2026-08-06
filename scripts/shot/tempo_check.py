@@ -62,8 +62,8 @@ def balance_detail(sample: dict, tighten: float = 1.0, shot_type: str = "full") 
     short_game = shot_type in ("putt", "pitch")
     bs_floor = 0.10 if short_game else 0.18
     ft_floor = 0.04 if short_game else 0.08
-    accel_lo = 14.0 if is_pitch else 8.0
-    accel_span = 30.0 if is_pitch else 24.0
+    accel_lo = 32.0 if is_pitch else 28.0
+    accel_span = 40.0 if is_pitch else 40.0
     accel_pen = min(max((accel - accel_lo) / accel_span, 0.0), 1.0) * t
     jerk_pen = min(max((jerk - 0.6) / 1.4, 0.0), 1.0) * t
     short_bs = min(max((bs_floor - bs_len) / bs_floor, 0.0), 1.0)
@@ -180,6 +180,23 @@ def main() -> int:
     # Accel/jerk fold-in is deferred past the top-detection check so the exact
     # reversal frame (guaranteed sharp regardless of skill) can be excluded.
     assert "is_top_frame" in GESTURE and "was_had_top" in GESTURE
+    # Transition detection lag fix: backdate t_top to peak disp; exclude pending window.
+    assert "_t_peak_disp" in GESTURE
+    assert "lerpf(_t_peak_disp, now" in GESTURE or "_t_top = _t_peak_disp" in GESTURE
+    assert "pending_top" in GESTURE
+    # Cast spike: frame cap + post-confirm wall window (not backdated _t_top).
+    assert "ACCEL_FRAME_CAP" in GESTURE
+    assert "POST_TOP_ACCEL_EXCLUDE_SEC" in GESTURE
+    assert "post_top_guard" in GESTURE
+    assert "_t_top_confirmed" in GESTURE
+    assert "TOP_CONFIRM_BLEND" in GESTURE
+    assert "ACCEL_SMOOTH_N" in GESTURE
+    assert "_accel_ring" in GESTURE
+    # Soft-land contact when down long vs guide (playtest low ratio + MISS stack).
+    assert "r_raw" in GRADE and "lerpf(r_raw, target" in GRADE
+    # Low ratio must not always mean "rushed transition" (use absolute down leg).
+    assert 'down_read == "fast"' in GRADE
+    assert "Under %.0f:1" in GRADE or "Under %s:1" in GRADE or "longer back or freer through" in GRADE
     assert "_skip_jerk_frame" not in GESTURE
     assert "RELEASE_IS_IMPACT" not in GESTURE
     assert "TempoGesture" in ROUTINE
@@ -258,7 +275,8 @@ def main() -> int:
     # back near the old value.
     snappy = {
         "t_takeaway": 0.0, "t_top": 0.783, "t_impact": 0.968,  # 4.23:1 like playtest
-        "max_accel": 40.0, "max_jerk": 2.0, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
+        # max_accel in new cast band (lo 28 / span 40) — was 40 under old 8/24 scale
+        "max_accel": 58.0, "max_jerk": 2.0, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
     }
     gsl = grade(snappy, "full")
     assert abs(gsl["ratio"] - 4.23) < 0.05, gsl
@@ -272,7 +290,7 @@ def main() -> int:
     # Playtest best: ~3.5:1 + lurch → GOOD (not THIN), full carry in-band
     best = {
         "t_takeaway": 0.0, "t_top": 0.596, "t_impact": 0.766,  # 3.51:1
-        "max_accel": 35.0, "max_jerk": 1.8, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
+        "max_accel": 60.0, "max_jerk": 1.8, "backswing_len": 0.35, "follow_through_len": 0.12, "incomplete": False,
     }
     gb = grade(best, "full")
     assert abs(gb["ratio"] - 3.5) < 0.05, gb
@@ -331,9 +349,15 @@ def main() -> int:
     assert abs(balance(calm_s) - balance_detail(calm_s)["score"]) < 1e-12
     assert abs(balance(lurch_s) - balance_detail(lurch_s)["score"]) < 1e-12
     cast_causes = balance_detail(
-        {"max_accel": 40.0, "max_jerk": 0.2, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False}
+        {"max_accel": 60.0, "max_jerk": 0.2, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False}
     )["causes"]
     assert cast_causes["cast"] > 0.18
+    mild_cast = balance_detail(
+        {"max_accel": 32.0, "max_jerk": 0.2, "backswing_len": 0.4, "follow_through_len": 0.2, "incomplete": False}
+    )["causes"]
+    assert mild_cast["cast"] < cast_causes["cast"]
+    assert "ACCEL_LO_FULL" in GRADE and "ACCEL_SPAN_FULL" in GRADE
+    assert "POST_TOP_ACCEL_EXCLUDE_SEC" in GESTURE
     tw_calm = tolerance_width("full", calm)
     tw_lurch = tolerance_width("full", lurch)
     assert tw_lurch < tw_calm, (tw_lurch, tw_calm)
@@ -457,6 +481,10 @@ def main() -> int:
     assert abs((0.75 * club_scale(260)) / (0.75 * club_scale(260) / 3.0) - 3.0) < 1e-6
     # Meter ticks must apply the same full-swing scale (no audio/ghost desync).
     assert "club_guide_duration_scale(tempo_gesture.club_max_yards)" in METER
+    # Debug HUD: guide vs actual downswing instrumentation (transition-timing verify).
+    assert '"guide_down_ms"' in GRADE or "guide_down_ms" in GRADE
+    assert "down_delta_pct" in GRADE
+    assert "transition_ratio" in GRADE
     assert "func _impact_cross" in GESTURE
     assert "func _ghost_impact_pos" in GESTURE
     assert "func _ghost_follow_pos" in GESTURE

@@ -335,9 +335,9 @@ func _on_tempo_moment(name: String) -> void:
 			if shot_type == "putt":
 				AudioBus.play_putt_tick(0.7)
 		"top":
-			Input.vibrate_handheld(8)
+			pass  # Haptics only at contact quality (see _haptic_impact).
 		"impact":
-			pass  # thump intensity decided at commit from contact tier
+			pass  # Thump fires at commit from contact tier, not the moment tick.
 
 
 func _on_tempo_committed(sample: Dictionary) -> void:
@@ -474,15 +474,40 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 
 
 func _haptic_impact(contact: ShotResult.ContactQuality) -> void:
+	## Native impact tiers when plugin is present; duration fallback otherwise.
+	## PERFECT = light (pure is clean), mishit = heavy (jarring), MISS = double heavy.
 	match contact:
 		ShotResult.ContactQuality.PERFECT:
-			Input.vibrate_handheld(18)
+			_haptic_light()
 		ShotResult.ContactQuality.GOOD:
-			Input.vibrate_handheld(12)
+			_haptic_medium()
 		ShotResult.ContactQuality.THIN, ShotResult.ContactQuality.FAT:
-			Input.vibrate_handheld(6)
+			_haptic_heavy()
 		_:
-			Input.vibrate_handheld(4)
+			_haptic_heavy()
+			# Non-blocking second pulse so we never stall practice / _emit_result.
+			get_tree().create_timer(0.09).timeout.connect(_haptic_heavy, CONNECT_ONE_SHOT)
+
+
+func _haptic_light() -> void:
+	if Haptics.ready():
+		Haptics.light()
+	else:
+		Input.vibrate_handheld(18)
+
+
+func _haptic_medium() -> void:
+	if Haptics.ready():
+		Haptics.medium()
+	else:
+		Input.vibrate_handheld(12)
+
+
+func _haptic_heavy() -> void:
+	if Haptics.ready():
+		Haptics.heavy()
+	else:
+		Input.vibrate_handheld(6)
 
 
 func _emit_result(result: ShotResult) -> void:

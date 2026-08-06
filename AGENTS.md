@@ -78,6 +78,12 @@ Scenes under `scenes/`; art under `assets/`.
 
 `scenes/main.tscn` → `main.gd` loads hole 1, wires next-hole / game-over / debug.
 
+## Godot AI MCP
+
+Plugin: `addons/godot_ai` (hi-godot/godot-ai). User Grok config: `[mcp_servers."godot-ai"]` via `uvx … godot-ai attach` (ports 8000 / 9500). **When `godot-ai` tools are connected**, prefer them for editor operations (scenes, nodes, scripts, signals, project settings) over hand-editing `.tscn` / wiring by text. Requires the Godot **editor** open on this project with the plugin enabled.
+
+**Do not clone `godot-ai` (or any second copy of the addon) inside this project tree.** Duplicate `class_name Mcp*` scripts poison Godot’s global class cache (`Cannot convert argument … Object to Object`, `hides a global script class`, handlers resolving to `res://_tmp_godot_ai/...`). Install only under `addons/godot_ai`. If that happens: remove the extra tree, fully quit the editor (plugin reload is not enough), reopen the project.
+
 ## Cursor Cloud specific instructions
 
 Engine: **Godot 4.7.x** at `/usr/local/bin/godot` (installed by the update script). Matches `project.godot` `config/features` ("4.7"). GDScript only — no C#/Mono build.
