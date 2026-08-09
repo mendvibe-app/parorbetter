@@ -14,10 +14,12 @@ def air_distance_fraction(club_max_yards: float, shot_type: str = "full") -> flo
     full = _air_fraction_full(club_max_yards)
     if shot_type == "chip":
         t = max(0.0, min(1.0, (club_max_yards - 85.0) / 50.0))
-        return max(0.45, min(0.62, 0.48 + (0.58 - 0.48) * t))
+        return max(0.20, min(0.33, 0.28 + (0.22 - 0.28) * t))
     if shot_type == "pitch":
         v = full + (0.72 - full) * 0.55
         return max(0.68, min(0.82, v))
+    if shot_type == "flop":
+        return max(0.92, min(0.98, 0.94 + (0.97 - 0.94) * max(0.0, min(1.0, (110.0 - club_max_yards) / 40.0))))
     return full
 
 
@@ -73,11 +75,15 @@ def main() -> None:
     assert air_distance_fraction(160) == 0.78
     assert air_distance_fraction(85) == 0.94
 
-    # Chip/pitch release more than full wedge.
+    # Chip: mostly roll (~20–33% air); pitch more carry; flop near-zero roll.
     assert air_distance_fraction(85, "chip") < air_distance_fraction(85, "pitch")
     assert air_distance_fraction(85, "pitch") < air_distance_fraction(85, "full")
-    assert air_distance_fraction(85, "chip") < 0.65
+    assert 0.20 <= air_distance_fraction(85, "chip") <= 0.33
+    assert air_distance_fraction(85, "flop") >= 0.92
+    assert air_distance_fraction(85, "flop") > air_distance_fraction(85, "pitch")
     assert "chip" in PHYS and "pitch" in PHYS
+    assert "flop" in PHYS
+    assert "FLOP_MAX_YD" in PHYS
     # Short-shot line damp — greenside path+1 must not reverse a 3 yd pitch.
     assert "static func short_shot_line_scale" in PHYS
     assert "short_shot_line_scale(total_yards)" in PHYS

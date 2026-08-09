@@ -116,7 +116,7 @@ static func _bag_max_yards(club_name: String) -> float:
 
 
 ## Which shot types this club can hit, by bag max yards. Full is always available.
-## Flop deferred (short-game Phase 5) — do not add "flop" here yet.
+## Flop: Gap/Sand Wedge only until Phase 6 splits SW/LW.
 static func eligible_shot_types(club_max_yards: float) -> Array[String]:
 	var types: Array[String] = ["full"]
 	if club_max_yards <= 0.0:
@@ -126,6 +126,9 @@ static func eligible_shot_types(club_max_yards: float) -> Array[String]:
 		types.append("chip")
 	if club_max_yards <= _bag_max_yards("Pitching Wedge"):
 		types.append("pitch")
+	# Gap/Sand only (exact bag max match) — not PW.
+	if absf(club_max_yards - _bag_max_yards("Gap/Sand Wedge")) < 0.5:
+		types.append("flop")
 	return types
 
 
@@ -187,15 +190,23 @@ const PUNCH_UNDER_CANOPY_FRAC := 0.88
 
 ## Carry share of total distance by club category (rest is roll). Same yard buckets
 ## as lateral_spread_range_yards. Full-swing defaults — short game overrides below.
+## Chip/flop air fractions are playtest targets, not final (short-game roadmap Phases 2/5).
+const FLOP_MAX_YD := 30.0  ## hard total-distance cap for flop (Phase 5)
+
+
 static func air_distance_fraction(club_max_yards: float, shot_type: String = "full") -> float:
 	var full := _air_fraction_full(club_max_yards)
-	# Chip/pitch were using full-wedge carry (0.90–0.94) so they never released.
 	if shot_type == "chip":
-		# Mostly roll — releases past the pitch mark.
-		return clampf(lerpf(0.48, 0.58, clampf((club_max_yards - 85.0) / 50.0, 0.0, 1.0)), 0.45, 0.62)
+		# ~67–80% roll (air ~20–33%) — "long putt with a wedge" (Phase 2 playtest target).
+		return clampf(
+			lerpf(0.28, 0.22, clampf((club_max_yards - 85.0) / 50.0, 0.0, 1.0)), 0.20, 0.33
+		)
 	if shot_type == "pitch":
 		# More carry than chip, still more release than a stock full wedge.
 		return clampf(lerpf(full, 0.72, 0.55), 0.68, 0.82)
+	if shot_type == "flop":
+		# Near-zero roll — soft high stop (air higher than pitch). Playtest target.
+		return clampf(lerpf(0.94, 0.97, clampf((110.0 - club_max_yards) / 40.0, 0.0, 1.0)), 0.92, 0.98)
 	if shot_type == "punch":
 		# Flatter flight — less carry share, more runout after land.
 		return clampf(full * PUNCH_AIR_FRAC_SCALE, 0.52, 0.78)
@@ -527,6 +538,9 @@ static func launch_velocity(
 		var dist_mul := lerpf(1.0, 0.88, force)
 		dist_mul *= 1.0 + clampf(result.path_error, -1.0, 1.0) * force * 0.04
 		total_yards *= dist_mul
+	# Flop: hard total-distance ceiling (playtest ~30 yd) — not just discouraged.
+	if shot_type == "flop":
+		total_yards = minf(total_yards, FLOP_MAX_YD)
 	var total_px := yards_to_pixels(total_yards)
 
 	if is_putt:
@@ -570,6 +584,8 @@ static func launch_velocity(
 		loft = 1.05 * club_loft
 	if shot_type == "punch":
 		loft *= PUNCH_LOFT_SCALE
+	elif shot_type == "flop":
+		loft *= 1.35  ## open-face pop — playtest loft scale
 
 	var air_time := lerpf(0.55, 1.15, clampf(result.power, 0.0, 1.0)) * loft
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
