@@ -111,6 +111,10 @@ var _change_club_btn: BaseButton
 var _punch_btn: Button
 ## Trees only — low flight under canopy (apex carry + more roll).
 var _punch_mode: bool = false
+## Manual shot-type picker (aim phase): full / chip / pitch when club allows.
+var _shot_type_row: HBoxContainer
+var _chosen_shot_type: String = ""  ## live pick; empty until aim sync
+var _shot_type_manual: bool = false  ## true after player taps a type (don't auto-re-recommend)
 ## Practice reps left before the real swing (set on Confirm Aim from GameState).
 var _practice_reps_left: int = 0
 ## True when opening club select from aim — keep bearing, refit distance for new club.
@@ -125,6 +129,9 @@ var _aim_cone_edge: Line2D
 var _aim_cone_edge_r: Line2D
 var _pin_ref_line: Line2D
 var _aim_circle: Line2D
+## Pre-swing carry (first bounce) mark + roll connector to rest circle.
+var _aim_land_mark: Line2D
+var _aim_roll_line: Line2D
 var _wind_bias: Line2D
 var _wind_flag: WindFlag
 var _last_report: ShotReport
@@ -174,6 +181,7 @@ func _ready() -> void:
 	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_change_club_btn()
 	_setup_punch_btn()
+	_setup_shot_type_row()
 	_setup_scorecard()
 	_setup_hole_map()
 	# Bag icon above map in tree (map was covering it); club select stays topmost modal.
@@ -181,6 +189,8 @@ func _ready() -> void:
 		ui_layer.move_child(_change_club_btn, -1)
 	if _punch_btn:
 		ui_layer.move_child(_punch_btn, -1)
+	if _shot_type_row:
+		ui_layer.move_child(_shot_type_row, -1)
 	if scorecard:
 		ui_layer.move_child(scorecard, -1)
 	ui_layer.move_child(_club_select, -1)
@@ -264,6 +274,27 @@ func _setup_aim_visuals() -> void:
 	_aim_circle.z_index = 5
 	_aim_circle.visible = false
 	add_child(_aim_circle)
+
+	# Carry land (first bounce) — smaller ring than rest circle.
+	_aim_land_mark = Line2D.new()
+	_aim_land_mark.width = 2.2
+	_aim_land_mark.default_color = Color(1.0, 1.0, 1.0, 0.72)
+	_aim_land_mark.z_index = 5
+	_aim_land_mark.visible = false
+	_aim_land_mark.closed = true
+	_aim_land_mark.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_aim_land_mark.end_cap_mode = Line2D.LINE_CAP_ROUND
+	_aim_land_mark.joint_mode = Line2D.LINE_JOINT_ROUND
+	add_child(_aim_land_mark)
+
+	_aim_roll_line = Line2D.new()
+	_aim_roll_line.width = 2.0
+	_aim_roll_line.default_color = Color(1.0, 0.95, 0.7, 0.45)
+	_aim_roll_line.z_index = 4
+	_aim_roll_line.visible = false
+	_aim_roll_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
+	_aim_roll_line.end_cap_mode = Line2D.LINE_CAP_ROUND
+	add_child(_aim_roll_line)
 
 	_wind_bias = Line2D.new()
 	_wind_bias.width = 4.0
@@ -1379,6 +1410,8 @@ func _begin_club_select() -> void:
 	_aiming = false
 	_aim_dragging = false
 	_selecting_club = true
+	_chosen_shot_type = ""
+	_shot_type_manual = false
 	_set_aim_visuals_visible(false)
 	_refresh_wind_indicator(false)
 	_set_green_book_visible(false)
@@ -1388,6 +1421,7 @@ func _begin_club_select() -> void:
 		_change_club_btn.visible = false
 	if _punch_btn:
 		_punch_btn.visible = false
+	_hide_shot_type_row()
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
@@ -1400,6 +1434,8 @@ func _begin_club_select() -> void:
 func _on_club_chosen(club: Dictionary) -> void:
 	_selecting_club = false
 	_chosen_club = club
+	_chosen_shot_type = ""
+	_shot_type_manual = false
 	AudioBus.play_club_bag()
 	if GameState.range_mode:
 		_preserve_aim_line = false
@@ -1518,6 +1554,8 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	if _change_club_btn:
 		_change_club_btn.visible = not is_putt
 	_sync_punch_btn()
+	_shot_type_manual = false
+	_sync_shot_type_picker()
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
 		_refresh_wind_indicator(false)
@@ -1544,11 +1582,14 @@ func _end_aim_phase() -> void:
 	_aim_dragging = false
 	_selecting_club = false
 	_power_previewing = false
+	_chosen_shot_type = ""
+	_shot_type_manual = false
 	if _club_select:
 		_club_select.dismiss()
 	_set_aim_visuals_visible(false)
 	_refresh_wind_indicator(false)
 	_set_green_book_visible(false)
+	_hide_shot_type_row()
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 	if _change_club_btn:
@@ -1627,6 +1668,7 @@ func _park_punch_btn(top: float, right: float) -> void:
 	_punch_btn.offset_left = -right - w
 	_punch_btn.offset_top = top
 	_punch_btn.offset_bottom = top + h
+	_park_shot_type_row(top + h + 8.0, right)
 
 
 func _on_punch_toggled(on: bool) -> void:
@@ -1647,6 +1689,139 @@ func _sync_punch_btn() -> void:
 		_punch_mode = false
 		_punch_btn.button_pressed = false
 		_punch_btn.text = "Punch"
+
+
+func _setup_shot_type_row() -> void:
+	## Segmented Full / Chip / Pitch during aim (hidden when only Full eligible).
+	_shot_type_row = HBoxContainer.new()
+	_shot_type_row.name = "ShotTypeRow"
+	_shot_type_row.visible = false
+	_shot_type_row.z_index = 6
+	_shot_type_row.add_theme_constant_override("separation", 6)
+	ui_layer.add_child(_shot_type_row)
+
+
+func _park_shot_type_row(top: float, right: float) -> void:
+	if _shot_type_row == null:
+		return
+	var w := 280.0
+	var h := UiScale.TOUCH_MIN * 0.55
+	_shot_type_row.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_shot_type_row.offset_right = -right
+	_shot_type_row.offset_left = -right - w
+	_shot_type_row.offset_top = top
+	_shot_type_row.offset_bottom = top + h
+
+
+func _hide_shot_type_row() -> void:
+	if _shot_type_row:
+		_shot_type_row.visible = false
+
+
+func _shot_type_label(st: String) -> String:
+	match st:
+		"chip":
+			return "Chip"
+		"pitch":
+			return "Pitch"
+		_:
+			return "Full"
+
+
+func _recommended_shot_type(lie: String, aim_yd: float, club_max: float, from: Vector2, to: Vector2) -> String:
+	## Distance-based recommend; blocked tree line prefers Pitch when eligible.
+	var base := TempoGrade.recommend_shot_type(lie, aim_yd, club_max)
+	var eligible: Array[String] = BallPhysics.eligible_shot_types(club_max)
+	if not eligible.has(base):
+		base = "full" if eligible.has("full") else (eligible[0] if not eligible.is_empty() else "full")
+	if (
+		base == "chip"
+		and eligible.has("pitch")
+		and _aim_tree_clearance(from, to, club_max, false, "chip") == "blocked"
+	):
+		return "pitch"
+	return base
+
+
+func _effective_shot_type_for_aim() -> String:
+	var lie := ball.get_lie() if ball else ""
+	if lie == "Green":
+		return "putt"
+	if not _chosen_shot_type.is_empty():
+		return _chosen_shot_type
+	var club_max := float(_chosen_club.get("max_yards", 0.0))
+	var from := ball.global_position
+	var to := _aim_target
+	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
+	return _recommended_shot_type(lie, aim_yd, club_max, from, to)
+
+
+func _sync_shot_type_picker() -> void:
+	if _shot_type_row == null:
+		return
+	var lie := ball.get_lie() if ball else ""
+	var is_putt := lie == "Green"
+	var club_max := float(_chosen_club.get("max_yards", 0.0))
+	var eligible: Array[String] = BallPhysics.eligible_shot_types(club_max)
+	var show := _aiming and not is_putt and not hole_complete and eligible.size() > 1
+	if not show:
+		_shot_type_row.visible = false
+		if is_putt:
+			_chosen_shot_type = "putt"
+		return
+	var from := ball.global_position
+	var to := _aim_target
+	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
+	var rec := _recommended_shot_type(lie, aim_yd, club_max, from, to)
+	if not _shot_type_manual or not eligible.has(_chosen_shot_type):
+		_chosen_shot_type = rec
+		_shot_type_manual = false
+	# Rebuild segment buttons (eligible set can change with club).
+	for c in _shot_type_row.get_children():
+		c.queue_free()
+	for st in eligible:
+		var btn := Button.new()
+		btn.toggle_mode = true
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size = Vector2(84, UiScale.TOUCH_MIN * 0.5)
+		btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
+		var star := "★ " if st == rec else ""
+		btn.text = "%s%s" % [star, _shot_type_label(st)]
+		btn.button_pressed = st == _chosen_shot_type
+		btn.set_meta("shot_type", st)
+		btn.toggled.connect(_on_shot_type_toggled.bind(st))
+		_shot_type_row.add_child(btn)
+	_shot_type_row.visible = true
+
+
+func _on_shot_type_toggled(on: bool, st: String) -> void:
+	if not on:
+		# Keep at least one selected — re-press if user un-toggled current.
+		if st == _chosen_shot_type:
+			for c in _shot_type_row.get_children():
+				if c is Button and String(c.get_meta("shot_type", "")) == st:
+					(c as Button).set_pressed_no_signal(true)
+					break
+		return
+	_chosen_shot_type = st
+	_shot_type_manual = true
+	AudioBus.play_ui()
+	for c in _shot_type_row.get_children():
+		if c is Button:
+			var b := c as Button
+			var bst := String(b.get_meta("shot_type", ""))
+			b.set_pressed_no_signal(bst == st)
+			var rec := _recommended_shot_type(
+				ball.get_lie(),
+				BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target)),
+				float(_chosen_club.get("max_yards", 0.0)),
+				ball.global_position,
+				_aim_target
+			)
+			var star := "★ " if bst == rec else ""
+			b.text = "%s%s" % [star, _shot_type_label(bst)]
+	if _aiming:
+		_refresh_aim_visuals()
 	else:
 		_punch_btn.button_pressed = _punch_mode
 		_punch_btn.text = "Punch ON" if _punch_mode else "Punch"
@@ -1692,6 +1867,7 @@ func _confirm_aim() -> void:
 		_change_club_btn.visible = false
 	if _punch_btn:
 		_punch_btn.visible = false
+	_hide_shot_type_row()
 	_set_green_book_visible(false)  # close the book before stroking
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
@@ -1703,10 +1879,8 @@ func _confirm_aim() -> void:
 
 
 func _practice_count_for_current_shot() -> int:
-	var lie := ball.get_lie()
-	var aim_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
-	var club_max := float(_chosen_club.get("max_yards", 0.0))
-	return GameState.practice_swing_count_for(TempoGrade.shot_type_for(lie, aim_yd, club_max))
+	var st := _effective_shot_type_for_aim()
+	return GameState.practice_swing_count_for(st)
 
 
 func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) -> void:
@@ -1728,6 +1902,9 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	var club_name := String(_chosen_club.get("name", ""))
 	var club_max := float(_chosen_club.get("max_yards", -1.0))
 	var punch := _punch_mode and lie == "Trees"
+	var type_override := ""
+	if lie != "Green" and not _chosen_shot_type.is_empty() and _chosen_shot_type != "putt":
+		type_override = _chosen_shot_type
 	shot_routine.configure(
 		lie,
 		aim_yd,
@@ -1740,7 +1917,8 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 		club_name,
 		club_max,
 		ball.get_lie_severity(),
-		punch
+		punch,
+		type_override
 	)
 	# Landing preview locked to committed carry (gesture can only subtract).
 	_power_previewing = not p_practice
@@ -1825,10 +2003,16 @@ func _set_aim_visuals_visible(on: bool) -> void:
 		_aim_cone_edge_r.visible = on and not is_putt
 	if _aim_circle:
 		_aim_circle.visible = on and not is_putt
+	if _aim_land_mark:
+		_aim_land_mark.visible = on and not is_putt
+	if _aim_roll_line:
+		_aim_roll_line.visible = on and not is_putt
 	if _pin_ref_line:
 		_pin_ref_line.visible = on
 	if not on and _wind_bias:
 		_wind_bias.visible = false
+	if not on:
+		_hide_shot_type_row()
 
 
 func _show_wind_flag(wind: Vector2, extra: String = "") -> void:
@@ -1890,7 +2074,9 @@ func _aim_shape_bend() -> float:
 			return 0.0
 
 
-func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float, punch: bool = false) -> String:
+func _aim_tree_clearance(
+	from: Vector2, to: Vector2, club_max: float, punch: bool = false, shot_type_hint: String = ""
+) -> String:
 	## "none" | "clear" | "blocked" — clean-strike prediction for aim cone tint.
 	if _trees.is_empty() or club_max <= 0.0:
 		return "none"
@@ -1904,12 +2090,18 @@ func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float, punch: boo
 	)
 	if carry_yd < 2.0:
 		return "none"
-	# Flight type for apex: punch ducks under; full/pitch for normal.
-	var shot_type := "punch" if punch else TempoGrade.shot_type_for(lie, aim_yd, club_max)
+	# Flight type for apex: punch ducks under; else player pick or distance recommend.
+	var shot_type: String
+	if punch:
+		shot_type = "punch"
+	elif not shot_type_hint.is_empty():
+		shot_type = shot_type_hint
+	else:
+		shot_type = TempoGrade.recommend_shot_type(lie, aim_yd, club_max)
 	var total_px := BallPhysics.yards_to_pixels(carry_yd)
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var peak := BallPhysics.estimate_height_peak(club_max, carry_yd, shot_type)
-	# Segment ends at carry land point along aim bearing (not past club max).
+	# Segment ends at planned total along aim bearing (not past club max).
 	var bearing := to - from
 	if bearing.length_squared() < 1.0:
 		bearing = Vector2(0, -1)
@@ -1930,6 +2122,22 @@ func _aim_tree_clearance(from: Vector2, to: Vector2, club_max: float, punch: boo
 	if not any_hit:
 		return "none"
 	return "blocked" if any_block else "clear"
+
+
+func _aim_carry_land_point(
+	from: Vector2, to: Vector2, club_max: float, lie: String, shot_type: String
+) -> Vector2:
+	## First-bounce along aim: total planned distance × air_distance_fraction.
+	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
+	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
+	var severity := ball.get_lie_severity() if ball else ""
+	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
+	var total_yd := BallPhysics.estimate_carry_yards(float(solved["power"]), club_max, lie, severity)
+	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
+	var bearing := to - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	return from + bearing.normalized() * BallPhysics.yards_to_pixels(total_yd * air_frac)
 
 
 func _tint_cone_colors(cols: PackedColorArray, kind: String) -> PackedColorArray:
@@ -1973,9 +2181,21 @@ func _refresh_aim_visuals() -> void:
 				Color(1.0, 1.0, 1.0, 0.0),
 			])
 			_pin_ref_line.gradient = fade
+		if _aim_land_mark:
+			_aim_land_mark.visible = false
+		if _aim_roll_line:
+			_aim_roll_line.visible = false
 		_set_aim_visuals_visible(true)
 	else:
 		_pin_ref_line.gradient = null
+		# Keep recommend fresh while dragging unless player locked a type.
+		if _aiming and not _shot_type_manual:
+			var club_m0 := float(_chosen_club.get("max_yards", 0.0))
+			var aim_yd0 := BallPhysics.pixels_to_yards(from.distance_to(to))
+			var rec0 := _recommended_shot_type(ball.get_lie(), aim_yd0, club_m0, from, to)
+			if rec0 != _chosen_shot_type:
+				_chosen_shot_type = rec0
+				_refresh_shot_type_button_labels()
 		# Cone's widest point (tip) matches the dispersion circle's own radius exactly —
 		# tight takeoff read at the ball, fanning out to the real landing-area width.
 		var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
@@ -1983,9 +2203,9 @@ func _refresh_aim_visuals() -> void:
 			from, to, _aim_shape_bend(), 10.0 * inv_z, radius_px, _power_previewing
 		)
 		var club_max := float(_chosen_club.get("max_yards", 0.0))
-		var clearance := _aim_tree_clearance(
-			from, to, club_max, _punch_mode and ball.get_lie() == "Trees"
-		)
+		var st := _effective_shot_type_for_aim()
+		var punch := _punch_mode and ball.get_lie() == "Trees"
+		var clearance := _aim_tree_clearance(from, to, club_max, punch, st)
 		var cols: PackedColorArray = _tint_cone_colors(cone["colors"], clearance)
 		_aim_cone.polygon = cone["points"]
 		_aim_cone.vertex_colors = cols
@@ -2029,12 +2249,45 @@ func _refresh_aim_visuals() -> void:
 		elif clearance == "clear":
 			circle_col = Color(0.45, 0.92, 0.5, 0.9)
 		_aim_circle.default_color = circle_col
+		# Carry land (first bounce) + roll connector to rest circle at `to`.
+		var flight_st := "punch" if punch else st
+		var land := _aim_carry_land_point(from, to, club_max, ball.get_lie(), flight_st)
+		var land_r := maxf(radius_px * 0.38, 6.0 * inv_z)
+		if _aim_land_mark:
+			_aim_land_mark.points = AimControl.make_circle_points(land, land_r)
+			_aim_land_mark.width = 2.2 / maxf(camera.zoom.x, 0.35)
+			_aim_land_mark.default_color = Color(1.0, 1.0, 1.0, 0.78 if _power_previewing else 0.65)
+			_aim_land_mark.visible = true
+		if _aim_roll_line:
+			_aim_roll_line.points = PackedVector2Array([land, to])
+			_aim_roll_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
+			_aim_roll_line.default_color = Color(1.0, 0.95, 0.7, 0.5 if _power_previewing else 0.38)
+			_aim_roll_line.visible = true
 		_set_aim_visuals_visible(true)
 	if _aiming:
 		_set_green_book_visible(_should_show_green_book())
 		_refresh_wind_indicator(not is_putt)
 	elif _wind_bias:
 		_wind_bias.visible = false
+
+
+func _refresh_shot_type_button_labels() -> void:
+	if _shot_type_row == null or not _shot_type_row.visible:
+		return
+	var rec := _recommended_shot_type(
+		ball.get_lie(),
+		BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target)),
+		float(_chosen_club.get("max_yards", 0.0)),
+		ball.global_position,
+		_aim_target
+	)
+	for c in _shot_type_row.get_children():
+		if c is Button:
+			var b := c as Button
+			var bst := String(b.get_meta("shot_type", ""))
+			var star := "★ " if bst == rec else ""
+			b.text = "%s%s" % [star, _shot_type_label(bst)]
+			b.set_pressed_no_signal(bst == _chosen_shot_type)
 
 
 func _world_mouse() -> Vector2:

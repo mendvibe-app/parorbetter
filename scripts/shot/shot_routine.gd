@@ -128,7 +128,8 @@ func configure(
 	p_club_name: String = "",
 	p_club_max_yards: float = -1.0,
 	p_severity: String = "",
-	p_punch: bool = false
+	p_punch: bool = false,
+	p_shot_type_override: String = ""
 ) -> void:
 	timing_scale = p_timing
 	suggested_shape = p_shape
@@ -156,7 +157,15 @@ func configure(
 	committed_power = float(solved["power"])
 	true_power_pct = float(solved["true_pct"])
 	# Gesture/grade type; launch uses flight_shot_type() for punch loft/roll.
-	shot_type = TempoGrade.shot_type_for(lie, aim_distance_yd, club_max_yards)
+	# Green always putt. Override only if club-eligible (manual shot-type picker).
+	if lie == "Green":
+		shot_type = "putt"
+	elif not p_shot_type_override.is_empty() and BallPhysics.eligible_shot_types(club_max_yards).has(
+		p_shot_type_override
+	):
+		shot_type = p_shot_type_override
+	else:
+		shot_type = TempoGrade.recommend_shot_type(lie, aim_distance_yd, club_max_yards)
 
 	# Green: feet (how golfers read putts). Full/pitch stay yards.
 	if lie == "Green":

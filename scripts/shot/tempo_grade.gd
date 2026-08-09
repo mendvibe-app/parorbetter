@@ -59,6 +59,11 @@ static func shot_type_for(lie: String, remaining_yd: float, club_max_yards: floa
 	return "full"
 
 
+## Same logic as shot_type_for — explicit name for "recommend, don't force" call sites.
+static func recommend_shot_type(lie: String, remaining_yd: float, club_max_yards: float = 0.0) -> String:
+	return shot_type_for(lie, remaining_yd, club_max_yards)
+
+
 static func target_ratio(shot_type: String) -> float:
 	# Punch uses full 3:1; only putt/pitch are short-game tempo.
 	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" else TARGET_FULL

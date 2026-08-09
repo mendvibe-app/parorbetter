@@ -32,7 +32,8 @@ def main() -> None:
     assert "_practice_reps_left" in HC
     assert "practice_swing_count_for" in HC
     assert "_practice_count_for_current_shot" in HC
-    assert "TempoGrade.shot_type_for" in HC
+    # Shot type from picker effective type (or recommend), not hard-only shot_type_for.
+    assert "_effective_shot_type_for_aim" in HC or "TempoGrade.shot_type_for" in HC
     confirm = HC.split("func _confirm_aim")[1].split("func ")[0]
     assert "_practice_reps_left" in confirm
     assert "_practice_count_for_current_shot" in confirm

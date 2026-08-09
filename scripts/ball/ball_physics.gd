@@ -108,6 +108,27 @@ static func club_bag_rank(club_name: String) -> int:
 	return 1000
 
 
+static func _bag_max_yards(club_name: String) -> float:
+	for club in BAG:
+		if String(club["name"]) == club_name:
+			return float(club["max_yards"])
+	return 0.0
+
+
+## Which shot types this club can hit, by bag max yards. Full is always available.
+## Flop deferred (short-game Phase 5) — do not add "flop" here yet.
+static func eligible_shot_types(club_max_yards: float) -> Array[String]:
+	var types: Array[String] = ["full"]
+	if club_max_yards <= 0.0:
+		return types
+	# 7-Iron and shorter → chip; PW and shorter → pitch (thresholds from BAG).
+	if club_max_yards <= _bag_max_yards("7-Iron"):
+		types.append("chip")
+	if club_max_yards <= _bag_max_yards("Pitching Wedge"):
+		types.append("pitch")
+	return types
+
+
 ## Compact labels for coach / tight UI: 3W, Hy, 5I, PW, SW, Pt.
 static func club_short_name(club_name: String) -> String:
 	match club_name:
