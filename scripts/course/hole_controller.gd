@@ -1461,7 +1461,7 @@ func _begin_range_swing() -> void:
 	var club_max := float(_chosen_club.get("max_yards", 180.0))
 	var wind: Vector2 = course_root.get_meta("wind", Vector2.ZERO)
 	var target_yd := club_max * 0.85
-	# PW (110) + Gap/Sand (85): short target inside pitch band, above chip.
+	# Wedges (PW–LW): short target inside pitch band, above chip.
 	if club_max <= 110.0:
 		var gate := minf(TempoGrade.PITCH_YD, club_max * TempoGrade.PITCH_POWER_CAP)
 		if gate > TempoGrade.CHIP_YD + 2.0:
@@ -1704,7 +1704,7 @@ func _setup_shot_type_row() -> void:
 func _park_shot_type_row(top: float, right: float) -> void:
 	if _shot_type_row == null:
 		return
-	var w := 360.0  ## room for Full/Chip/Pitch/Flop on Gap/Sand
+	var w := 360.0  ## room for Full/Chip/Pitch/Flop on SW/LW
 	var h := UiScale.TOUCH_MIN * 0.55
 	_shot_type_row.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_shot_type_row.offset_right = -right

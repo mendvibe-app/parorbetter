@@ -23,7 +23,7 @@ stroke-length model.
 ---
 
 ## Status (branch `feature/shot-type-picker`)
-Phases 1–5 implemented in code (2026-08-09). Phase 6 still deferred.
+Phases 1–6 implemented in code (2026-08-09).
 Playtest each phase before treating values as final.
 
 ## Phase 1 — Manual shot-type picker + club eligibility gate + landing/rollout visualization
@@ -125,10 +125,9 @@ last-resort. Surfaced as an available override when short-sided with an obstacle
 - Flop's miss-severity band is measurably harsher than Pitch's for an equivalent tempo error.
 - Flop is never the auto-recommended shot type outside a defined short-sided/no-green scenario.
 
-## Phase 6 — Full wedge bag expansion (deferred, own epic)
-Splits the current merged "Gap/Sand Wedge" into real PW/GW/SW/LW entries with real loft-based
-distance gapping. Flop tightens to SW/LW only. Not started until Phases 1–5 are stable — this
-multiplies the shot-type × club matrix by 4x, so it needs the mechanic proven first.
+## Phase 6 — Full wedge bag expansion
+Splits the merged "Gap/Sand Wedge" into real **PW (110) / GW (95) / SW (80) / LW (65)** with
+loft-based distance gapping. Flop selectable on **SW + LW only** (not PW/GW).
 
 ---
 

@@ -41,7 +41,7 @@ def main() -> int:
     # actual BAG so this stays correct if club distances are retuned later.
     bag = [(m.group(1), float(m.group(2)))
            for m in re.finditer(r'"name":\s*"([^"]+)",\s*"max_yards":\s*([\d.]+)', BP)]
-    assert len(bag) == 10, f"expected 10 bag clubs, found {len(bag)}"
+    assert len(bag) == 12, f"expected 12 bag clubs, found {len(bag)}"
     expected = {
         "Driver": (40.0, 60.0),
         "3-Wood": (25.0, 45.0),
@@ -52,7 +52,9 @@ def main() -> int:
         "8-Iron": (12.0, 25.0),
         "9-Iron": (12.0, 25.0),
         "Pitching Wedge": (10.0, 18.0),
-        "Gap/Sand Wedge": (8.0, 18.0),
+        "Gap Wedge": (10.0, 18.0),
+        "Sand Wedge": (8.0, 18.0),
+        "Lob Wedge": (8.0, 18.0),
     }
     for name, max_yards in bag:
         got = lateral_spread_range_yards(max_yards)

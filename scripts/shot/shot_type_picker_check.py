@@ -27,7 +27,7 @@ def eligible(club_max: float) -> list[str]:
         types.append("chip")
     if club_max <= _bag_max("Pitching Wedge"):
         types.append("pitch")
-    if abs(club_max - _bag_max("Gap/Sand Wedge")) < 0.5:
+    if club_max <= _bag_max("Sand Wedge") + 0.01:
         types.append("flop")
     return types
 
@@ -36,6 +36,7 @@ def main() -> int:
     assert "static func eligible_shot_types" in PHYS
     assert "static func _bag_max_yards" in PHYS
     assert "flop" in PHYS.split("func eligible_shot_types")[1][:800]
+    assert "Sand Wedge" in PHYS and "Lob Wedge" in PHYS and "Gap Wedge" in PHYS
     assert "static func recommend_shot_type" in TG
     assert "return shot_type_for" in TG
     assert "TOL_FLOP" in TG
@@ -57,8 +58,10 @@ def main() -> int:
     assert eligible(160.0) == ["full", "chip"]  # 7-Iron
     assert eligible(130.0) == ["full", "chip"]  # 9-Iron
     assert eligible(110.0) == ["full", "chip", "pitch"]  # PW — no flop
-    assert eligible(85.0) == ["full", "chip", "pitch", "flop"]  # Gap/Sand
-    assert "flop" not in eligible(110.0)
+    assert eligible(95.0) == ["full", "chip", "pitch"]  # GW — no flop
+    assert eligible(80.0) == ["full", "chip", "pitch", "flop"]  # SW
+    assert eligible(65.0) == ["full", "chip", "pitch", "flop"]  # LW
+    assert "flop" not in eligible(95.0)
 
     # Phase 4 guide familiarity
     GS = (ROOT / "scripts" / "autoload" / "game_state.gd").read_text(encoding="utf-8")

@@ -11,7 +11,9 @@ BAG = [
     ("8-Iron", 145.0),
     ("9-Iron", 130.0),
     ("Pitching Wedge", 110.0),
-    ("Gap/Sand Wedge", 85.0),
+    ("Gap Wedge", 95.0),
+    ("Sand Wedge", 80.0),
+    ("Lob Wedge", 65.0),
 ]
 
 POWER_POCKET_LO = 0.60
@@ -93,13 +95,13 @@ def main() -> None:
     # 190 yd → need 205.2 → Hybrid (210); 200 yd need 216 → 3-Wood
     assert pick_club(190, "Fairway") == ("Hybrid", 210.0)
     assert pick_club(200, "Fairway") == ("3-Wood", 235.0)
-    assert pick_club(40, "Sand") == ("Gap/Sand Wedge", 85.0)
+    assert pick_club(40, "Sand") == ("Lob Wedge", 65.0)
 
     # Compact trio: neighbors of pick, clamped at ends. Fairway has no Driver.
     assert [n for n, _ in suggest_clubs(150, "Fairway")] == ["5-Iron", "6-Iron", "7-Iron"]
     assert [n for n, _ in suggest_clubs(200, "Fairway")] == ["3-Wood", "Hybrid", "5-Iron"]
     assert [n for n, _ in suggest_clubs(200, "Tee")] == ["Driver", "3-Wood", "Hybrid"]
-    assert [n for n, _ in suggest_clubs(40, "Sand")] == ["Pitching Wedge", "Gap/Sand Wedge"]
+    assert [n for n, _ in suggest_clubs(40, "Sand")] == ["Gap Wedge", "Sand Wedge", "Lob Wedge"]
     assert suggest_clubs(10, "Green") == []
 
     assert force_factor(0.75) == 0.0
@@ -107,13 +109,13 @@ def main() -> None:
     assert force_factor(1.0) == 1.0
     assert force_factor(0.0) == 1.0
     assert 0.4 < force_factor(0.3) < 0.6
-    # Gap is shortest — partial swing is correct short-game, not baby tax
-    assert force_factor(0.40, 85.0, "Fairway") == 0.0
-    assert force_factor(0.40, 85.0, "Sand") == 0.0
-    # PW partial still taxed (should have used Gap)
+    # Lob is shortest — partial swing is correct short-game, not baby tax
+    assert force_factor(0.40, 65.0, "Fairway") == 0.0
+    assert force_factor(0.40, 65.0, "Sand") == 0.0
+    # PW partial still taxed (should have used a shorter wedge)
     assert force_factor(0.40, 110.0, "Fairway") > 0.3
-    # Mash on Gap still taxed
-    assert force_factor(1.0, 85.0, "Fairway") == 1.0
+    # Mash on Lob still taxed
+    assert force_factor(1.0, 65.0, "Fairway") == 1.0
 
     # Display order + short labels (coach / tight UI)
     from pathlib import Path
@@ -147,7 +149,10 @@ def main() -> None:
     assert "_tint_cone_colors" in hc
     # Apex/canopy rebalance: wedges loft higher; tall still hardest canopy.
     assert '"loft_mul": 1.42' in phys or "1.42" in phys  # PW
-    assert '"loft_mul": 1.52' in phys or "1.52" in phys  # Gap
+    assert '"loft_mul": 1.62' in phys or "1.62" in phys  # LW highest
+    assert "Lob Wedge" in phys and "Sand Wedge" in phys and "Gap Wedge" in phys
+    # BAG entries must not keep the merged club (legacy short-name alias may remain).
+    assert '{"name": "Gap/Sand Wedge"' not in phys
     assert "TREE_CANOPY_H" in hc and "42.0" in hc  # tall wall
     # Club-fit: force shortens distance; aim radius can scale with force
     assert "true_power" in (root / "shot" / "shot_result.gd").read_text(encoding="utf-8")

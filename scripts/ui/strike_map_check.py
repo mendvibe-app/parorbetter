@@ -21,7 +21,7 @@ BAND_PERFECT, BAND_GOOD, BAND_THIN_FAT = 0.50, 1.15, 1.85  # TempoGrade / PuttSt
 BAG_NAMES = [
     "Driver", "3-Wood", "Hybrid",
     "5-Iron", "6-Iron", "7-Iron", "8-Iron", "9-Iron",
-    "Pitching Wedge", "Gap/Sand Wedge",
+    "Pitching Wedge", "Gap Wedge", "Sand Wedge", "Lob Wedge",
 ]
 
 
@@ -113,7 +113,8 @@ def main() -> int:
         "Driver": "wood", "3-Wood": "wood", "Hybrid": "wood",
         "5-Iron": "iron", "6-Iron": "iron", "7-Iron": "iron",
         "8-Iron": "iron", "9-Iron": "iron",
-        "Pitching Wedge": "iron", "Gap/Sand Wedge": "iron",
+        "Pitching Wedge": "iron", "Gap Wedge": "iron",
+        "Sand Wedge": "iron", "Lob Wedge": "iron",
         "Putter": "putter",
     }
     for name in BAG_NAMES:

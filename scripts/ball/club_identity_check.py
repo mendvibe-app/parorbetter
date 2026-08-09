@@ -34,7 +34,9 @@ def _air_fraction_full(club_max_yards: float) -> float:
         return 0.84
     if club_max_yards >= 95.0:
         return 0.90
-    return 0.94
+    if club_max_yards >= 75.0:
+        return 0.93
+    return 0.96
 
 
 def spin_grip_mul(club_max_yards: float) -> float:
@@ -48,7 +50,9 @@ def spin_grip_mul(club_max_yards: float) -> float:
         return 1.10
     if club_max_yards >= 95.0:
         return 1.15
-    return 1.20
+    if club_max_yards >= 75.0:
+        return 1.18
+    return 1.22
 
 
 def main() -> None:
@@ -73,17 +77,18 @@ def main() -> None:
 
     assert air_distance_fraction(260) == 0.68
     assert air_distance_fraction(160) == 0.78
-    assert air_distance_fraction(85) == 0.94
+    assert air_distance_fraction(65) == 0.96  # Lob Wedge
 
     # Chip: mostly roll (~20–33% air); pitch more carry; flop near-zero roll.
-    assert air_distance_fraction(85, "chip") < air_distance_fraction(85, "pitch")
-    assert air_distance_fraction(85, "pitch") < air_distance_fraction(85, "full")
-    assert 0.20 <= air_distance_fraction(85, "chip") <= 0.33
-    assert air_distance_fraction(85, "flop") >= 0.92
-    assert air_distance_fraction(85, "flop") > air_distance_fraction(85, "pitch")
+    assert air_distance_fraction(80, "chip") < air_distance_fraction(80, "pitch")
+    assert air_distance_fraction(80, "pitch") < air_distance_fraction(80, "full")
+    assert 0.20 <= air_distance_fraction(80, "chip") <= 0.33
+    assert air_distance_fraction(65, "flop") >= 0.92
+    assert air_distance_fraction(65, "flop") > air_distance_fraction(65, "pitch")
     assert "chip" in PHYS and "pitch" in PHYS
     assert "flop" in PHYS
     assert "FLOP_MAX_YD" in PHYS
+    assert "Lob Wedge" in PHYS
     # Short-shot line damp — greenside path+1 must not reverse a 3 yd pitch.
     assert "static func short_shot_line_scale" in PHYS
     assert "short_shot_line_scale(total_yards)" in PHYS
@@ -91,10 +96,13 @@ def main() -> None:
     BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
     assert "spin_scale" in BALL and "along_spd" in BALL
 
+    samples_w = [260, 235, 210, 190, 175, 160, 145, 130, 110, 95, 80, 65]
+    airs = [air_distance_fraction(y) for y in samples_w]
+    grips = [spin_grip_mul(y) for y in samples_w]
     print(
         "club_identity_check: ok "
         f"driver_air={airs[0]} mid_air={air_distance_fraction(160)} wedge_air={airs[-1]} "
-        f"wedge_chip={air_distance_fraction(85, 'chip'):.2f} "
+        f"wedge_chip={air_distance_fraction(80, 'chip'):.2f} "
         f"wedge_grip={grips[-1]} grip_ratio={grips[-1] / grips[0]:.2f}"
     )
 

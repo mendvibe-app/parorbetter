@@ -10,6 +10,7 @@ const AIR_DISTANCE_FRACTION := 0.78
 
 ## Full bag, longest → shortest. Neighbor max gaps ~15–25 yd so overlap is real.
 ## loft_mul scales visual apex + air_time (wedges fly higher for tree carries).
+## Phase 6: real PW / GW / SW / LW gapping (was merged Gap/Sand at 85).
 const BAG: Array[Dictionary] = [
 	{"name": "Driver", "max_yards": 260.0, "loft_mul": 0.62},
 	{"name": "3-Wood", "max_yards": 235.0, "loft_mul": 0.70},
@@ -20,7 +21,9 @@ const BAG: Array[Dictionary] = [
 	{"name": "8-Iron", "max_yards": 145.0, "loft_mul": 1.15},
 	{"name": "9-Iron", "max_yards": 130.0, "loft_mul": 1.28},
 	{"name": "Pitching Wedge", "max_yards": 110.0, "loft_mul": 1.42},
-	{"name": "Gap/Sand Wedge", "max_yards": 85.0, "loft_mul": 1.52},
+	{"name": "Gap Wedge", "max_yards": 95.0, "loft_mul": 1.48},
+	{"name": "Sand Wedge", "max_yards": 80.0, "loft_mul": 1.55},
+	{"name": "Lob Wedge", "max_yards": 65.0, "loft_mul": 1.62},
 ]
 
 
@@ -118,7 +121,7 @@ static func _bag_max_yards(club_name: String) -> float:
 
 
 ## Which shot types this club can hit, by bag max yards. Full is always available.
-## Flop: Gap/Sand Wedge only until Phase 6 splits SW/LW.
+## Flop: Sand Wedge + Lob Wedge only (Phase 6).
 static func eligible_shot_types(club_max_yards: float) -> Array[String]:
 	var types: Array[String] = ["full"]
 	if club_max_yards <= 0.0:
@@ -128,13 +131,13 @@ static func eligible_shot_types(club_max_yards: float) -> Array[String]:
 		types.append("chip")
 	if club_max_yards <= _bag_max_yards("Pitching Wedge"):
 		types.append("pitch")
-	# Gap/Sand only (exact bag max match) — not PW.
-	if absf(club_max_yards - _bag_max_yards("Gap/Sand Wedge")) < 0.5:
+	# SW / LW only (max ≤ Sand Wedge) — not PW/GW.
+	if club_max_yards <= _bag_max_yards("Sand Wedge") + 0.01:
 		types.append("flop")
 	return types
 
 
-## Compact labels for coach / tight UI: 3W, Hy, 5I, PW, SW, Pt.
+## Compact labels for coach / tight UI: 3W, Hy, 5I, PW, GW, SW, LW, Pt.
 static func club_short_name(club_name: String) -> String:
 	match club_name:
 		"Driver":
@@ -143,7 +146,13 @@ static func club_short_name(club_name: String) -> String:
 			return "Hy"
 		"Pitching Wedge":
 			return "PW"
-		"Gap/Sand Wedge":
+		"Gap Wedge":
+			return "GW"
+		"Sand Wedge":
+			return "SW"
+		"Lob Wedge":
+			return "LW"
+		"Gap/Sand Wedge":  ## legacy coach keys
 			return "SW"
 		"Putter":
 			return "Pt"
@@ -177,9 +186,9 @@ static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 		return Vector2(18.0, 35.0)
 	if club_max_yards >= 120.0:  # Short irons (8-9)
 		return Vector2(12.0, 25.0)
-	if club_max_yards >= 95.0:  # Pitching Wedge
+	if club_max_yards >= 95.0:  # PW / Gap Wedge
 		return Vector2(10.0, 18.0)
-	return Vector2(8.0, 18.0)  # Gap / Sand / Lob wedges
+	return Vector2(8.0, 18.0)  # Sand / Lob wedges
 
 
 ## Punch: lower apex (canopy duck) + more roll. Playtest knobs.
@@ -224,9 +233,11 @@ static func _air_fraction_full(club_max_yards: float) -> float:
 		return AIR_DISTANCE_FRACTION
 	if club_max_yards >= 120.0:  # Short (8–9)
 		return 0.84
-	if club_max_yards >= 95.0:  # PW
+	if club_max_yards >= 95.0:  # PW / GW
 		return 0.90
-	return 0.94  # Gap / Sand
+	if club_max_yards >= 75.0:  # SW
+		return 0.93
+	return 0.96  # LW — highest flight share
 
 
 ## Path-spin multiplier — mild club identity (pre-pack driver 0.75; avoid 0.92 over-flatten).
@@ -242,7 +253,9 @@ static func spin_grip_mul(club_max_yards: float) -> float:
 		return 1.10
 	if club_max_yards >= 95.0:
 		return 1.15
-	return 1.20
+	if club_max_yards >= 75.0:
+		return 1.18
+	return 1.22
 
 
 static func putter_for(_remaining_yd: float = 0.0) -> Dictionary:
