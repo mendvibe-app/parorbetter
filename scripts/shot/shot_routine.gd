@@ -167,6 +167,13 @@ func configure(
 	else:
 		shot_type = TempoGrade.recommend_shot_type(lie, aim_distance_yd, club_max_yards)
 
+	# Flop: hard-cap committed power so total cannot exceed FLOP_MAX_YD (Phase 5).
+	if shot_type == "flop":
+		var lie_m := BallPhysics.lie_multiplier(lie, p_severity)
+		var max_p := BallPhysics.FLOP_MAX_YD / maxf(club_max_yards * lie_m, 1.0)
+		committed_power = minf(committed_power, max_p)
+		true_power_pct = minf(true_power_pct, max_p)
+
 	# Green: feet (how golfers read putts). Full/pitch stay yards.
 	if lie == "Green":
 		info_label.text = "%d ft" % int(round(PuttStroke.yd_to_ft(aim_distance_yd)))
@@ -239,6 +246,8 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		hint_label.text = "PUNCH — low · through the ball · more roll after."
 	elif shot_type == "pitch":
 		hint_label.text = "PITCH ~2:1 — address · to the top · through the ball."
+	elif shot_type == "flop":
+		hint_label.text = "FLOP ~2:1 — soft open face · high · little roll. Mistakes hurt."
 	else:
 		hint_label.text = "SWING ~3:1 — address · to the top · through the ball."
 	phase_changed.emit("active")
@@ -564,6 +573,9 @@ func _haptic_heavy() -> void:
 
 func _emit_result(result: ShotResult) -> void:
 	phase = Phase.DONE
+	# Ghost-guide familiarity (Phase 4) — real strokes only, not practice.
+	if not practice_mode:
+		GameState.record_shot_type_rep(shot_type)
 	tempo_gesture.set_enabled(false)
 	set_active(false)
 	GameState.record_path_miss(result.path_error)

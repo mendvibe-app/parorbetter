@@ -67,7 +67,12 @@ func _refresh_guide_alpha() -> void:
 	if not GameState.tempo_guide_enabled:
 		_guide_alpha = 0.0
 		return
-	_guide_alpha = clampf(1.0 - GameState.get_form() * 1.35, 0.0, 0.85)
+	# Per shot-type reps (Phase 4) — matches tempo_gesture._guide_alpha.
+	var st := "full"
+	if tempo_gesture:
+		st = tempo_gesture.shot_type
+	var form := GameState.get_shot_type_form(st)
+	_guide_alpha = clampf(1.0 - form * 1.35, 0.0, 0.85)
 
 
 func _on_trail(_pts: PackedVector2Array) -> void:

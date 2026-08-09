@@ -22,6 +22,10 @@ stroke-length model.
 
 ---
 
+## Status (branch `feature/shot-type-picker`)
+Phases 1–5 implemented in code (2026-08-09). Phase 6 still deferred.
+Playtest each phase before treating values as final.
+
 ## Phase 1 — Manual shot-type picker + club eligibility gate + landing/rollout visualization
 **Unlocks:** player chooses Chip/Pitch/Full (Flop deferred to Phase 4) instead of the game
 silently picking by aim distance.

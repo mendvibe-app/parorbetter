@@ -12,6 +12,8 @@ const TOL_FULL := 1.1
 ## Pitch/putt ratio window — short pad path makes through easy to over-speed (was 0.85;
 ## playtest: ghost match still MISS Path+1 from ~4–6:1 blasts). Wider = mobile-playable 2:1.
 const TOL_SHORT := 1.35
+## Flop: tighter than pitch (Phase 5 playtest target) — open-face mistakes hurt more.
+const TOL_FLOP := 0.85
 const PURE_BALANCE := 0.72
 ## Below this aim distance → pitch tempo (2:1); at/above → full (3:1).
 const PITCH_YD := 50.0
@@ -65,11 +67,13 @@ static func recommend_shot_type(lie: String, remaining_yd: float, club_max_yards
 
 
 static func target_ratio(shot_type: String) -> float:
-	# Punch uses full 3:1; only putt/pitch are short-game tempo.
-	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" else TARGET_FULL
+	# Punch uses full 3:1; putt/pitch/flop are short-game 2:1 tempo.
+	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else TARGET_FULL
 
 
 static func base_tolerance(shot_type: String) -> float:
+	if shot_type == "flop":
+		return TOL_FLOP
 	return TOL_SHORT if shot_type == "putt" or shot_type == "pitch" else TOL_FULL
 
 
@@ -77,11 +81,11 @@ static func base_tolerance(shot_type: String) -> float:
 ## balance() short-swing penalty. Single source of truth — grading and the pad's
 ## drawn floor markers (tempo_gesture.gd) both read from here.
 static func bs_floor(shot_type: String) -> float:
-	return 0.10 if shot_type == "putt" or shot_type == "pitch" else 0.18
+	return 0.10 if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else 0.18
 
 
 static func ft_floor(shot_type: String) -> float:
-	return 0.04 if shot_type == "putt" or shot_type == "pitch" else 0.08
+	return 0.04 if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else 0.08
 
 
 static func ratio(sample: Dictionary) -> float:
@@ -263,16 +267,24 @@ static func grade(
 	# Distance is owned by contact tier (ball_physics.contact_multiplier).
 	# Tempo error only taxes distance once we're out of GOOD — inside PERFECT/GOOD
 	# a slightly-off ratio must not leak carry (was continuous abs_n tax on every shot).
+	# Flop: harsher miss band (Phase 5 playtest) — bad flop should feel costly.
 	var power_mul := 1.0
+	var miss_floor := 0.35 if shot_type == "flop" else 0.50
+	var thin_floor := 0.42 if shot_type == "flop" else 0.55
+	var thin_tax := 0.42 if shot_type == "flop" else 0.30
 	if contact == ShotResult.ContactQuality.THIN or contact == ShotResult.ContactQuality.FAT:
 		var over_pw := maxf(abs_n - BAND_GOOD, 0.0)
-		power_mul = clampf(1.0 - over_pw * 0.30, 0.55, 1.0)
+		power_mul = clampf(1.0 - over_pw * thin_tax, thin_floor, 1.0)
 	elif contact == ShotResult.ContactQuality.MISS:
-		power_mul = 0.50
+		power_mul = miss_floor
 
 	# OTT / out-to-in magnitude (always ≥ 0). Applied as +pull on swing_shape so
 	# shape moves toward fade/slice (+), not draw (−). Only when rushed past GOOD.
-	var pull_max := TRANSITION_PULL_MAX_PITCH if shot_type == "pitch" else TRANSITION_PULL_MAX_FULL
+	var pull_max := (
+		TRANSITION_PULL_MAX_PITCH
+		if shot_type == "pitch" or shot_type == "flop"
+		else TRANSITION_PULL_MAX_FULL
+	)
 	var transition_pull := 0.0
 	if err < 0.0:
 		var over_band := maxf(abs_n - BAND_GOOD, 0.0)

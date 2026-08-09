@@ -27,17 +27,21 @@ def eligible(club_max: float) -> list[str]:
         types.append("chip")
     if club_max <= _bag_max("Pitching Wedge"):
         types.append("pitch")
+    if abs(club_max - _bag_max("Gap/Sand Wedge")) < 0.5:
+        types.append("flop")
     return types
 
 
 def main() -> int:
     assert "static func eligible_shot_types" in PHYS
     assert "static func _bag_max_yards" in PHYS
-    assert '"flop"' not in PHYS.split("func eligible_shot_types")[1][:500]
+    assert "flop" in PHYS.split("func eligible_shot_types")[1][:800]
     assert "static func recommend_shot_type" in TG
     assert "return shot_type_for" in TG
+    assert "TOL_FLOP" in TG
     assert "p_shot_type_override" in SR
     assert "eligible_shot_types" in SR
+    assert "FLOP_MAX_YD" in SR or "flop" in SR
     assert "_chosen_shot_type" in HC
     assert "_shot_type_row" in HC
     assert "_recommended_shot_type" in HC
@@ -46,14 +50,22 @@ def main() -> int:
     assert "_aim_roll_line" in HC
     assert "_setup_shot_type_row" in HC
     assert "p_shot_type_override" in HC or "type_override" in HC
+    assert "Flop" in HC
 
     assert eligible(260.0) == ["full"]
     assert eligible(175.0) == ["full"]  # 6-Iron
     assert eligible(160.0) == ["full", "chip"]  # 7-Iron
     assert eligible(130.0) == ["full", "chip"]  # 9-Iron
-    assert eligible(110.0) == ["full", "chip", "pitch"]  # PW
-    assert eligible(85.0) == ["full", "chip", "pitch"]  # Gap/Sand
-    assert "flop" not in eligible(85.0)
+    assert eligible(110.0) == ["full", "chip", "pitch"]  # PW — no flop
+    assert eligible(85.0) == ["full", "chip", "pitch", "flop"]  # Gap/Sand
+    assert "flop" not in eligible(110.0)
+
+    # Phase 4 guide familiarity
+    GS = (ROOT / "scripts" / "autoload" / "game_state.gd").read_text(encoding="utf-8")
+    assert "get_shot_type_form" in GS
+    assert "record_shot_type_rep" in GS
+    GEST = (ROOT / "scripts" / "shot" / "tempo_gesture.gd").read_text(encoding="utf-8")
+    assert "get_shot_type_form" in GEST
 
     print("shot_type_picker_check: ok")
     return 0

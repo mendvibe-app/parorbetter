@@ -47,7 +47,9 @@ static func estimate_height_peak(
 	var loft := 0.9 * club_loft_mul(club_max_yards)
 	if shot_type == "punch":
 		loft *= PUNCH_LOFT_SCALE
-	loft = clampf(loft, 0.35, 1.55)
+	elif shot_type == "flop":
+		loft *= 1.35
+	loft = clampf(loft, 0.35, 1.75)
 	var power := clampf(total_yards / maxf(club_max_yards, 1.0), 0.05, 1.0)
 	var air_time := lerpf(0.55, 1.15, power) * loft
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
@@ -414,9 +416,16 @@ static func pixels_to_yards(pixels: float) -> float:
 
 ## Estimated total distance for UI (assumes solid / good contact).
 static func estimate_carry_yards(
-	power: float, club_max_yards: float, lie: String, severity: String = ""
+	power: float,
+	club_max_yards: float,
+	lie: String,
+	severity: String = "",
+	shot_type: String = "full"
 ) -> float:
-	return club_max_yards * clampf(power, 0.0, 1.0) * lie_multiplier(lie, severity)
+	var y := club_max_yards * clampf(power, 0.0, 1.0) * lie_multiplier(lie, severity)
+	if shot_type == "flop":
+		y = minf(y, FLOP_MAX_YD)
+	return y
 
 
 static func recommended_power(

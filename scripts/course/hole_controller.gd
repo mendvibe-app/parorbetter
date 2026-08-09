@@ -1704,7 +1704,7 @@ func _setup_shot_type_row() -> void:
 func _park_shot_type_row(top: float, right: float) -> void:
 	if _shot_type_row == null:
 		return
-	var w := 280.0
+	var w := 360.0  ## room for Full/Chip/Pitch/Flop on Gap/Sand
 	var h := UiScale.TOUCH_MIN * 0.55
 	_shot_type_row.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_shot_type_row.offset_right = -right
@@ -1724,6 +1724,8 @@ func _shot_type_label(st: String) -> String:
 			return "Chip"
 		"pitch":
 			return "Pitch"
+		"flop":
+			return "Flop"
 		_:
 			return "Full"
 
@@ -2132,7 +2134,11 @@ func _aim_carry_land_point(
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
 	var severity := ball.get_lie_severity() if ball else ""
 	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
-	var total_yd := BallPhysics.estimate_carry_yards(float(solved["power"]), club_max, lie, severity)
+	var power := float(solved["power"])
+	if shot_type == "flop":
+		var lie_m := BallPhysics.lie_multiplier(lie, severity)
+		power = minf(power, BallPhysics.FLOP_MAX_YD / maxf(club_max * lie_m, 1.0))
+	var total_yd := BallPhysics.estimate_carry_yards(power, club_max, lie, severity, shot_type)
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var bearing := to - from
 	if bearing.length_squared() < 1.0:

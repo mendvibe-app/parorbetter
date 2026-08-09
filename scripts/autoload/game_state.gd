@@ -55,7 +55,10 @@ var tempo_guide_enabled: bool = true
 var tempo_guide_forced: bool = false
 ## Auto practice reps before the real swing after Confirm Aim (0–3), per shot type.
 ## Not used in range_mode. Defaults: full/pitch get one; short game starts at zero.
-var practice_reps: Dictionary = {"full": 1, "pitch": 1, "chip": 0, "putt": 0}
+var practice_reps: Dictionary = {"full": 1, "pitch": 1, "chip": 0, "putt": 0, "flop": 1}
+## Lifetime real-shot counts per shot type (ghost-guide familiarity, Phase 4).
+## 0 reps → strong guide even if global form is high.
+var shot_type_reps: Dictionary = {}
 ## Tap-in fast path (putt ceremony skip). Playtest knobs via F1.
 var tap_in_yd: float = 4.0
 var tap_in_break: float = 0.12
@@ -451,6 +454,26 @@ func set_practice_swing_count(shot_type: String, v: int) -> void:
 	_save_records()
 
 
+## ~12 real swings at this type → max guide fade (playtest target, Phase 4).
+const SHOT_TYPE_GUIDE_REPS := 12.0
+
+
+func shot_type_rep_count(shot_type: String) -> int:
+	return maxi(int(shot_type_reps.get(shot_type, 0)), 0)
+
+
+func record_shot_type_rep(shot_type: String) -> void:
+	if shot_type.is_empty():
+		return
+	shot_type_reps[shot_type] = shot_type_rep_count(shot_type) + 1
+	_save_records()
+
+
+## 0 = novice at this type (strong guide); 1 = familiar (faded guide). Not global form.
+func get_shot_type_form(shot_type: String) -> float:
+	return clampf(float(shot_type_rep_count(shot_type)) / SHOT_TYPE_GUIDE_REPS, 0.0, 1.0)
+
+
 func _load_records() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(RECORDS_PATH) != OK:
@@ -466,11 +489,12 @@ func _load_records() -> void:
 		for v in raw:
 			stroke_differentials.append(float(v))
 	_load_practice_reps(cfg)
+	_load_shot_type_reps(cfg)
 
 
 func _load_practice_reps(cfg: ConfigFile) -> void:
 	## Per-type prefs; migrate flat practice_swing_count → full (and pitch if unset).
-	var defaults := {"full": 1, "pitch": 1, "chip": 0, "putt": 0}
+	var defaults := {"full": 1, "pitch": 1, "chip": 0, "putt": 0, "flop": 1}
 	if cfg.has_section_key("prefs", "practice_reps"):
 		var raw: Variant = cfg.get_value("prefs", "practice_reps", {})
 		if raw is Dictionary:
@@ -482,6 +506,16 @@ func _load_practice_reps(cfg: ConfigFile) -> void:
 		defaults["full"] = old
 		defaults["pitch"] = old
 	practice_reps = defaults
+
+
+func _load_shot_type_reps(cfg: ConfigFile) -> void:
+	shot_type_reps.clear()
+	if not cfg.has_section_key("prefs", "shot_type_reps"):
+		return
+	var raw: Variant = cfg.get_value("prefs", "shot_type_reps", {})
+	if raw is Dictionary:
+		for k in raw.keys():
+			shot_type_reps[str(k)] = maxi(int(raw[k]), 0)
 
 
 func _save_records() -> void:
@@ -496,6 +530,7 @@ func _save_records() -> void:
 		diffs.append(d)
 	cfg.set_value("records", "stroke_differentials", diffs)
 	cfg.set_value("prefs", "practice_reps", practice_reps.duplicate())
+	cfg.set_value("prefs", "shot_type_reps", shot_type_reps.duplicate())
 	cfg.save(RECORDS_PATH)
 
 

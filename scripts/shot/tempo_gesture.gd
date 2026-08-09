@@ -217,12 +217,13 @@ func _is_chip() -> bool:
 
 
 func _is_pitch() -> bool:
-	return shot_type == "pitch"
+	## Flop reuses pitch pad geometry / 2:1 guide (tempo-gesture family).
+	return shot_type == "pitch" or shot_type == "flop"
 
 
 func _uses_chip_golfer() -> bool:
-	## Chip + pitch share short-game golfer (wedge posture); putt and full are distinct.
-	return shot_type == "chip" or shot_type == "pitch"
+	## Chip + pitch + flop share short-game golfer (wedge posture).
+	return shot_type == "chip" or shot_type == "pitch" or shot_type == "flop"
 
 
 func address_hint() -> Vector2:
@@ -406,14 +407,14 @@ func _process(_delta: float) -> void:
 
 
 func _guide_alpha() -> float:
-	## Fadeable perfect-swing ghost. Toggle in F1; strong on range / early holes.
+	## Fadeable perfect-swing ghost. Per shot-type familiarity (Phase 4), not global form.
 	if not GameState.tempo_guide_enabled:
 		return 0.0
 	if GameState.tempo_guide_forced or GameState.range_mode:
 		return 0.9
-	if GameState.current_hole <= 3:
-		return 0.85
-	return clampf(1.0 - GameState.get_form() * 1.35, 0.0, 0.75)
+	# 0 reps at this type → strong guide even if overall form is high.
+	var form := GameState.get_shot_type_form(shot_type)
+	return clampf(1.0 - form * 1.35, 0.0, 0.75)
 
 
 func _guide_back_sec() -> float:
