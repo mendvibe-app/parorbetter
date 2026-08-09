@@ -364,7 +364,17 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	if shot_type == "putt" or shot_type == "chip":
 		var chip_tol := PuttStroke.CHIP_TOL_SCALE if shot_type == "chip" else 1.0
 		var chip_arc := PuttStroke.CHIP_ARC_SCALE if shot_type == "chip" else 1.0
-		verdict = PuttStroke.grade(sample, committed_power, tol_scale, bal_tighten, club_max_yards, chip_tol, chip_arc)
+		verdict = PuttStroke.grade(
+			sample,
+			committed_power,
+			tol_scale,
+			bal_tighten,
+			club_max_yards,
+			chip_tol,
+			chip_arc,
+			current_lie,
+			current_severity
+		)
 	else:
 		verdict = TempoGrade.grade(
 			sample, shot_type, timing_scale, tol_scale, bal_tighten, club_max_yards
@@ -448,6 +458,13 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		# Putts: slight line emphasis — physics already scales contact/stance.
 		if current_lie == "Green":
 			path = clampf(path * 1.1, -1.0, 1.0)
+		# Single metrics object for F1 Path + Shape (Phase 3) — no blank shape on putt/chip.
+		verdict["path_error"] = path
+		verdict["swing_shape"] = path
+		verdict["shape_blend"] = path
+		verdict["transition_pull"] = 0.0
+		verdict["max_lateral"] = float(sample.get("max_lateral", 0.0))
+		GameState.last_tempo_metrics = verdict
 	elif GameState.force_mishit:
 		# Debug QA: always spray — bypass swipe/pull/unify.
 		path = float(verdict.get("path_error", 0.8))

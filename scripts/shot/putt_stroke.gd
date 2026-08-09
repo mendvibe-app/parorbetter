@@ -116,7 +116,9 @@ static func grade(
 	balance_tighten: float = 1.0,
 	club_max_yd: float = 40.0,
 	chip_tol_scale: float = 1.0,
-	chip_arc_scale: float = 1.0
+	chip_arc_scale: float = 1.0,
+	lie: String = "Green",
+	severity: String = ""
 ) -> Dictionary:
 	var target := marker_frac(committed_power)
 	var band := BAND_HALF * maxf(tol_scale, 0.15) * maxf(chip_tol_scale, 0.15)
@@ -166,8 +168,15 @@ static func grade(
 	if bal < 0.35:
 		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
 
-	var target_yd := committed_power * club_max_yd
-	var rolled_yd := clampf(committed_power * power_mul, 0.05, 1.0) * club_max_yd
+	# Same product as ShotReport.planned_yards / BallPhysics.launch_velocity total:
+	# putt skips contact_mul; chip multiplies contact (short-game Phase 3).
+	var lie_mul := BallPhysics.lie_multiplier(lie, severity)
+	var contact_mul := (
+		1.0 if lie == "Green" else BallPhysics.contact_multiplier(contact)
+	)
+	var result_power := clampf(committed_power * power_mul, 0.05, 1.0)
+	var target_yd := committed_power * club_max_yd * lie_mul  ## commit at GOOD contact
+	var rolled_yd := result_power * club_max_yd * lie_mul * contact_mul
 	# Match-pen short finish isn't in balance causes — boost short_finish when follow dies.
 	if match_pen > 0.35:
 		causes = causes.duplicate()

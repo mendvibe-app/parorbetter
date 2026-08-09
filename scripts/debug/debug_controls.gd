@@ -190,6 +190,23 @@ func _process(_delta: float) -> void:
 		return
 	var m: Dictionary = GameState.last_shot_metrics
 	var t: Dictionary = GameState.last_tempo_metrics
+	# One shot → one metrics story (Phase 3): if tempo empty but shot has path, seed shape fields.
+	if t.is_empty() and not m.is_empty() and m.has("path_error"):
+		t = {
+			"path_error": float(m.get("path_error", 0.0)),
+			"swing_shape": float(m.get("path_error", 0.0)),
+			"shape_blend": float(m.get("path_error", 0.0)),
+			"transition_pull": 0.0,
+			"max_lateral": 0.0,
+			"note": str(m.get("summary", "")),
+		}
+	elif not t.is_empty() and not m.is_empty():
+		if not t.has("path_error") and m.has("path_error"):
+			t["path_error"] = float(m.get("path_error", 0.0))
+		if not t.has("swing_shape") and t.has("path_error"):
+			t["swing_shape"] = float(t.get("path_error", 0.0))
+		if not t.has("shape_blend") and t.has("path_error"):
+			t["shape_blend"] = float(t.get("path_error", 0.0))
 	var shot_type := str(m.get("shot_type", "")) if not m.is_empty() else ""
 	var type_bit := (" [%s]" % shot_type) if not shot_type.is_empty() else ""
 	var tempo_line := "Tempo: —%s" % type_bit

@@ -87,6 +87,11 @@ def main() -> int:
     assert "BAND_HALF := 0.06" in PUTT
     assert "PuttStroke.grade" in ROUTINE
     assert 'shot_type == "putt"' in ROUTINE
+    # Phase 3: coaching yards match launch/report product (lie + contact).
+    assert "BallPhysics.lie_multiplier" in PUTT
+    assert "BallPhysics.contact_multiplier" in PUTT
+    assert "current_lie" in ROUTINE
+    assert "swing_shape" in ROUTINE
     assert "putt_target_frac" in GESTURE
     assert "putt_aim_ft" not in GESTURE
     assert "putt_aim_ft" not in ROUTINE
