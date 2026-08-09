@@ -1,5 +1,8 @@
 # Epic: Wind flag — directional legibility + strength tautness
 
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `02facf3` (wind cloth flags + shared `paint_flag`). Kept for history; do not re-implement.
+
 **File:** `scripts/ui/wind_flag.gd`
 **Scope:** The HUD "wind glance" widget only (the `WindFlag` control shown via `hole_controller.gd`). Does **not** touch the in-world pin flag sprite (`hole_controller.gd` `_pin_flag`, `TEX_PIN_FLAG` at line 42) — that's a separate, unrelated sprite and stays as-is.
 

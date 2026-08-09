@@ -1,5 +1,8 @@
 # Epic: Native Contact-Quality Haptics
 
+## Status: SHIPPED (code); OPEN (device QA)
+Code/plugins/desktop fallback landed in `0334561`. Remaining: physical Android device smoke (4 contact tiers) and iOS parity.
+
 ## Setup status (dev machine: Windows, Godot 4.7.1.stable)
 
 Confirmed as of this doc's last update — don't redo these:

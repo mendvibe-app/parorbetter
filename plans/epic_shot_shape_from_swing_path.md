@@ -1,5 +1,8 @@
 # Epic: Shot Shape from Swing Path ("Around") — Player-Driven Fade/Draw
 
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `f7f15b2`; direction unified further in `02facf3`. Kept for history; do not re-implement.
+
 ## Problem
 Swipe direction on a full swing doesn't currently shape the shot at all.
 Shot curve today comes entirely from the hole's design, not from how the

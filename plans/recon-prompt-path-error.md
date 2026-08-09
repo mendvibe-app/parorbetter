@@ -1,5 +1,8 @@
 # Recon: Shot direction is driven by tempo timing, not swing path
 
+## Status: SHIPPED (recon complete)
+Closed: 2026-08-09 — recon fed `epic-shot-direction-rework.md`, which shipped in `02facf3`. Kept for history; do not re-implement.
+
 ## Context
 
 Debug playtesting surfaced that on-screen shot direction ("Path" in the debug HUD, and the actual ball's lateral flight) does not appear to be primarily driven by the player's swipe gesture. It appears to be driven mostly by tempo ratio error instead. This recon is to confirm the mechanism end-to-end, map every consumer of the two relevant values, and flag anything else nearby that looks off — **no fixes yet, just findings**.

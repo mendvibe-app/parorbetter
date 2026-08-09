@@ -1,5 +1,8 @@
 # Debug Instrumentation: Verify Transition Timing Detection Lag
 
+## Status: SHIPPED
+Closed: 2026-08-09 — guide vs actual transition numbers landed with tempo debug/F1 work (`0334561`). Kept for history; do not re-implement.
+
 ## What we're checking
 Matt's playtest feedback: he can't get a "solid transition" consistently, across every club.
 

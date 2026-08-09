@@ -1,5 +1,8 @@
 # Epic: Fix Transition Detection Lag (Late "Top of Swing" Marking)
 
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `0334561` (tempo feel: peak-disp top backdate + accel exclude). Kept for history; do not re-implement.
+
 ## Confirmed by playtest data
 Real debug-HUD readings from a live session:
 

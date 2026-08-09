@@ -137,13 +137,19 @@ Already ignored or should stay local:
 
 ## 7. Resume context (session handoff)
 
-Recent work landed around:
+Recent work landed around (most plan docs marked **SHIPPED** — check status headers):
 
-- **Tempo / direction** — swipe → path/shape; pad-right → draw (see `plans/epic-shot-direction-rework.md` if present)
-- **Wind HUD + course pin** — shared cloth paint (`WindFlag.paint_flag`), mockup `plans/wind_direction_speed.png`, epic `plans/wind-flag-direction-strength-epic.md`
-- **Hazards** — trees clear bunkers; sand lie uses paint alpha
+- **Tempo / direction** — swipe-led path + gated transition pull (`epic-shot-direction-rework` shipped)
+- **Wind HUD + course pin** — shared cloth paint (`WindFlag.paint_flag`)
+- **Hazards** — trees clear bunkers; sand lie uses paint alpha; Cape/Leven water
 - **Putt cup** — `CUP_CAPTURE_MAX_SPEED` lip-out (no hot teleport makes)
-- **Haptics**, Cape/Leven water, scorecard, Godot AI addon
+- **Scorecard**, contact haptics (code), Godot AI addon
+
+**Still open in `plans/`:**
+
+- `correction-swipe-sign-convention.md` — playtest in-to-out / out-to-in sign mapping
+- `epic-contact-quality-haptics.md` — device QA only (Android + iOS smoke)
+- Session roadmap next: unplayable lie / take a drop (no epic file yet)
 
 **Plans:** `plans/`  
 **Philosophy:** ponytail — shortest correct diff + one `*_check.py` for non-trivial logic.

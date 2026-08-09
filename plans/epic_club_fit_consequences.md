@@ -1,5 +1,8 @@
 # Epic: Club-Fit Consequences — Distance Variance + Dispersion Scaling
 
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `f7f15b2` (Ship club-fit, punch-out, swing-path shape…). Kept for history; do not re-implement.
+
 ## Problem
 Picking a badly-mismatched club (Driver for a 150-yard shot) currently only
 costs you line and spin consistency. Distance always solves to the correct

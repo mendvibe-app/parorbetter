@@ -1,8 +1,10 @@
 # Epic: Shot Direction Rework — Swipe Leads, Tempo Modulates
 
-## Status: Ready for implementation
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `02facf3` (swipe-led path; gated transition pull; `path_error == intended_shape`). Kept for history; do not re-implement.
+Related open QA: `correction-swipe-sign-convention.md` (sign playtest still open).
+
 ## Depends on: none (independent of distance-tuning and practice-swing epics)
-## Playtest in isolation before bundling with other changes
 
 ---
 

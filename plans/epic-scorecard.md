@@ -1,7 +1,9 @@
 # Epic: Live Scorecard
 
-**Status:** Ready for implementation
-**Branch suggestion:** `feature/scorecard`
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `b56763d` (live stroke-play scorecard + round summary). Kept for history; do not re-implement.
+
+**Branch suggestion:** `feature/scorecard` (historical)
 **Depends on:** none — all required state already exists in `GameState`
 **Related:** 18 Hole Round mode (stroke play) — this is the payoff UI for that system
 

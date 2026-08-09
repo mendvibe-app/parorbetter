@@ -1,5 +1,8 @@
 # Epic: Cape Hole + Leven Diagonal Water Hazards
 
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `0334561` (Cape/Leven water). Kept for history; do not re-implement.
+
 Two new water hazard shapes, both real named golf-course templates, both built as
 extensions of hazard placement + the already-shipped Sharpened Dogleg Corner elbow
 geometry. No fairway data model changes. Ship and playtest Phase 1 (Leven) standalone

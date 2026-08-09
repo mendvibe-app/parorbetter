@@ -17,4 +17,8 @@ Recommended build order below, with rationale for the ordering.
 ## Build Next
 
 ### 1. Unplayable Lie / Take a Drop (doc may be missing)
-Drop option for bad lies.
+Drop option for bad lies. No epic file yet — write one before building.
+
+### Still open elsewhere (not this roadmap)
+- Swipe sign convention QA — `correction-swipe-sign-convention.md`
+- Haptics device smoke — `epic-contact-quality-haptics.md`

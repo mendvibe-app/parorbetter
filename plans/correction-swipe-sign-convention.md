@@ -1,6 +1,7 @@
 # Correction addendum — verify swipe sign convention before finishing
 
-Add this to the in-progress shot-direction-rework work. **Do not assume the
+## Status: OPEN (QA)
+Direction rework is shipped (`02facf3`); this is the remaining sign playtest. **Do not assume the
 current sign convention is correct — it has not been physically verified and
 may be backwards.**
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Assert Crunchy Pixel style docs + references + course/UI assets exist."""
+"""Assert Pixel Kit Golf style docs + references + course/UI assets exist."""
 from __future__ import annotations
 
 import sys
@@ -10,7 +10,7 @@ STYLE = (ROOT / "art" / "STYLE.md").read_text(encoding="utf-8")
 
 
 def main() -> int:
-    assert "# Art Style Skill: Crunchy Pixel" in STYLE
+    assert "# Art Style Skill: Pixel Kit Golf" in STYLE
     assert "art/references/" in STYLE
     assert "All visual assets" in STYLE
     for name in (
@@ -47,7 +47,7 @@ def main() -> int:
     theme = theme_path.read_text(encoding="utf-8")
     assert "PanelContainer/styles/panel" in theme
     assert "Button/styles/normal" in theme
-    assert "Crunchy Pixel" in (ROOT / "art" / "prompts" / "terrain.md").read_text(encoding="utf-8")
+    assert "Pixel Kit Golf" in (ROOT / "art" / "prompts" / "kit.md").read_text(encoding="utf-8")
     print("crunchy_pixel_check: ok")
     return 0
 

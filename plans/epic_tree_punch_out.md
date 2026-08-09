@@ -1,5 +1,8 @@
 # Epic: Tree Punch-Out ("Under") — Deliberate Low Shot Type
 
+## Status: SHIPPED
+Closed: 2026-08-09 — landed in `f7f15b2` (Ship club-fit, punch-out, swing-path shape…). Kept for history; do not re-implement.
+
 ## Problem
 Being in Trees today just means "worse club choice, less power, tighter
 timing" — it's a penalty, not a deliberate low-shot option. There's no way
