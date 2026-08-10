@@ -868,14 +868,54 @@ func _greenside_center(side: int, size: float) -> Vector2:
 
 
 func _place_island_ring() -> void:
+	## Water flanks the island green but leaves a dry fairway tongue for approach
+	## (was: fat slabs + full-width bottom bar → soft-lock from left/short lies).
 	var water_tint := Color(1, 1, 1, 0.92)
-	var clear := maxf(hole.green_radius_x, hole.green_radius_y) + 14.0 + 12.0
-	var side_w := 90.0
-	var side_h := 160.0
-	var side_y := GREEN_Y - 30.0
-	_add_rect(course_root, Rect2(540.0 - clear - side_w, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
-	_add_rect(course_root, Rect2(540.0 + clear, side_y, side_w, side_h), water_tint, "water", TEX_WATER, 260.0)
-	_add_rect(course_root, Rect2(540.0 - 100.0, GREEN_Y + clear, 200.0, 70.0), water_tint, "water", TEX_WATER, 260.0)
+	var gr := maxf(hole.green_radius_x, hole.green_radius_y)
+	var clear := gr + 10.0
+	var side_w := 58.0
+	var side_h := 128.0
+	var side_y := GREEN_Y - 22.0
+	_add_rect(
+		course_root,
+		Rect2(540.0 - clear - side_w, side_y, side_w, side_h),
+		water_tint,
+		"water",
+		TEX_WATER,
+		260.0
+	)
+	_add_rect(
+		course_root,
+		Rect2(540.0 + clear, side_y, side_w, side_h),
+		water_tint,
+		"water",
+		TEX_WATER,
+		260.0
+	)
+	# Bottom: two wings toward tee, gap on fairway centerline so a carry path exists.
+	var gap_half := maxf(_fairway_half * 0.72, 30.0)
+	var by := GREEN_Y + clear + 6.0
+	var bh := 50.0
+	var wing_inner := gap_half
+	var wing_outer := clear + side_w * 0.45
+	var left_w := wing_outer - wing_inner
+	if left_w > 18.0:
+		_add_rect(
+			course_root,
+			Rect2(540.0 - wing_outer, by, left_w, bh),
+			water_tint,
+			"water",
+			TEX_WATER,
+			260.0
+		)
+		_add_rect(
+			course_root,
+			Rect2(540.0 + wing_inner, by, left_w, bh),
+			water_tint,
+			"water",
+			TEX_WATER,
+			260.0
+		)
 
 
 func _place_carry_creek(along: float, half_h: float) -> void:
@@ -2931,11 +2971,85 @@ func _on_hazard(kind: String) -> void:
 		return
 	strokes += 1
 	GameState.record_stroke()
-	ball.reset_at(ball.get_last_safe(), "Fairway")
+	var drop := _hazard_drop_pos(kind)
+	var drop_lie := _classify_lie(drop)
+	if drop_lie == "Water" or drop_lie == "OOB" or drop_lie == "Trees":
+		drop_lie = "Fairway"
+	ball.reset_at(drop, drop_lie)
 	_update_hud()
 	await get_tree().create_timer(0.55).timeout
 	if not hole_complete:
 		_start_shot_ui()
+
+
+func _point_in_group_area(world: Vector2, group: String) -> bool:
+	if course_root == null or course_root.get_world_2d() == null:
+		return false
+	var space := course_root.get_world_2d().direct_space_state
+	var q := PhysicsPointQueryParameters2D.new()
+	q.position = world
+	q.collide_with_areas = true
+	q.collide_with_bodies = false
+	q.collision_mask = 0xFFFFFFFF
+	var hits := space.intersect_point(q, 16)
+	for h in hits:
+		var col: Variant = h.get("collider")
+		if col is Area2D and (col as Area2D).is_in_group(group):
+			return true
+	return false
+
+
+func _is_dry_drop_spot(p: Vector2) -> bool:
+	## Playable land after water/OOB — not wet, not OOB, on course.
+	if p.x < 48.0 or p.x > 1032.0:
+		return false
+	if p.y < GREEN_Y - 40.0 or p.y > _tee_back_pos.y + 40.0:
+		return false
+	if _point_in_group_area(p, "water") or _point_in_group_area(p, "oob"):
+		return false
+	return true
+
+
+func _hazard_drop_pos(kind: String) -> Vector2:
+	var fallback := ball.get_last_safe()
+	if kind != "water":
+		# OOB: last safe is fine; prefer fairway center at same depth if last safe is wet/oob.
+		if _is_dry_drop_spot(fallback):
+			return fallback
+	return _water_drop_pos(fallback)
+
+
+func _water_drop_pos(from: Vector2) -> Vector2:
+	## Relief: dry fairway-centerline spot so the next shot can advance.
+	## Avoids soft-lock when last_safe is left/right of island with only water lines to pin.
+	var from_along := _along_from_y(from.y)
+
+	# 1) Same depth: walk from `from` toward fairway center (lateral relief).
+	var fc_here := _fairway_center_at(from_along)
+	for i in 12:
+		var t := float(i + 1) / 12.0
+		var p: Vector2 = from.lerp(fc_here, t)
+		if _is_dry_drop_spot(p):
+			return p
+
+	# 2) Centerline from green-side toward tee — first dry approach tongue.
+	for i in 28:
+		var along := clampf(0.10 + float(i) / 27.0 * 0.88, 0.10, 0.98)
+		var p2 := _fairway_center_at(along)
+		if _is_dry_drop_spot(p2):
+			return p2
+
+	# 3) Step toward tee from current depth along center.
+	for step in 16:
+		var a := clampf(from_along + 0.03 * float(step + 1), 0.10, 0.98)
+		var p3 := _fairway_center_at(a)
+		if _is_dry_drop_spot(p3):
+			return p3
+
+	# 4) Tee as last resort.
+	if _is_dry_drop_spot(_tee_pos):
+		return _tee_pos
+	return from
 
 
 func _on_holed_out() -> void:

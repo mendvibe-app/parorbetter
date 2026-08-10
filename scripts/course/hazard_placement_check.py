@@ -117,6 +117,13 @@ def main() -> int:
     assert re.search(r'"force_cape"\s*:\s*true', GEN)
     assert "_use_sharp_dogleg" in CTRL  # Cape gated on sharp dogleg
 
+    # Island soft-lock fix: dry drop relief + approach tongue (not only last_safe).
+    assert "func _water_drop_pos" in CTRL
+    assert "func _hazard_drop_pos" in CTRL
+    assert "func _is_dry_drop_spot" in CTRL
+    assert "gap_half" in CTRL  # island bottom wings leave fairway gap
+    assert 'ball.reset_at(ball.get_last_safe(), "Fairway")' not in CTRL
+
     print("hazard_placement_check: ok")
     return 0
 
