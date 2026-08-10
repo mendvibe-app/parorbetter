@@ -52,10 +52,11 @@ def main() -> int:
     assert "_setup_shot_type_row" in HC
     assert "p_shot_type_override" in HC or "type_override" in HC
     assert "Flop" in HC
-    # 4-type row must size dynamically — fixed 360px clipped Flop off-screen.
-    assert "_shot_type_row_width" in HC
+    # Vertical column — no horizontal side-clip on 4 types.
+    assert "VBoxContainer" in HC
+    assert "_shot_type_col_height" in HC
+    assert "_SHOT_TYPE_COL_W" in HC
     assert "SIZE_EXPAND_FILL" in HC
-    assert "360.0" not in HC.split("func _park_shot_type_row")[1].split("func ")[0]
 
     assert eligible(260.0) == ["full"]
     assert eligible(175.0) == ["full"]  # 6-Iron
