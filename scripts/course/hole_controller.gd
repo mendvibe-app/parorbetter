@@ -1560,6 +1560,8 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	_sync_punch_btn()
 	_shot_type_manual = false
 	_sync_shot_type_picker()
+	# Re-park right chrome after punch visibility + shot-type column height known.
+	_park_change_club_btn()
 	# Putts: no wind. Flag tip carries green-book note (tap to read).
 	if is_putt:
 		_refresh_wind_indicator(false)
