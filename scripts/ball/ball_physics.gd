@@ -524,9 +524,19 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 
 
 ## Dampen path/spin on very short shots so sidespin can't outrun forward speed.
+## Playtest: full authority by ~55 yd (was 40) — soft 10–20 yd pitches keep mild shape
+## without half-distance outcomes under path ~0.2.
 static func short_shot_line_scale(total_yards: float) -> float:
-	# Full line authority by ~40 yd; at 3–8 yd (greenside pitch) keep a small miss only.
-	return clampf(total_yards / 40.0, 0.12, 1.0)
+	return clampf(total_yards / 55.0, 0.10, 1.0)
+
+
+## Cap hang time on short totals so LW loft doesn't apex ~40 on a 13 yd pitch.
+## Returns multiplier on raw air_time in (0,1]; playtest knob.
+static func short_shot_hang_scale(total_yards: float) -> float:
+	if total_yards >= 40.0:
+		return 1.0
+	# At ~13 yd ≈ 0.55; full hang restored by 40 yd.
+	return clampf(lerpf(0.42, 1.0, total_yards / 40.0), 0.42, 1.0)
 
 
 static func launch_velocity(
@@ -610,6 +620,8 @@ static func launch_velocity(
 		loft *= 1.35  ## open-face pop — playtest loft scale
 
 	var air_time := lerpf(0.55, 1.15, clampf(result.power, 0.0, 1.0)) * loft
+	# Soft short pitches/flops: raw LW loft × low power → ~1s hang + apex 40+ on 13 yd.
+	air_time *= short_shot_hang_scale(total_yards)
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
 	if lie == "Sand" and shot_type == "full":
 		air_frac = 0.55

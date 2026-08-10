@@ -488,10 +488,15 @@ func _process_flight(delta: float) -> void:
 	velocity += wind * delta * 6.0
 	# Curve offline relative to launch. Scale by forward speed so weak short pitches
 	# don't get absolute sidespin that reverse/sideways the ball (plan ~3 yd cases).
+	# Preserve airspeed when applying spin — additive lateral was bleeding forward
+	# progress on soft LW pitches (playtest: plan 13 yd pure / path −0.22 → actual ~6).
 	var flight_right := Vector2(-_launch_dir.y, _launch_dir.x)
+	var spd := velocity.length()
 	var along_spd := maxf(velocity.dot(_launch_dir), 0.0)
 	var spin_scale := clampf(along_spd / 180.0, 0.08, 1.0)
-	velocity += flight_right * spin * 28.0 * delta * spin_scale
+	if spd > 0.01 and absf(spin) > 0.0001:
+		velocity += flight_right * spin * 28.0 * delta * spin_scale
+		velocity = velocity.normalized() * spd
 	# Never allow flight to reverse past the pin/launch line from spin alone.
 	var along_after := velocity.dot(_launch_dir)
 	if along_after < along_spd * 0.15:
@@ -500,9 +505,11 @@ func _process_flight(delta: float) -> void:
 
 	var collision := move_and_collide(velocity * delta)
 	var along := _traveled_along()
+	var path_len := (global_position - _shot_origin).length()
 	var air_limit := _planned_distance_px * _air_fraction
 
-	if collision or t >= 1.0 or along >= air_limit:
+	# Land on along OR path length (curved flight) so timer alone can't truncate carry.
+	if collision or t >= 1.0 or along >= air_limit or path_len >= air_limit:
 		_begin_roll()
 
 

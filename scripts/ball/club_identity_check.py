@@ -89,12 +89,16 @@ def main() -> None:
     assert "flop" in PHYS
     assert "FLOP_MAX_YD" in PHYS
     assert "Lob Wedge" in PHYS
-    # Short-shot line damp — greenside path+1 must not reverse a 3 yd pitch.
+    # Short-shot line damp + hang cap (LW pitch plan 13 / actual 6 playtest).
     assert "static func short_shot_line_scale" in PHYS
     assert "short_shot_line_scale(total_yards)" in PHYS
-    assert "clampf(total_yards / 40.0, 0.12, 1.0)" in PHYS or "total_yards / 40.0" in PHYS
+    assert "short_shot_hang_scale" in PHYS
+    assert "total_yards / 55.0" in PHYS or "/ 55.0" in PHYS
     BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
     assert "spin_scale" in BALL and "along_spd" in BALL
+    # Speed-preserving curve — spin must not bleed airspeed on soft pitches.
+    assert "normalized() * spd" in BALL
+    assert "path_len" in BALL
 
     samples_w = [260, 235, 210, 190, 175, 160, 145, 130, 110, 95, 80, 65]
     airs = [air_distance_fraction(y) for y in samples_w]
