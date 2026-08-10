@@ -111,10 +111,12 @@ var _change_club_btn: BaseButton
 var _punch_btn: Button
 ## Trees only — low flight under canopy (apex carry + more roll).
 var _punch_mode: bool = false
-## Manual shot-type picker (aim phase): full / chip / pitch when club allows.
+## Manual shot-type picker (aim phase): full / chip / pitch / flop when club allows.
 var _shot_type_row: HBoxContainer
 var _chosen_shot_type: String = ""  ## live pick; empty until aim sync
 var _shot_type_manual: bool = false  ## true after player taps a type (don't auto-re-recommend)
+var _shot_type_park_top: float = 0.0
+var _shot_type_park_right: float = 16.0
 ## Practice reps left before the real swing (set on Confirm Aim from GameState).
 var _practice_reps_left: int = 0
 ## True when opening club select from aim — keep bearing, refit distance for new club.
@@ -1701,16 +1703,49 @@ func _setup_shot_type_row() -> void:
 	ui_layer.add_child(_shot_type_row)
 
 
-func _park_shot_type_row(top: float, right: float) -> void:
+func _park_shot_type_row(top: float, right: float, button_count: int = -1) -> void:
 	if _shot_type_row == null:
 		return
-	var w := 360.0  ## room for Full/Chip/Pitch/Flop on SW/LW
+	_shot_type_park_top = top
+	_shot_type_park_right = right
+	var n := button_count
+	if n < 1:
+		# Live children only (ignore queue_free'd); else reserve 4-type max.
+		n = 0
+		for c in _shot_type_row.get_children():
+			if is_instance_valid(c) and not c.is_queued_for_deletion():
+				n += 1
+		if n < 1:
+			n = 4
+	var w := _shot_type_row_width(n, right)
 	var h := UiScale.TOUCH_MIN * 0.55
 	_shot_type_row.set_anchors_preset(Control.PRESET_TOP_RIGHT)
 	_shot_type_row.offset_right = -right
 	_shot_type_row.offset_left = -right - w
 	_shot_type_row.offset_top = top
 	_shot_type_row.offset_bottom = top + h
+
+
+## Row width for n segment buttons — stays inside safe viewport (Flop must not clip).
+func _shot_type_row_width(n: int, right: float) -> float:
+	n = clampi(n, 1, 4)
+	var sep := 6.0
+	var m := UiScale.viewport_safe_margins(get_viewport()) if get_viewport() else Vector4.ZERO
+	var vp_w := 1080.0
+	if get_viewport():
+		vp_w = maxf(get_viewport().get_visible_rect().size.x, 320.0)
+	var left_m := m.x + 16.0
+	var max_w := maxf(vp_w - left_m - right, 200.0)
+	max_w = minf(max_w, 720.0)
+	var min_btn := 64.0 if n >= 4 else 72.0
+	var max_btn := 100.0
+	var btn_w := (max_w - sep * float(n - 1)) / float(n)
+	btn_w = clampf(btn_w, min_btn, max_btn)
+	var row_w := btn_w * float(n) + sep * float(n - 1)
+	if row_w > max_w + 0.5:
+		btn_w = maxf((max_w - sep * float(n - 1)) / float(n), 56.0)
+		row_w = minf(btn_w * float(n) + sep * float(n - 1), max_w)
+	return row_w
 
 
 func _hide_shot_type_row() -> void:
@@ -1779,14 +1814,23 @@ func _sync_shot_type_picker() -> void:
 		_chosen_shot_type = rec
 		_shot_type_manual = false
 	# Rebuild segment buttons (eligible set can change with club).
-	for c in _shot_type_row.get_children():
-		c.queue_free()
+	# Free immediately so park width isn't double-counting queue_free'd kids.
+	while _shot_type_row.get_child_count() > 0:
+		var old: Node = _shot_type_row.get_child(0)
+		_shot_type_row.remove_child(old)
+		old.free()
+	var n := eligible.size()
+	# 4 types: tighter min so Full/Chip/Pitch/Flop stay on-screen (was fixed 360 + 84px).
+	var min_w := 64.0 if n >= 4 else 72.0
+	var font_sz := 34 if n >= 4 else UiScale.CAPTION
 	for st in eligible:
 		var btn := Button.new()
 		btn.toggle_mode = true
 		btn.focus_mode = Control.FOCUS_NONE
-		btn.custom_minimum_size = Vector2(84, UiScale.TOUCH_MIN * 0.5)
-		btn.add_theme_font_size_override("font_size", UiScale.CAPTION)
+		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		btn.custom_minimum_size = Vector2(min_w, UiScale.TOUCH_MIN * 0.5)
+		btn.add_theme_font_size_override("font_size", font_sz)
+		btn.clip_text = false
 		var star := "★ " if st == rec else ""
 		btn.text = "%s%s" % [star, _shot_type_label(st)]
 		btn.button_pressed = st == _chosen_shot_type
@@ -1794,6 +1838,8 @@ func _sync_shot_type_picker() -> void:
 		btn.toggled.connect(_on_shot_type_toggled.bind(st))
 		_shot_type_row.add_child(btn)
 	_shot_type_row.visible = true
+	# Re-park with real button count so row width fits Flop (etc.) inside safe area.
+	_park_shot_type_row(_shot_type_park_top, _shot_type_park_right, n)
 
 
 func _on_shot_type_toggled(on: bool, st: String) -> void:
