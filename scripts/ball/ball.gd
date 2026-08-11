@@ -38,6 +38,10 @@ var _height: float = 0.0
 var _height_peak: float = 0.0
 ## Highest _height observed this flight (F1 debug; ≈ peak if full flight).
 var _height_max: float = 0.0
+## Phase 0 instrumentation — hang/carry/launch for harness cross-check (no gameplay use).
+var _hang_time_actual: float = 0.0  ## seconds in FLIGHT, set at _begin_roll
+var _carry_px_actual: float = 0.0  ## along-launch distance at first bounce
+var _launch_speed: float = 0.0  ## |velocity| after launch finalize
 ## Punch flight: can duck under canopy band (see tree collision).
 var _punch_flight: bool = false
 var _last_safe_pos: Vector2 = Vector2.ZERO
@@ -244,6 +248,9 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_height = 0.0
 	_height_peak = 0.0
 	_height_max = 0.0
+	_hang_time_actual = 0.0
+	_carry_px_actual = 0.0
+	_launch_speed = 0.0
 	_punch_flight = false
 	_is_putt = false
 	_is_perfect_shot = false
@@ -313,6 +320,8 @@ func launch(
 	_planned_distance_px = launch_data["travel_px"]
 	_landing_speed = launch_data["landing_speed"]
 	_air_fraction = launch_data["air_fraction"]
+	# After pin-align may rewrite velocity; capture magnitude for harness comparison.
+	_launch_speed = velocity.length()
 	_trail.clear_points()
 	_trail.position = Vector2.ZERO
 	_trail.modulate.a = 1.0
@@ -363,6 +372,19 @@ func flight_height_peak() -> float:
 func flight_height_max() -> float:
 	## Highest loft seen this flight (for F1 / tree-carry tuning).
 	return _height_max
+
+
+func flight_metrics() -> Dictionary:
+	## Post-shot instrumentation for the debug panel and harness cross-check.
+	return {
+		"apex_planned": _height_peak,
+		"apex_actual": _height_max,
+		"hang_time": _hang_time_actual,
+		"carry_px": _carry_px_actual,
+		"planned_px": _planned_distance_px,
+		"air_fraction": _air_fraction,
+		"launch_speed": _launch_speed,
+	}
 
 
 func get_last_safe() -> Vector2:
@@ -514,6 +536,8 @@ func _process_flight(delta: float) -> void:
 
 
 func _begin_roll() -> void:
+	_hang_time_actual = _air_timer
+	_carry_px_actual = _traveled_along()
 	_height = 0.0
 	state = State.ROLL
 	var speed := _landing_speed

@@ -2840,6 +2840,7 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		# Apex debug for tree-carry playtest (same units as canopy_h).
 		GameState.last_shot_metrics["height_peak"] = ball.flight_height_peak()
 		GameState.last_shot_metrics["height_max"] = ball.flight_height_max()
+		GameState.last_shot_metrics["flight"] = ball.flight_metrics()
 		# Panel owns the report; clearing Feedback avoids the stacked double-text bug.
 		feedback.text = ""
 		if shot_result_panel and shot_result_panel.has_method("show_final"):

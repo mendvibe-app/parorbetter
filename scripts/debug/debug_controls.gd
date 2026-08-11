@@ -13,6 +13,7 @@ signal reload_hole
 @onready var hole_spin: SpinBox = $Panel/Margin/Root/Scroll/VBox/HoleRow/HoleSpin
 @onready var lives_spin: SpinBox = $Panel/Margin/Root/Scroll/VBox/LivesRow/LivesSpin
 var practice_spins: Dictionary = {}  ## shot_type → SpinBox
+var _elevation_spark: ElevationSparkline  ## Phase 0 side-elevation profile
 @onready var timing_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/TimingRow/TimingSlider
 @onready var wind_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/WindRow/WindSlider
 @onready var fairway_slider: HSlider = $Panel/Margin/Root/Scroll/VBox/FairwayRow/FairwaySlider
@@ -59,6 +60,7 @@ func _ready() -> void:
 	_setup_practice_count_row()
 	_setup_haptic_smoke_btn()
 	_setup_copy_metrics_btn()
+	_setup_elevation_sparkline()
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
@@ -275,6 +277,32 @@ func _process(_delta: float) -> void:
 				h_peak if h_peak >= 0.0 else 0.0,
 				h_max if h_max >= 0.0 else 0.0,
 			]
+		var flight: Dictionary = {}
+		if m.get("flight") is Dictionary:
+			flight = m["flight"] as Dictionary
+		if not flight.is_empty():
+			var carry_px := float(flight.get("carry_px", 0.0))
+			var planned_px := float(flight.get("planned_px", 0.0))
+			var air_frac := float(flight.get("air_fraction", 0.0))
+			var hang := float(flight.get("hang_time", 0.0))
+			var launch_spd := float(flight.get("launch_speed", 0.0))
+			var carry_yd := BallPhysics.pixels_to_yards(carry_px)
+			var roll_yd := BallPhysics.pixels_to_yards(maxf(planned_px * (1.0 - air_frac), 0.0))
+			height_line += "\nCarry %.0f yd · roll %.0f yd · hang %.2fs · launch %.0f px/s" % [
+				carry_yd, roll_yd, hang, launch_spd
+			]
+			if _elevation_spark:
+				var contact_s := str(m.get("contact", "GOOD")).to_upper()
+				var actual_yd := float(m.get("actual_yd", 0.0)) if m.has("actual_yd") else 0.0
+				_elevation_spark.set_profile(
+					carry_px,
+					float(flight.get("apex_actual", h_max if h_max >= 0.0 else 0.0)),
+					planned_px,
+					actual_yd,
+					contact_s
+				)
+		elif _elevation_spark:
+			_elevation_spark.clear_profile()
 		var path_v := float(m.get("path_error", 0.0))
 		var swipe_v := float(t.get("swing_shape", 0.0))
 		var pull_v := float(t.get("transition_pull", 0.0))
@@ -364,3 +392,135 @@ func _apply_tweaks() -> void:
 
 func _on_debug_button_pressed() -> void:
 	panel.visible = not panel.visible
+
+
+func _setup_elevation_sparkline() -> void:
+	## Phase 0: side-elevation shot profile under Metrics (code-built, no .tscn edit).
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	if vbox == null:
+		return
+	var spark := ElevationSparkline.new()
+	spark.name = "ElevationSparkline"
+	spark.custom_minimum_size = Vector2(260, 90)
+	spark.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var metrics_node := vbox.get_node_or_null("Metrics")
+	vbox.add_child(spark)
+	if metrics_node:
+		var insert_at := metrics_node.get_index() + 1
+		var copy_btn := vbox.get_node_or_null("CopyMetricsBtn")
+		if copy_btn:
+			insert_at = copy_btn.get_index() + 1
+		vbox.move_child(spark, insert_at)
+	_elevation_spark = spark
+
+
+## Side-elevation profile of the last shot (schematic sin arc, not a live trace).
+class ElevationSparkline extends Control:
+	var _carry_px: float = 0.0
+	var _apex: float = 0.0
+	var _planned_px: float = 0.0
+	var _actual_yd: float = 0.0
+	var _contact: String = "GOOD"
+	var _has: bool = false
+
+	func set_profile(
+		carry_px: float, apex: float, planned_px: float, actual_yd: float, contact: String
+	) -> void:
+		_carry_px = maxf(carry_px, 0.0)
+		_apex = maxf(apex, 0.0)
+		_planned_px = maxf(planned_px, 0.0)
+		_actual_yd = maxf(actual_yd, 0.0)
+		_contact = contact
+		_has = _carry_px > 1.0 or _apex > 0.0
+		queue_redraw()
+
+	func clear_profile() -> void:
+		_has = false
+		queue_redraw()
+
+	func _draw() -> void:
+		var r := Rect2(Vector2.ZERO, size)
+		draw_rect(r, Color(0.08, 0.1, 0.09, 0.95), true)
+		draw_rect(r, Color(0.25, 0.3, 0.28, 0.9), false, 1.0)
+		var pad := 8.0
+		var plot := Rect2(pad, pad, maxf(size.x - pad * 2.0, 4.0), maxf(size.y - pad * 2.0, 4.0))
+		var canopies := [25.0, 38.0, 42.0]
+		var labels := ["short", "pine", "tall"]
+		var y_max := 48.0
+		if _has:
+			y_max = maxf(y_max, _apex * 1.15)
+		# Canopy reference lines
+		for i in canopies.size():
+			var h: float = canopies[i]
+			var ty := plot.position.y + plot.size.y * (1.0 - clampf(h / y_max, 0.0, 1.0))
+			var col := Color(0.55, 0.55, 0.5, 0.55)
+			_draw_dashed_h(plot.position.x, plot.position.x + plot.size.x, ty, col)
+			draw_string(
+				UiScale.FONT,
+				Vector2(plot.position.x + 2.0, ty - 2.0),
+				"%s %.0f" % [labels[i], h],
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1,
+				11,
+				col
+			)
+		if not _has:
+			draw_string(
+				UiScale.FONT,
+				Vector2(plot.position.x + 4.0, plot.position.y + plot.size.y * 0.5),
+				"elevation profile — hit a shot",
+				HORIZONTAL_ALIGNMENT_LEFT,
+				-1,
+				12,
+				Color(0.6, 0.65, 0.6, 0.7)
+			)
+			return
+		# Faint planned-total marker (plan vs actual thesis)
+		var x_span := maxf(_carry_px, maxf(_planned_px, 1.0))
+		if _planned_px > 1.0:
+			var px := plot.position.x + plot.size.x * clampf(_planned_px / x_span, 0.0, 1.0)
+			draw_line(
+				Vector2(px, plot.position.y),
+				Vector2(px, plot.position.y + plot.size.y),
+				Color(0.7, 0.7, 0.75, 0.35),
+				1.0
+			)
+		# Curve: sin profile peaking at apex_actual over carry_px (schematic profile)
+		var curve_col := Color(0.95, 0.85, 0.25, 0.95)  # GOOD amber
+		match _contact:
+			"PERFECT":
+				curve_col = Color(0.35, 0.92, 0.45, 0.95)
+			"GOOD":
+				curve_col = Color(0.95, 0.85, 0.25, 0.95)
+			_:
+				curve_col = Color(0.95, 0.35, 0.3, 0.95)
+		var pts := PackedVector2Array()
+		var n := 48
+		for i in n + 1:
+			var t := float(i) / float(n)
+			var x := plot.position.x + plot.size.x * t * clampf(_carry_px / x_span, 0.0, 1.0)
+			var h := sin(t * PI) * _apex
+			var y := plot.position.y + plot.size.y * (1.0 - clampf(h / y_max, 0.0, 1.0))
+			pts.append(Vector2(x, y))
+		if pts.size() >= 2:
+			draw_polyline(pts, curve_col, 2.0, true)
+		draw_string(
+			UiScale.FONT,
+			Vector2(plot.position.x + 2.0, plot.position.y + plot.size.y - 2.0),
+			"profile carry %.0fpx apex %.1f  (planned %.0fpx)" % [_carry_px, _apex, _planned_px],
+			HORIZONTAL_ALIGNMENT_LEFT,
+			-1,
+			10,
+			Color(0.75, 0.8, 0.75, 0.75)
+		)
+
+	func _draw_dashed_h(x0: float, x1: float, y: float, col: Color) -> void:
+		var x := x0
+		var on := true
+		var dash := 4.0
+		while x < x1:
+			var x2 := minf(x + dash, x1)
+			if on:
+				draw_line(Vector2(x, y), Vector2(x2, y), col, 1.0)
+			on = not on
+			x = x2

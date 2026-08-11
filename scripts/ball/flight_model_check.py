@@ -1,0 +1,490 @@
+#!/usr/bin/env python3
+"""Flight model harness — offline port of launch_velocity + apex, constants parsed from .gd.
+
+Follows scripts/**/*_check.py convention (AGENTS.md). Golden expected ranges encode
+real golf (frozen backlog), not current pass rate. Stock fulls use power 0.92 (pocket hi).
+
+Phase 0 models pre-rebuild physics: loft-based air_time and the ball.gd
+(28.0 + speed * 0.02) * loft apex formula. Phase 1 replaces the model portion.
+
+Usage:
+  python scripts/ball/flight_model_check.py
+  python scripts/ball/flight_model_check.py --chart
+  python scripts/ball/flight_model_check.py --shot Driver 0.88 full Fairway GOOD
+"""
+from __future__ import annotations
+
+import math
+import re
+import sys
+from pathlib import Path
+
+DIR = Path(__file__).resolve().parent
+PHYS = (DIR / "ball_physics.gd").read_text(encoding="utf-8")
+BALL = (DIR / "ball.gd").read_text(encoding="utf-8")
+
+STOCK_POWER = 0.92  # POWER_POCKET_HI — stock swing, not double-taxed mash
+
+
+def _f(src: str, pattern: str) -> float:
+    m = re.search(pattern, src)
+    assert m, f"missing constant / pattern: {pattern}"
+    return float(m.group(1))
+
+
+def _require(src: str, needle: str) -> None:
+    assert needle in src, f"missing in source: {needle!r}"
+
+
+_require(PHYS, "const BAG:")
+_require(PHYS, "static func launch_velocity")
+_require(PHYS, "static func air_distance_fraction")
+_require(PHYS, "static func force_factor")
+_require(PHYS, "static func short_shot_hang_scale")
+# Phase 0: loft-era air_time (not apex-primary hang_time).
+_require(PHYS, "lerpf(0.55, 1.15,")
+_require(PHYS, "short_shot_hang_scale(total_yards)")
+# ball.gd still owns apex via 28.0 formula; instrumentation present.
+_require(BALL, "(28.0 + velocity.length() * 0.02)")
+_require(BALL, "func flight_metrics()")
+_require(BALL, "var _hang_time_actual")
+_require(BALL, "var _carry_px_actual")
+_require(BALL, "var _launch_speed")
+# Phase 1 markers must not be present yet.
+assert "static func apex_for" not in PHYS
+assert "static func hang_time" not in PHYS
+assert "const REAL_APEX_FT" not in PHYS
+assert 'launch_data.get("apex"' not in BALL
+
+PX_PER_YARD = _f(PHYS, r"const PX_PER_YARD\s*:=\s*([0-9.]+)")
+AIR_DISTANCE_FRACTION = _f(PHYS, r"const AIR_DISTANCE_FRACTION\s*:=\s*([0-9.]+)")
+POWER_POCKET_LO = _f(PHYS, r"const POWER_POCKET_LO\s*:=\s*([0-9.]+)")
+POWER_POCKET_HI = _f(PHYS, r"const POWER_POCKET_HI\s*:=\s*([0-9.]+)")
+FLOP_MAX_YD = _f(PHYS, r"const FLOP_MAX_YD\s*:=\s*([0-9.]+)")
+PUNCH_LOFT_SCALE = _f(PHYS, r"const PUNCH_LOFT_SCALE\s*:=\s*([0-9.]+)")
+PUNCH_AIR_FRAC_SCALE = _f(PHYS, r"const PUNCH_AIR_FRAC_SCALE\s*:=\s*([0-9.]+)")
+MASH_POWER_LERP = _f(PHYS, r"power_mul \*= lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
+DIST_MUL_LO = _f(PHYS, r"var dist_mul := lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
+HANG_LO = _f(PHYS, r"return clampf\(lerpf\(([0-9.]+),\s*1\.0,\s*total_yards / 40\.0\)")
+HANG_FULL_YD = _f(PHYS, r"if total_yards >= ([0-9.]+):\s*\n\s*return 1\.0")
+
+_chip_m = re.search(
+    r'shot_type == "chip":[\s\S]*?lerpf\(([0-9.]+),\s*([0-9.]+),[\s\S]*?clampf\([^,]+,\s*([0-9.]+),\s*([0-9.]+)\)',
+    PHYS,
+)
+assert _chip_m, "chip air_distance_fraction lerp/clamp not found"
+CHIP_AIR_HI, CHIP_AIR_LO = float(_chip_m.group(1)), float(_chip_m.group(2))
+CHIP_CLAMP_LO, CHIP_CLAMP_HI = float(_chip_m.group(3)), float(_chip_m.group(4))
+
+_flop_m = re.search(
+    r'shot_type == "flop":[\s\S]*?lerpf\(([0-9.]+),\s*([0-9.]+),[\s\S]*?clampf\([^,]+,\s*([0-9.]+),\s*([0-9.]+)\)',
+    PHYS,
+)
+assert _flop_m, "flop air_distance_fraction not found"
+FLOP_AIR_A, FLOP_AIR_B = float(_flop_m.group(1)), float(_flop_m.group(2))
+FLOP_CLAMP_LO, FLOP_CLAMP_HI = float(_flop_m.group(3)), float(_flop_m.group(4))
+
+CONTACT_MUL = {
+    "PERFECT": _f(PHYS, r"ContactQuality\.PERFECT:\s*\n\s*return ([0-9.]+)"),
+    "GOOD": _f(PHYS, r"ContactQuality\.GOOD:\s*\n\s*return ([0-9.]+)"),
+    "THIN": _f(PHYS, r"ContactQuality\.THIN:\s*\n\s*return ([0-9.]+)"),
+    "FAT": _f(PHYS, r"ContactQuality\.FAT:\s*\n\s*return ([0-9.]+)"),
+    "MISS": _f(PHYS, r"ContactQuality\.MISS:\s*\n\s*return ([0-9.]+)"),
+}
+LIE_MUL = {
+    "Tee": 1.0,
+    "Fairway": 1.0,
+    "Rough": _f(PHYS, r"const ROUGH_MUL_AVERAGE\s*:=\s*([0-9.]+)"),
+    "Sand": _f(PHYS, r'"Sand":\s*\n\s*return ([0-9.]+)'),
+    "Trees": _f(PHYS, r'"Trees":\s*\n\s*return ([0-9.]+)\s*# punch'),
+}
+
+_bag_entries = re.findall(
+    r'\{"name":\s*"([^"]+)",\s*"max_yards":\s*([0-9.]+),\s*"loft_mul":\s*([0-9.]+)\}',
+    PHYS,
+)
+assert len(_bag_entries) >= 12, f"BAG parse incomplete: {len(_bag_entries)}"
+BAG = [(n, float(m), float(l)) for n, m, l in _bag_entries]
+BY_NAME = {n: (m, l) for n, m, l in BAG}
+CANOPY = {"short": 25.0, "pine": 38.0, "tall": 42.0}
+
+
+def clamp(v: float, lo: float, hi: float) -> float:
+    return max(lo, min(hi, v))
+
+
+def lerp(a: float, b: float, t: float) -> float:
+    return a + (b - a) * t
+
+
+def force_factor(power: float, shot_type: str = "full") -> float:
+    p = clamp(power, 0.0, 1.0)
+    if p > POWER_POCKET_HI:
+        return clamp((p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI), 0.0, 1.0)
+    if p < POWER_POCKET_LO:
+        if shot_type not in ("full", "punch", ""):
+            return 0.0
+        return clamp((POWER_POCKET_LO - p) / POWER_POCKET_LO, 0.0, 1.0)
+    return 0.0
+
+
+def air_fraction_full(m: float) -> float:
+    if m >= 245.0:
+        return 0.68
+    if m >= 180.0:
+        return 0.72
+    if m >= 150.0:
+        return AIR_DISTANCE_FRACTION
+    if m >= 120.0:
+        return 0.84
+    if m >= 95.0:
+        return 0.90
+    if m >= 75.0:
+        return 0.93
+    return 0.96
+
+
+def air_distance_fraction(m: float, shot_type: str = "full") -> float:
+    full = air_fraction_full(m)
+    if shot_type == "chip":
+        return clamp(
+            lerp(CHIP_AIR_HI, CHIP_AIR_LO, clamp((m - 85.0) / 50.0, 0.0, 1.0)),
+            CHIP_CLAMP_LO,
+            CHIP_CLAMP_HI,
+        )
+    if shot_type == "pitch":
+        return clamp(lerp(full, 0.72, 0.55), 0.68, 0.82)
+    if shot_type == "flop":
+        return clamp(
+            lerp(FLOP_AIR_A, FLOP_AIR_B, clamp((110.0 - m) / 40.0, 0.0, 1.0)),
+            FLOP_CLAMP_LO,
+            FLOP_CLAMP_HI,
+        )
+    if shot_type == "punch":
+        return clamp(full * PUNCH_AIR_FRAC_SCALE, 0.52, 0.78)
+    return full
+
+
+def short_shot_hang_scale(total_yards: float) -> float:
+    if total_yards >= HANG_FULL_YD:
+        return 1.0
+    return clamp(lerp(HANG_LO, 1.0, total_yards / 40.0), HANG_LO, 1.0)
+
+
+def launch(
+    club_max: float,
+    loft_mul: float,
+    power: float,
+    shot_type: str = "full",
+    lie: str = "Fairway",
+    contact: str = "GOOD",
+    path_error: float = 0.0,
+) -> dict:
+    """Mirror launch_velocity air/distance + ball.gd loft×(28+speed) apex."""
+    force = force_factor(power, shot_type)
+    power_mul = power * LIE_MUL.get(lie, 1.0) * CONTACT_MUL[contact]
+    if force > 0.0 and power > POWER_POCKET_HI:
+        power_mul *= lerp(1.0, MASH_POWER_LERP, force)
+    total_yards = club_max * power_mul
+    if force > 0.0:
+        dist_mul = lerp(1.0, DIST_MUL_LO, force)
+        dist_mul *= 1.0 + clamp(path_error, -1.0, 1.0) * force * 0.04
+        total_yards *= dist_mul
+    if shot_type == "flop":
+        total_yards = min(total_yards, FLOP_MAX_YD)
+    total_px = total_yards * PX_PER_YARD
+
+    loft = 0.9 * loft_mul
+    if contact == "THIN":
+        loft = 0.55 * loft_mul
+    elif contact == "FAT":
+        loft = 1.05 * loft_mul
+    if shot_type == "punch":
+        loft *= PUNCH_LOFT_SCALE
+    elif shot_type == "flop":
+        loft *= 1.35
+    loft = clamp(loft, 0.35, 1.55)
+
+    # Pre-Phase-1: loft-based hang + short-shot hang scale.
+    air_time = lerp(0.55, 1.15, clamp(power, 0.0, 1.0)) * loft
+    air_time *= short_shot_hang_scale(total_yards)
+
+    air_frac = air_distance_fraction(club_max, shot_type)
+    if lie == "Sand" and shot_type == "full":
+        air_frac = 0.55
+
+    air_px = total_px * air_frac
+    base_speed = air_px / max(air_time, 0.05)
+    # ball.gd: _height_peak = (28.0 + velocity.length() * 0.02) * loft_h
+    apex_px = (28.0 + base_speed * 0.02) * loft
+    roll_px = total_px * (1.0 - air_frac)
+    landing_speed = math.sqrt(2.0 * 144.0 * roll_px) if roll_px > 1.0 else 0.0
+    return {
+        "total_yd": total_yards,
+        "carry_yd": air_px / PX_PER_YARD,
+        "roll_yd": roll_px / PX_PER_YARD,
+        "air_time": air_time,
+        "speed_px_s": base_speed,
+        "apex_px": apex_px,
+        "apex_yd": apex_px / PX_PER_YARD,
+        "landing_speed": landing_speed,
+        "air_frac": air_frac,
+        "loft": loft,
+    }
+
+
+GOLDEN = [
+    ("Driver stock", "Driver", STOCK_POWER, "full", "carry_yd", 250.0, 275.0),
+    ("Driver stock", "Driver", STOCK_POWER, "full", "apex_yd", 28.0, 40.0),
+    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "carry_yd", 160.0, 180.0),
+    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "apex_yd", 28.0, 36.0),
+    ("PW stock", "Pitching Wedge", STOCK_POWER, "full", "apex_yd", 26.0, 34.0),
+    ("SW 50yd pitch", "Sand Wedge", 50.0 / 80.0, "pitch", "apex_yd", 12.0, 22.0),
+    ("SW 20yd pitch", "Sand Wedge", 20.0 / 80.0, "pitch", "apex_yd", 5.0, 12.0),
+    ("SW 8yd chip", "Sand Wedge", 8.0 / 80.0, "chip", "apex_yd", 1.0, 5.0),
+    ("SW 3yd chip", "Sand Wedge", 3.0 / 80.0, "chip", "apex_yd", 0.5, 3.0),
+    ("Driver > pine", "Driver", STOCK_POWER, "full", "apex_px", 45.0, 200.0),
+    ("7i > pine", "7-Iron", STOCK_POWER, "full", "apex_px", 45.0, 200.0),
+    ("Punch < short", "7-Iron", 0.80, "punch", "apex_px", 0.0, 22.0),
+]
+
+
+def run_golden() -> int:
+    print("GOLDEN SHOTS  (expected = real-golf target, not current behaviour)")
+    print(f"  stock power for fulls = {STOCK_POWER} (POWER_POCKET_HI={POWER_POCKET_HI})")
+    print("-" * 74)
+    fails = 0
+    for label, club, power, st, metric, lo, hi in GOLDEN:
+        m, lm = BY_NAME[club]
+        val = launch(m, lm, power, st)[metric]
+        ok = lo <= val <= hi
+        if not ok:
+            fails += 1
+        print(
+            f"  {'PASS' if ok else 'FAIL'}  {label:16} {metric:10} "
+            f"{val:8.1f}   want {lo:.1f}-{hi:.1f}"
+        )
+    print("-" * 74)
+    print(f"  {len(GOLDEN) - fails}/{len(GOLDEN)} passing\n")
+    return fails
+
+
+def run_table() -> None:
+    print(f"FULL BAG — {STOCK_POWER:.0%} power (stock), fairway, GOOD contact")
+    print("-" * 74)
+    print(
+        f"{'club':16}{'total':>7}{'carry':>7}{'roll':>7}{'airT':>7}"
+        f"{'speed':>8}{'apex px':>9}{'apex yd':>9}"
+    )
+    for name, m, lm in BAG:
+        r = launch(m, lm, STOCK_POWER)
+        print(
+            f"{name:16}{r['total_yd']:7.0f}{r['carry_yd']:7.0f}{r['roll_yd']:7.0f}"
+            f"{r['air_time']:7.2f}{r['speed_px_s']:8.0f}"
+            f"{r['apex_px']:9.1f}{r['apex_yd']:9.1f}"
+        )
+    print("\nSHORT GAME — Sand Wedge, fairway, GOOD contact")
+    print("-" * 74)
+    print(
+        f"{'shot':16}{'total':>7}{'carry':>7}{'roll':>7}{'airT':>7}"
+        f"{'speed':>8}{'apex px':>9}{'apex yd':>9}"
+    )
+    m, lm = BY_NAME["Sand Wedge"]
+    for label, yd, st in [
+        ("3 yd chip", 3, "chip"),
+        ("8 yd chip", 8, "chip"),
+        ("15 yd chip", 15, "chip"),
+        ("20 yd pitch", 20, "pitch"),
+        ("40 yd pitch", 40, "pitch"),
+        ("full stock", m * STOCK_POWER, "full"),
+    ]:
+        pwr = STOCK_POWER if st == "full" else yd / m
+        r = launch(m, lm, pwr, st)
+        print(
+            f"{label:16}{r['total_yd']:7.1f}{r['carry_yd']:7.1f}{r['roll_yd']:7.1f}"
+            f"{r['air_time']:7.2f}{r['speed_px_s']:8.0f}"
+            f"{r['apex_px']:9.1f}{r['apex_yd']:9.1f}"
+        )
+    print("\nCANOPY CLEARANCE — stock power")
+    print("-" * 74)
+    for name, m, lm in BAG:
+        a = launch(m, lm, STOCK_POWER)["apex_px"]
+        marks = "  ".join(
+            f"{k}({v:.0f}) {'OK ' if a > v else 'NO '}" for k, v in CANOPY.items()
+        )
+        print(f"{name:16} apex {a:6.1f}px   {marks}")
+    print()
+
+
+def make_chart() -> None:
+    import matplotlib
+
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    fig, ax = plt.subplots(figsize=(11, 5.5))
+    shots = [
+        ("Driver stock", "Driver", STOCK_POWER, "full", "#2b6cb0"),
+        ("7-Iron stock", "7-Iron", STOCK_POWER, "full", "#2f855a"),
+        ("PW stock", "Pitching Wedge", STOCK_POWER, "full", "#b7791f"),
+        ("SW 3yd chip", "Sand Wedge", 3 / 80.0, "chip", "#c53030"),
+    ]
+    for label, club, power, st, color in shots:
+        m, lm = BY_NAME[club]
+        r = launch(m, lm, power, st)
+        carry_px = r["carry_yd"] * PX_PER_YARD
+        xs = [carry_px * i / 200 for i in range(201)]
+        ys = [math.sin((x / max(carry_px, 0.01)) * math.pi) * r["apex_px"] for x in xs]
+        ax.plot(
+            xs,
+            ys,
+            color=color,
+            lw=2.2,
+            label=f"{label} — carry {r['carry_yd']:.0f} yd, apex {r['apex_px']:.0f} px",
+        )
+    for k, v in CANOPY.items():
+        ax.axhline(v, ls="--", lw=1, color="#888")
+        ax.text(2, v + 0.8, f"{k} canopy ({v:.0f})", fontsize=8, color="#666")
+    ax.set_xlabel("distance downrange (px)")
+    ax.set_ylabel("height (px)")
+    ax.set_title("Phase 0 model — trajectory profiles (flight_model_check)")
+    ax.set_xlim(0, 120)
+    ax.legend(fontsize=9, loc="upper right")
+    ax.grid(alpha=0.2)
+    fig.tight_layout()
+    out = DIR / "trajectory_current.png"
+    fig.savefig(out, dpi=130)
+    print(f"chart written: {out}")
+
+
+def verify_live_constants_reflected() -> None:
+    assert abs(PX_PER_YARD - 2.25) < 1e-9
+    assert abs(POWER_POCKET_HI - 0.92) < 1e-9
+    assert abs(CONTACT_MUL["PERFECT"] - 1.06) < 1e-9
+    assert any(n == "Lob Wedge" for n, _, _ in BAG)
+    assert any(n == "Sand Wedge" and abs(m - 80.0) < 0.01 for n, m, _ in BAG)
+    chip_sw = air_distance_fraction(80.0, "chip")
+    assert 0.20 <= chip_sw <= 0.33, chip_sw
+    assert force_factor(STOCK_POWER, "full") == 0.0
+    assert force_factor(1.0, "full") > 0.99
+    assert short_shot_hang_scale(13.0) < 0.75
+    assert short_shot_hang_scale(50.0) == 1.0
+    r = launch(80.0, 1.55, 0.3, "flop")
+    assert r["total_yd"] <= FLOP_MAX_YD + 1e-6
+    # Phase 0 model: loft-based hang; short chips still ride the 28.0 floor (high apex).
+    chip = launch(80.0, 1.55, 3.0 / 80.0, "chip")
+    dr = launch(260.0, 0.62, STOCK_POWER, "full")
+    assert chip["apex_px"] > 10.0, chip["apex_px"]  # 28*loft floor — known backlog
+    assert dr["air_time"] > 0.4
+    punch = launch(160.0, 1.05, 0.80, "punch")
+    assert punch["apex_px"] <= 22.0, punch["apex_px"]
+    print(
+        f"flight_model_check: constants ok bag={len(BAG)} "
+        f"chip_air_sw={chip_sw:.2f} model=loft+28.0 "
+        f"dr_apex={dr['apex_px']:.1f} chip3_apex={chip['apex_px']:.1f}"
+    )
+
+
+def resolve_club(name: str) -> str:
+    """Exact BAG name, case-insensitive match, or common short aliases."""
+    if name in BY_NAME:
+        return name
+    lower = {n.lower(): n for n in BY_NAME}
+    if name.lower() in lower:
+        return lower[name.lower()]
+    aliases = {
+        "pw": "Pitching Wedge",
+        "gw": "Gap Wedge",
+        "sw": "Sand Wedge",
+        "lw": "Lob Wedge",
+        "dr": "Driver",
+        "3w": "3-Wood",
+        "hy": "Hybrid",
+        "5i": "5-Iron",
+        "6i": "6-Iron",
+        "7i": "7-Iron",
+        "8i": "8-Iron",
+        "9i": "9-Iron",
+    }
+    key = name.lower().replace(" ", "")
+    if key in aliases and aliases[key] in BY_NAME:
+        return aliases[key]
+    raise SystemExit(
+        f"unknown club {name!r}; use a BAG name e.g. Driver, 7-Iron, Pitching Wedge, Sand Wedge"
+    )
+
+
+def run_shot_lookup(argv: list[str]) -> int:
+    """One-shot lookup: --shot <club> <power> <type> <lie> <contact>"""
+    if len(argv) < 5:
+        print(
+            "usage: python scripts/ball/flight_model_check.py --shot "
+            "<club> <power 0-1> <type> <lie> <contact>\n"
+            "  e.g. --shot Driver 0.88 full Fairway GOOD"
+        )
+        return 1
+    club_s, power_s, shot_type, lie, contact = (
+        argv[0],
+        argv[1],
+        argv[2],
+        argv[3],
+        argv[4],
+    )
+    club = resolve_club(club_s)
+    try:
+        power = float(power_s)
+    except ValueError:
+        print(f"power must be a float 0-1, got {power_s!r}")
+        return 1
+    if not (0.0 <= power <= 1.0):
+        print(f"power out of range [0,1]: {power}")
+        return 1
+    if contact not in CONTACT_MUL:
+        print(f"contact must be one of {sorted(CONTACT_MUL)}; got {contact!r}")
+        return 1
+    if lie not in LIE_MUL:
+        print(f"lie must be one of {sorted(LIE_MUL)}; got {lie!r}")
+        return 1
+    m, lm = BY_NAME[club]
+    r = launch(m, lm, power, shot_type, lie, contact)
+    print(
+        f"SHOT  {club}  power={power:.3f}  type={shot_type}  lie={lie}  contact={contact}"
+    )
+    print("-" * 74)
+    print(
+        f"{'club':16}{'total':>7}{'carry':>7}{'roll':>7}{'airT':>7}"
+        f"{'speed':>8}{'apex px':>9}{'apex yd':>9}"
+    )
+    print(
+        f"{club:16}{r['total_yd']:7.1f}{r['carry_yd']:7.1f}{r['roll_yd']:7.1f}"
+        f"{r['air_time']:7.2f}{r['speed_px_s']:8.0f}"
+        f"{r['apex_px']:9.1f}{r['apex_yd']:9.1f}"
+    )
+    print(
+        f"  hang={r['air_time']:.3f}s  launch={r['speed_px_s']:.1f} px/s  "
+        f"air_frac={r['air_frac']:.3f}"
+    )
+    return 0
+
+
+def main() -> int:
+    if "--shot" in sys.argv:
+        i = sys.argv.index("--shot")
+        return run_shot_lookup(sys.argv[i + 1 :])
+
+    verify_live_constants_reflected()
+    run_table()
+    fails = run_golden()
+    if "--chart" in sys.argv:
+        try:
+            make_chart()
+        except ImportError:
+            print("matplotlib not installed — skip --chart")
+    print(
+        f"flight_model_check: ok (goldens {len(GOLDEN) - fails}/{len(GOLDEN)} PASS — backlog expected)"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
