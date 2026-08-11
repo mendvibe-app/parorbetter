@@ -86,12 +86,22 @@ static func base_tolerance(shot_type: String) -> float:
 ## Minimum backswing/follow-through length (fraction of pad size.y) to avoid the
 ## balance() short-swing penalty. Single source of truth — grading and the pad's
 ## drawn floor markers (tempo_gesture.gd) both read from here.
+## Punch matches short-lane geometry (0.10/0.04) so abbreviated strokes aren't
+## double-taxed against a full-swing floor after the 2:1 target fix.
 static func bs_floor(shot_type: String) -> float:
-	return 0.10 if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else 0.18
+	return (
+		0.10
+		if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+		else 0.18
+	)
 
 
 static func ft_floor(shot_type: String) -> float:
-	return 0.04 if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else 0.08
+	return (
+		0.04
+		if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+		else 0.08
+	)
 
 
 static func ratio(sample: Dictionary) -> float:

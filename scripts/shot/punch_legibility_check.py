@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
-"""Punch legibility: 2:1 target, TOL_FULL, guide short, aim under-band, balance measure.
+"""Punch legibility: 2:1 target, TOL_FULL, short-lane geometry, aim under-band.
 
-Does not change bs_floor / balance constants — only measures whether a realistic
-abbreviated punch backswing is undone by full-pad balance penalties after the
-tempo target fix.
+Contracts: punch target 2:1, tolerance TOL_FULL, pad through hand-speed matches
+pitch (short lane), not full. Balance floors match short lane (0.10/0.04).
 """
 from __future__ import annotations
 
@@ -30,6 +29,9 @@ BAND_THIN_FAT = 1.85
 GUIDE_BACK_FULL = 0.75
 GUIDE_BACK_SHORT = 0.54
 TREES_TIMING = 0.62  # BallPhysics.lie_timing_scale("Trees")
+# Through hand-speed contract: short-lane (0.50 H) / (GUIDE_BACK_SHORT / 2.0) = 1.85 H/s
+HAND_SPEED_SHORT = 0.50 / (GUIDE_BACK_SHORT / TARGET_SHORT)  # ≈ 1.85185
+HAND_SPEED_FULL = 0.62 / (GUIDE_BACK_FULL / TARGET_FULL)  # ≈ 2.48
 
 
 def target_ratio(shot_type: str) -> float:
@@ -47,15 +49,37 @@ def base_tolerance(shot_type: str) -> float:
 
 
 def bs_floor(shot_type: str) -> float:
-    return 0.10 if shot_type in ("putt", "pitch", "flop") else 0.18
+    return 0.10 if shot_type in ("putt", "pitch", "flop", "punch") else 0.18
 
 
 def ft_floor(shot_type: str) -> float:
-    return 0.04 if shot_type in ("putt", "pitch", "flop") else 0.08
+    return 0.04 if shot_type in ("putt", "pitch", "flop", "punch") else 0.08
+
+
+def lane_frac(shot_type: str) -> float:
+    """Pad address→top length as fraction of pad height (tempo_gesture hints)."""
+    # putt 0.22→0.92 = 0.70; chip 0.20→0.85 = 0.65; short-lane 0.30→0.80 = 0.50; full 0.30→0.92 = 0.62
+    if shot_type in ("pitch", "flop", "punch"):
+        return 0.50
+    if shot_type == "chip":
+        return 0.65
+    if shot_type == "putt":
+        return 0.70
+    return 0.62  # full
+
+
+def guide_back_sec(shot_type: str) -> float:
+    return GUIDE_BACK_SHORT if target_ratio(shot_type) < 2.5 else GUIDE_BACK_FULL
+
+
+def through_hand_speed_h_per_s(shot_type: str) -> float:
+    """Guide through-swing demand: lane_frac / guide_down_sec (pad heights / s)."""
+    down = guide_back_sec(shot_type) / max(target_ratio(shot_type), 1.0)
+    return lane_frac(shot_type) / down
 
 
 def balance_detail(sample: dict, shot_type: str = "full", tighten: float = 1.0) -> dict:
-    """Mirror TempoGrade.balance_detail — punch is full-pad (not is_pitch)."""
+    """Mirror TempoGrade.balance_detail — floors via bs_floor/ft_floor; accel still is_pitch-only."""
     t = max(tighten, 0.0)
     accel = float(sample.get("max_accel", 0.0))
     jerk = float(sample.get("max_jerk", 0.0))
@@ -130,10 +154,6 @@ def grade(
     }
 
 
-def guide_back_sec(shot_type: str) -> float:
-    return GUIDE_BACK_SHORT if target_ratio(shot_type) < 2.5 else GUIDE_BACK_FULL
-
-
 def main() -> int:
     print("PUNCH LEGIBILITY")
     print("-" * 72)
@@ -150,23 +170,61 @@ def main() -> int:
     assert "PUNCH_UNDER_CANOPY_FRAC" in HC
     assert 'kind == "under"' in HC
 
-    # Mirror target_ratio / base_tolerance
+    # Geometry: separate short-lane predicate (not _is_pitch — that drives VEL_TOP/min-bs)
+    assert "func _uses_short_lane" in GESTURE
+    short_lane_fn = GESTURE.split("func _uses_short_lane")[1].split("func ")[0]
+    assert 'shot_type == "punch"' in short_lane_fn
+    assert 'shot_type == "pitch"' in short_lane_fn
+    assert 'shot_type == "flop"' in short_lane_fn
+    is_pitch_fn = GESTURE.split("func _is_pitch")[1].split("func ")[0]
+    assert 'shot_type == "punch"' not in is_pitch_fn, "_is_pitch must not include punch"
+    addr_fn = GESTURE.split("func address_hint")[1].split("func ")[0]
+    top_fn = GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert "_uses_short_lane()" in addr_fn
+    assert "_uses_short_lane()" in top_fn
+    # Punch floors in grade (secondary geometry lever)
+    bs_fn = GRADE.split("static func bs_floor")[1].split("static func ")[0]
+    ft_fn = GRADE.split("static func ft_floor")[1].split("static func ")[0]
+    assert "punch" in bs_fn and "0.10" in bs_fn
+    assert "punch" in ft_fn and "0.04" in ft_fn
+    print("  PASS  source: _uses_short_lane for hints; punch in bs/ft floors; not in _is_pitch")
+
+    # Mirror target_ratio / base_tolerance — DO NOT change these contracts
     assert target_ratio("punch") == TARGET_SHORT
     assert base_tolerance("punch") == TOL_FULL
     assert target_ratio("full") == TARGET_FULL
     assert base_tolerance("full") == TOL_FULL
     print(f"  PASS  target_ratio(punch)={target_ratio('punch')}  base_tolerance(punch)={base_tolerance('punch')}")
 
+    # Floors match short lane
+    assert bs_floor("punch") == bs_floor("pitch") == 0.10
+    assert ft_floor("punch") == ft_floor("pitch") == 0.04
+    assert bs_floor("full") == 0.18 and ft_floor("full") == 0.08
+    print(f"  PASS  bs/ft floor punch={bs_floor('punch')}/{ft_floor('punch')} (short, not full)")
+
     # Guide switches free via target_ratio < 2.5
     assert guide_back_sec("punch") == GUIDE_BACK_SHORT
     assert guide_back_sec("full") == GUIDE_BACK_FULL
     print(f"  PASS  guide_back(punch)={guide_back_sec('punch')}s short  full={guide_back_sec('full')}s")
 
+    # Through-swing hand-speed demand: punch == pitch (~1.85 H/s), not full (~2.48)
+    hs_punch = through_hand_speed_h_per_s("punch")
+    hs_pitch = through_hand_speed_h_per_s("pitch")
+    hs_full = through_hand_speed_h_per_s("full")
+    assert abs(hs_punch - hs_pitch) < 1e-9, (hs_punch, hs_pitch)
+    assert abs(hs_punch - HAND_SPEED_SHORT) < 1e-6, hs_punch
+    assert abs(hs_full - HAND_SPEED_FULL) < 1e-6, hs_full
+    assert hs_punch < hs_full - 0.3, "punch must not demand full-lane hand speed"
+    print(
+        f"  PASS  through hand-speed punch={hs_punch:.3f} == pitch={hs_pitch:.3f} H/s "
+        f"(full={hs_full:.3f})"
+    )
+
     # Live playtest ratios under Trees timing (balance ideal first)
     clean = {
         "t_takeaway": 0.0,
         "t_top": 0.54,
-        "t_impact": 0.54 + 0.54 / 1.8,  # will overwrite per ratio
+        "t_impact": 0.54 + 0.54 / 1.8,
         "max_accel": 20.0,
         "max_jerk": 0.3,
         "backswing_len": 0.22,
@@ -177,7 +235,6 @@ def main() -> int:
     }
 
     def sample_ratio(r: float, bs_len: float = 0.22) -> dict:
-        # back 0.54s guide-ish, down = back/r
         back = 0.54
         down = back / r
         s = dict(clean)
@@ -190,11 +247,10 @@ def main() -> int:
     # Live playtest ratios under Trees (clean balance).
     # 1.7–1.8 vs target 2.0 → PERFECT (epic said 1.7 GOOD; clean bal is stricter PERFECT).
     # 3.0 vs 2.0 → THIN (high ratio), not MISS — TOL_FULL + Trees still playable.
-    # Full 3:1 punch is graded poorly (not PERFECT/GOOD); disaster needs worse ratio.
     for r, want_set in [
         (1.8, {"PERFECT", "GOOD"}),
         (1.7, {"PERFECT", "GOOD"}),
-        (3.0, {"THIN", "FAT", "MISS"}),  # not clean
+        (3.0, {"THIN", "FAT", "MISS"}),
     ]:
         g = grade(sample_ratio(r), "punch", timing_scale=TREES_TIMING)
         ok = g["contact"] in want_set
@@ -219,23 +275,20 @@ def main() -> int:
     canopy = [float(x.strip()) for x in m_can.group(1).split(",") if x.strip()]
     under_frac = float(re.search(r"const PUNCH_UNDER_CANOPY_FRAC\s*:=\s*([0-9.]+)", PHYS).group(1))
     min_c = min(canopy)
-    # Punch peak ~20 at 0.80 — always under 0.88*min
     punch_peak = 20.3
     assert punch_peak <= min_c * under_frac
     print(
         f"  PASS  punch peak {punch_peak:.1f} <= 0.88×min_canopy "
         f"({under_frac * min_c:.1f}) → aim under, not blocked"
     )
-    # Kill zone: height between under band and canopy is a strike
     mid_h = (under_frac * min_c + min_c) * 0.5
     assert under_frac * min_c < mid_h < min_c
     print(f"  PASS  kill-band mid {mid_h:.1f} in ({under_frac * min_c:.1f}, {min_c:.0f}) still blocked")
 
-    # --- Balance measurement (do not change constants; report only) ---
+    # --- Balance: short floor no longer double-taxes abbreviated punch ---
     print("-" * 72)
-    print("BALANCE MEASUREMENT (full-pad bs_floor on punch — not fixed this epic)")
+    print("BALANCE (short-lane floors on punch)")
     for bs_len in (0.10, 0.12, 0.14, 0.18, 0.22):
-        # Ideal clean punch: 2:1 ratio, low accel, Trees timing
         s = sample_ratio(2.0, bs_len=bs_len)
         s["max_accel"] = 18.0
         s["max_jerk"] = 0.2
@@ -243,20 +296,10 @@ def main() -> int:
         s["peak_vel"] = 1.0
         bd = balance_detail(s, "punch")
         g = grade(s, "punch", timing_scale=TREES_TIMING)
-        g_ideal_bal = grade(
-            {**s, "backswing_len": 0.22, "follow_through_len": 0.12},
-            "punch",
-            timing_scale=TREES_TIMING,
-        )
-        # ratio-only contact with bal forced high for comparison
         print(
             f"  bs_len={bs_len:.2f}  short_bs={bd['short_bs']:.2f}  "
-            f"bal={bd['score']:.2f}  contact={g['contact']}  "
-            f"(long-bs contact would be {g_ideal_bal['contact']} if only ratio)"
+            f"bal={bd['score']:.2f}  contact={g['contact']}"
         )
-        # Explicit recompute with bal floor for ratio-only path note
-        # Report: if short backswing demotes PERFECT→GOOD or worse
-    # Primary report line for the epic ask
     s_real = sample_ratio(1.8, bs_len=0.12)
     s_real["max_accel"] = 22.0
     s_real["max_jerk"] = 0.35
@@ -264,6 +307,8 @@ def main() -> int:
     s_real["peak_vel"] = 1.0
     g_real = grade(s_real, "punch", timing_scale=TREES_TIMING)
     bd_real = balance_detail(s_real, "punch")
+    # At short floor 0.10, bs_len=0.12 is above floor → short_bs=0
+    assert bd_real["short_bs"] == 0.0, bd_real
     s_long = sample_ratio(1.8, bs_len=0.22)
     s_long["max_accel"] = 22.0
     s_long["max_jerk"] = 0.35
@@ -271,14 +316,21 @@ def main() -> int:
     s_long["peak_vel"] = 1.0
     g_long = grade(s_long, "punch", timing_scale=TREES_TIMING)
     print(
-        f"  REPORT  realistic punch 1.8:1 Trees bs_len=0.12 → "
-        f"contact={g_real['contact']} bal={g_real['balance']:.2f} "
-        f"(bs_len=0.22 same tempo → {g_long['contact']} bal={g_long['balance']:.2f})"
+        f"  PASS  realistic punch 1.8:1 Trees bs_len=0.12 → "
+        f"contact={g_real['contact']} bal={g_real['balance']:.2f} short_bs=0 "
+        f"(bs_len=0.22 → {g_long['contact']} bal={g_long['balance']:.2f})"
     )
-    print(
-        f"  REPORT  short_bs severity={bd_real['short_bs']:.2f} "
-        f"(floor={bs_floor('punch'):.2f}; punch uses full-pad floor)"
-    )
+    print(f"  PASS  floor={bs_floor('punch'):.2f} (short-lane; no full-pad double-tax)")
+
+    # Hand-speed table (report)
+    print("-" * 72)
+    print("HAND SPEED (through guide demand, pad-H / s)")
+    for st in ("full", "pitch", "punch", "flop", "chip", "putt"):
+        print(
+            f"  {st:6}  lane={lane_frac(st):.2f}H  "
+            f"down={guide_back_sec(st) / target_ratio(st):.3f}s  "
+            f"hs={through_hand_speed_h_per_s(st):.3f} H/s"
+        )
 
     print("-" * 72)
     print("punch_legibility_check: ok")

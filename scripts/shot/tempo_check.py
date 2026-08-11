@@ -620,9 +620,11 @@ def main() -> int:
     # Ghost follow is lane-relative (not fixed pad-height).
     follow_fn = GESTURE.split("func _ghost_follow_pos")[1].split("func ")[0]
     assert "lane_len" in follow_fn and "0.14" in follow_fn
-    # Pitch lane is shorter than full (ghost must not race a driver-length path at 2:1).
-    assert "_is_pitch()" in GESTURE.split("func address_hint")[1].split("func ")[0]
-    assert "_is_pitch()" in GESTURE.split("func top_hint")[1].split("func ")[0]
+    # Short lane (pitch/flop/punch) is shorter than full — separate from _is_pitch physics.
+    assert "_uses_short_lane()" in GESTURE.split("func address_hint")[1].split("func ")[0]
+    assert "_uses_short_lane()" in GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert "func _uses_short_lane" in GESTURE
+    assert 'shot_type == "punch"' not in GESTURE.split("func _is_pitch")[1].split("func ")[0]
     # Range wedges land in pitch band (stock 85% max never did).
     range_swing = HOLE.split("func _begin_range_swing")[1].split("func ")[0]
     assert "club_max <= 110.0" in range_swing
@@ -658,9 +660,9 @@ def main() -> int:
     assert "%dms back / %dms thru" in GRADE
     addr_fn = GESTURE.split("func address_hint")[1].split("func ")[0]
     top_fn = GESTURE.split("func top_hint")[1].split("func ")[0]
-    assert "_is_putt()" in addr_fn and "_is_chip()" in addr_fn and "_is_pitch()" in addr_fn
-    assert "_is_putt()" in top_fn and "_is_chip()" in top_fn and "_is_pitch()" in top_fn
-    assert "0.80" in top_fn  # pitch shorter top than full 0.92
+    assert "_is_putt()" in addr_fn and "_is_chip()" in addr_fn and "_uses_short_lane()" in addr_fn
+    assert "_is_putt()" in top_fn and "_is_chip()" in top_fn and "_uses_short_lane()" in top_fn
+    assert "0.80" in top_fn  # short-lane top shorter than full 0.92
     # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
     assert "func _lane_project" not in GESTURE
     assert "_address = address_hint()" in GESTURE

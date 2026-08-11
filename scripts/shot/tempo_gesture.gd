@@ -218,7 +218,15 @@ func _is_chip() -> bool:
 
 func _is_pitch() -> bool:
 	## Flop reuses pitch pad geometry / 2:1 guide (tempo-gesture family).
+	## Punch is NOT included — it uses _uses_short_lane() for path only so VEL_TOP /
+	## min-backswing pitch tuning does not silently apply to punch.
 	return shot_type == "pitch" or shot_type == "flop"
+
+
+func _uses_short_lane() -> bool:
+	## Mid-lane path length for 2:1 clock (pitch/flop/punch). Distinct from _is_pitch()
+	## so punch does not inherit pitch reverse-detect / min-backswing physics.
+	return shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
 
 
 func _uses_chip_golfer() -> bool:
@@ -229,28 +237,28 @@ func _uses_chip_golfer() -> bool:
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
 	## Putt: long vertical span for ft resolution. Chip: short amplitude pad.
-	## Pitch: mid lane (not full) so 2:1 ghost isn't a full-length race.
+	## Pitch/flop/punch: mid lane so 2:1 ghost isn't a full-length race.
 	## Full: longest lane for 3:1.
 	var y := 0.30
 	if _is_putt():
 		y = 0.22
 	elif _is_chip():
 		y = 0.20
-	elif _is_pitch():
+	elif _uses_short_lane():
 		y = 0.30
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
 
 func top_hint() -> Vector2:
 	## Backswing peak toward player (lower on pad).
-	## Pitch shorter than full but long enough that through takes real time
+	## Short-lane types shorter than full but long enough that through takes real time
 	## (0.70 was so short a normal finger blast read as 4–6:1 → always MISS).
 	var y := 0.92
 	if _is_putt():
 		y = 0.92
 	elif _is_chip():
 		y = 0.85
-	elif _is_pitch():
+	elif _uses_short_lane():
 		y = 0.80
 	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
 
