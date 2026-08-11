@@ -154,6 +154,22 @@ tree type; `Driver > pine` and `7i > pine` goldens PASS.
 
 ---
 
+## Corrections
+
+Post-phase fixes that are not a numbered rebuild phase. Do not fold these into Phase 3+.
+
+### Punch legibility — shipped (`fix/punch-legibility`, device-verified)
+
+After Phase 1–2, punch remained hard to read: full-swing 3:1 tempo target, full-lane pad geometry against a short clock, and aim that read “blocked” when the ball ducks under canopy. Shipped:
+
+- **2:1 tempo target** grounded in real golf (punch still keeps `TOL_FULL`, not pitch’s wider band)
+- **Short-lane pad geometry** matching pitch (`_uses_short_lane` for address/top; `bs_floor`/`ft_floor` 0.10/0.04) so through hand-speed demand equals pitch (~1.85 H/s), not full
+- **Aim clearance duck-under** with a distinct **"under"** state (cyan), separate from clear/blocked
+
+Does not change `APEX_SCALE_PUNCH` / canopy constants. Does not start Phase 3.
+
+---
+
 ### Phase 3 — Carry and roll split
 Fix `air_distance_fraction()`. Current values model every club as a links bounce — driver
 carries 177 and rolls 83. Move to real ratios and fold in the chip/pitch roll retune that
