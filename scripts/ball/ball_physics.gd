@@ -698,6 +698,12 @@ static func short_shot_hang_scale(total_yards: float) -> float:
 	return clampf(lerpf(0.42, 1.0, total_yards / 40.0), 0.42, 1.0)
 
 
+## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
+## re-derive resolve_distance / air_frac. Callers supply air_px and air_time.
+static func launch_speed_for(air_px: float, air_time: float) -> float:
+	return air_px / maxf(air_time, 0.05)
+
+
 static func launch_velocity(
 	result: ShotResult,
 	target_dir: Vector2,
@@ -786,7 +792,7 @@ static func launch_velocity(
 		air_frac = _air_fraction_full(club_max_yards) * (0.55 / 0.68)
 
 	var air_px := total_px * air_frac
-	var base_speed := air_px / maxf(air_time, 0.05)
+	var base_speed := launch_speed_for(air_px, air_time)
 
 	var stab_term := 1.35 - result.stance_stability * 0.5
 	# Forcing a club (wrong bag choice, then mash/baby) taxes line the way it does IRL.

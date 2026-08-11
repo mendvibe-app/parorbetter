@@ -37,6 +37,7 @@ _require(PHYS, "const BAG:")
 _require(PHYS, "static func launch_velocity")
 _require(PHYS, "static func resolve_distance")
 _require(PHYS, "static func estimate_carry_yards")
+_require(PHYS, "static func launch_speed_for")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
 _require(PHYS, "static func short_shot_hang_scale")  # dead but kept until Phase 6
@@ -279,6 +280,11 @@ def estimate_carry_yards(
     return resolve_distance(club_max, clamp(power, 0.0, 1.0), lie, "GOOD", shot_type, 0.0)
 
 
+def launch_speed_for(air_px: float, air_time: float) -> float:
+    """Mirror BallPhysics.launch_speed_for — thin pass-through, not resolve_distance."""
+    return air_px / max(air_time, 0.05)
+
+
 def recommended_power(remaining_yd: float, club_max: float, lie: str = "Fairway") -> float:
     if lie == "Green":
         effective = club_max * LIE_MUL.get(lie, 1.0)
@@ -326,7 +332,7 @@ def launch(
         air_frac = air_fraction_full(club_max) * SAND_AIR_TAX
 
     air_px = total_px * air_frac
-    base_speed = air_px / max(air_time, 0.05)
+    base_speed = launch_speed_for(air_px, air_time)
     roll_px = total_px * (1.0 - air_frac)
     landing_speed = math.sqrt(2.0 * 144.0 * roll_px) if roll_px > 1.0 else 0.0
     return {
@@ -578,6 +584,18 @@ def verify_live_constants_reflected() -> None:
             assert abs(est - launched) < 1e-9, (name, p, est, launched)
             cells.append(f"{est:10.1f}")
         print(f"{name:16}" + "".join(cells))
+    # Phase 5 CP1: launch_speed_for == air_px/air_time identity across bag × powers.
+    print("LAUNCH_SPEED_FOR == air_px/air_time")
+    print("-" * 74)
+    for name, m, lm in BAG:
+        for p in powers:
+            r = launch(m, lm, p, "full", "Fairway", "GOOD", 0.0)
+            air_px = r["carry_yd"] * PX_PER_YARD
+            inline = air_px / max(r["air_time"], 0.05)
+            owned = launch_speed_for(air_px, r["air_time"])
+            assert abs(owned - inline) < 1e-12, (name, p, owned, inline)
+            assert abs(r["speed_px_s"] - owned) < 1e-12, (name, p, r["speed_px_s"], owned)
+    assert "launch_speed_for(air_px, air_time)" in PHYS
     # recommended_power never recommends above the distance-maximising pocket hi.
     for rem in (200.0, 230.0, 250.0, 300.0):
         rp = recommended_power(rem, 260.0, "Fairway")
