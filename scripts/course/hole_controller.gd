@@ -72,7 +72,11 @@ const TREE_TEXTURES := [
 ## Index matches TREE_TEXTURES: round, pine, cluster, oak, airy, dark, broad, tall.
 ## Calibrated against Phase 1 apex via height-at-tree (estimate_height_at_along), not apex alone.
 ## Trees 20–35% of total planned distance. ALL PLAYTEST TARGETS.
-const TREE_CANOPY_H: Array[float] = [62.0, 80.0, 68.0, 72.0, 55.0, 70.0, 64.0, 92.0]
+## Clear height (same units as ball._height peak). Index matches TREE_TEXTURES:
+## round, pine, cluster, oak, airy, dark, broad, tall.
+## Rescaled x0.90 after Phase 3 lengthened carry and flattened height-at-tree.
+## ALL PLAYTEST TARGETS.
+const TREE_CANOPY_H: Array[float] = [56.0, 72.0, 61.0, 65.0, 50.0, 63.0, 58.0, 83.0]
 ##                                   round  pine cluster oak  airy  dark broad tall
 ## Portrait course framing: dark rough belt just outside fairway + tree line on it.
 ## Camera aims to keep this corridor ~half of screen width (not oceans of mid-rough).

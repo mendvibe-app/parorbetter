@@ -129,6 +129,16 @@ def main() -> int:
         f"h={h35:.1f} apex={dr_apex:.1f} clears={n35}",
     )
 
+    # 2b. Stock 7-iron at 35% — mid-iron must keep approach options (Phase 3 regression).
+    i7_apex = apex_for(160.0, STOCK_POWER, "full")
+    h7_35 = height_at_total_frac(0.35, i7_apex, 160.0)
+    n7_35 = clears_count(h7_35)
+    check(
+        "7i 35% clears >=2",
+        n7_35 >= 2,
+        f"h={h7_35:.1f} apex={i7_apex:.1f} clears={n7_35}",
+    )
+
     # 3. 7-iron punch clears nothing at 20% and 35%
     punch_apex = apex_for(160.0, 0.80, "punch")
     hp20 = height_at_total_frac(0.20, punch_apex, 160.0)
