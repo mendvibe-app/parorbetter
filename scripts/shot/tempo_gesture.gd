@@ -408,13 +408,12 @@ func _process(_delta: float) -> void:
 
 func _guide_alpha() -> float:
 	## Fadeable perfect-swing ghost. Per shot-type familiarity (Phase 4), not global form.
+	## Path/timing stay grade-true; only opacity fades with reps of this type.
 	if not GameState.tempo_guide_enabled:
 		return 0.0
 	if GameState.tempo_guide_forced or GameState.range_mode:
 		return 0.9
-	# 0 reps at this type → strong guide even if overall form is high.
-	var form := GameState.get_shot_type_form(shot_type)
-	return clampf(1.0 - form * 1.35, 0.0, 0.75)
+	return GameState.guide_alpha_for_shot_type(shot_type)
 
 
 func _guide_back_sec() -> float:
@@ -1286,17 +1285,18 @@ func _draw_tempo_ghost(looping: bool) -> void:
 	var g: Dictionary = _ideal_ghost_pos(elapsed)
 	var pos: Vector2 = g["pos"]
 	var phase: String = str(g["phase"])
-	var col := Color(0.35, 0.85, 1.0, a * 0.55)
+	# Slightly stronger than 0.55 so novice guide reads on phone LCDs.
+	var col := Color(0.35, 0.85, 1.0, a * 0.65)
 	match phase:
 		"top":
-			col = Color(0.45, 1.0, 0.55, a * 0.7)
+			col = Color(0.45, 1.0, 0.55, a * 0.78)
 		"through":
-			col = Color(1.0, 0.9, 0.35, a * 0.7)
+			col = Color(1.0, 0.9, 0.35, a * 0.78)
 		"follow":
-			col = Color(0.55, 0.95, 0.65, a * 0.6)
+			col = Color(0.55, 0.95, 0.65, a * 0.68)
 		"done":
 			# Address rest — same cue as "start here", a bit stronger than the old follow-hold.
-			col = Color(0.35, 0.85, 1.0, a * 0.55)
+			col = Color(0.35, 0.85, 1.0, a * 0.65)
 	# Ghost disc + ring — follow this for perfect spacing
 	draw_circle(pos, 18.0, Color(col.r, col.g, col.b, col.a * 0.35))
 	draw_arc(pos, 20.0, 0.0, TAU, 28, col, 3.0, true)

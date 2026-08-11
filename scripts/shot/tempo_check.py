@@ -179,6 +179,28 @@ def main() -> int:
     ROUTINE = (DIR / "shot_routine.gd").read_text(encoding="utf-8")
     assert "swing_shape + pull" in ROUTINE or "modulated := clampf(swing_shape + pull" in ROUTINE
     assert "max_lateral" in ROUTINE
+    # Lateral deadzone: tremor not intent; full shape still at old saturation.
+    assert "LAT_DEADZONE" in ROUTINE and "LAT_SATURATION" in ROUTINE
+    assert "func swing_shape_from_lateral" in ROUTINE
+    assert "lat / 0.18" not in ROUTINE
+    LAT_DEADZONE = 0.035
+    LAT_SATURATION = 0.18
+
+    def swing_shape_from_lateral(lat: float) -> float:
+        lat_mag = abs(lat)
+        if lat_mag <= LAT_DEADZONE:
+            return 0.0
+        scaled = (lat_mag - LAT_DEADZONE) / (LAT_SATURATION - LAT_DEADZONE)
+        return (1.0 if lat >= 0.0 else -1.0) * max(0.0, min(1.0, scaled))
+
+    assert swing_shape_from_lateral(0.0) == 0.0
+    assert swing_shape_from_lateral(0.03) == 0.0  # playtest regression (felt straight)
+    assert swing_shape_from_lateral(-0.03) == 0.0
+    assert swing_shape_from_lateral(LAT_DEADZONE) == 0.0
+    assert abs(swing_shape_from_lateral(0.18) - 1.0) < 1e-9
+    assert abs(swing_shape_from_lateral(-0.18) + 1.0) < 1e-9
+    mid = (LAT_DEADZONE + LAT_SATURATION) * 0.5
+    assert abs(abs(swing_shape_from_lateral(mid)) - 0.5) < 1e-6
     assert "sign:" in (DIR.parent / "debug" / "debug_controls.gd").read_text(encoding="utf-8")
     assert "maxf(bal, 0.70)" in GRADE or "max(bal, 0.70)" in GRADE
     assert "power_mul" in GRADE and "path_error" in GRADE
@@ -494,6 +516,36 @@ def main() -> int:
     assert "MIN_BACKSWING_PITCH_LANE" in GESTURE
     assert "func club_guide_duration_scale" in GESTURE
     assert "club_guide_duration_scale(club_max_yards)" in GESTURE
+    # Fade: shared GameState curve (no early kill via form * 1.35).
+    assert "guide_alpha_for_shot_type" in GESTURE
+    assert "form * 1.35" not in GESTURE
+    assert "form * 1.35" not in METER
+    GS = DIR.joinpath("../autoload/game_state.gd").read_text(encoding="utf-8")
+    assert "func guide_alpha_for_form" in GS
+    assert "func survival_guide_form" in GS
+    assert "SHOT_TYPE_GUIDE_REPS := 20.0" in GS or "SHOT_TYPE_GUIDE_REPS := 20" in GS
+    # Survival: hole progress drives fade (not lifetime reps).
+    assert "is_survival()" in GS.split("func guide_alpha_for_shot_type")[1][:500]
+    assert "survival_guide_form" in GS.split("func guide_alpha_for_shot_type")[1][:500]
+    # Linear fade: 0 form → novice alpha; full form → mastered (0).
+    def guide_alpha_for_form(form: float, novice: float = 0.78, mastered: float = 0.0) -> float:
+        f = max(0.0, min(1.0, form))
+        return novice + (mastered - novice) * f
+
+    assert abs(guide_alpha_for_form(0.0) - 0.78) < 1e-6
+    assert abs(guide_alpha_for_form(1.0) - 0.0) < 1e-6
+    assert guide_alpha_for_form(0.5) > 0.3  # mid-ramp still visible
+    # Survival hole curve: H1 = 0, H18 of 18 = 1
+    def survival_form(hole: int, n: int = 18) -> float:
+        if n <= 1:
+            return 0.0
+        return max(0.0, min(1.0, (hole - 1) / (n - 1)))
+
+    assert abs(survival_form(1) - 0.0) < 1e-9
+    assert abs(survival_form(18) - 1.0) < 1e-9
+    assert guide_alpha_for_form(survival_form(1)) > 0.7
+    assert guide_alpha_for_form(survival_form(18)) < 0.05
+    assert guide_alpha_for_form(survival_form(9)) > 0.3
     # Driver longer absolute window than mid than wedge; ratio still 3:1.
     def club_scale(yd: float) -> float:
         if yd >= 245.0:

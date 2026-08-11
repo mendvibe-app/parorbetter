@@ -464,29 +464,32 @@ static func recommended_power(
 
 
 ## Club-fit solve: uncapped true % + optional POWER_POCKET_LO floor for overclub.
-## Shortest available club keeps true % (short-game baby swings). Never floors putts.
+## Full/punch always floor under-pocket (no baby full). Pitch/chip/flop keep true %
+## (shot types own short dial). Never floors putts.
 static func solve_committed_power(
 	remaining_yd: float,
 	club_max_yards: float,
 	lie: String,
 	wind: Vector2 = Vector2.ZERO,
-	severity: String = ""
+	severity: String = "",
+	shot_type: String = "full"
 ) -> Dictionary:
 	var true_pct := recommended_power(remaining_yd, club_max_yards, lie, wind, severity)
 	var power := true_pct
 	var overclub := false
-	# Shortest club keeps baby swings (short game); everything else floors at pocket lo.
-	if (
-		lie != "Green"
-		and not is_shortest_available(club_max_yards, lie)
-		and true_pct < POWER_POCKET_LO
-	):
+	if lie != "Green" and true_pct < POWER_POCKET_LO and shot_type_uses_full_pocket(shot_type):
 		power = POWER_POCKET_LO
 		overclub = true
 	return {"power": power, "true_pct": true_pct, "overclub": overclub}
 
 
-## True when this club is the shortest available for the lie (Gap on turf/sand).
+## Full (and punch) commit to the stock pocket — short aims overshoot.
+## Pitch / chip / flop dial true % for short game.
+static func shot_type_uses_full_pocket(shot_type: String) -> bool:
+	return shot_type == "full" or shot_type == "punch" or shot_type.is_empty()
+
+
+## True when this club is the shortest available for the lie (LW on turf/sand).
 static func is_shortest_available(club_max_yards: float, lie: String) -> bool:
 	var available := clubs_for_lie(lie)
 	if available.is_empty():
@@ -495,13 +498,20 @@ static func is_shortest_available(club_max_yards: float, lie: String) -> bool:
 
 
 ## 0 = in the pocket, 1 = fully forced (mash near 100% or baby a longer club).
-## Shortest-club partials skip baby tax — that's correct short-game, not wrong bag.
-static func force_factor(power: float, club_max_yards: float = 0.0, lie: String = "") -> float:
+## Shortest-club partials skip baby tax only for pitch/chip/flop — full still taxes.
+static func force_factor(
+	power: float, club_max_yards: float = 0.0, lie: String = "", shot_type: String = "full"
+) -> float:
 	var p := clampf(power, 0.0, 1.0)
 	if p > POWER_POCKET_HI:
 		return clampf((p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI), 0.0, 1.0)
 	if p < POWER_POCKET_LO:
-		if club_max_yards > 0.0 and not lie.is_empty() and is_shortest_available(club_max_yards, lie):
+		if (
+			club_max_yards > 0.0
+			and not lie.is_empty()
+			and is_shortest_available(club_max_yards, lie)
+			and not shot_type_uses_full_pocket(shot_type)
+		):
 			return 0.0
 		return clampf((POWER_POCKET_LO - p) / POWER_POCKET_LO, 0.0, 1.0)
 	return 0.0
@@ -556,7 +566,7 @@ static func launch_velocity(
 	var force_p := result.power
 	if result.true_power > 0.0:
 		force_p = result.true_power
-	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie)
+	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie, shot_type)
 	# Putts: tempo power_mul already leaked distance — don't stack contact ×0.4.
 	var power_mul := result.power * lie_multiplier(lie, severity)
 	if not is_putt:

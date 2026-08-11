@@ -79,6 +79,16 @@ def main() -> int:
     # Shape-aware Green lie (painted silhouette alpha)
     assert "_on_painted_green" in HOLE and "_green_img" in HOLE
 
+    # Greenside aim: recommend-aware solve — Full floor must not snap pitch/chip corridor.
+    assert "recommend_shot_type" in AIM
+    assert "shot_type_uses_full_pocket" in AIM
+    assert "solve_committed_power(" in AIM
+    # Overclub snap only when recommended type uses full pocket.
+    assert "shot_type_uses_full_pocket(rec)" in AIM or "shot_type_uses_full_pocket" in AIM
+    phys = DIR.joinpath("../ball/ball_physics.gd").read_text(encoding="utf-8")
+    assert "func shot_type_uses_full_pocket" in phys
+    assert "func _shot_type_uses_full_pocket" not in phys
+
     # Putt aim: white fading line, no iron cone / dispersion circle
     refresh = HOLE.split("func _refresh_aim_visuals")[1].split("func ")[0]
     assert 'ball.get_lie() == "Green"' in refresh

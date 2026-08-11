@@ -68,12 +68,16 @@ def main() -> int:
     assert eligible(65.0) == ["full", "chip", "pitch", "flop"]  # LW
     assert "flop" not in eligible(95.0)
 
-    # Phase 4 guide familiarity
+    # Phase 4 guide familiarity — shared fade, path unchanged
     GS = (ROOT / "scripts" / "autoload" / "game_state.gd").read_text(encoding="utf-8")
     assert "get_shot_type_form" in GS
     assert "record_shot_type_rep" in GS
+    assert "func guide_alpha_for_shot_type" in GS
+    assert "func survival_guide_form" in GS
+    assert "SHOT_TYPE_GUIDE_REPS" in GS
     GEST = (ROOT / "scripts" / "shot" / "tempo_gesture.gd").read_text(encoding="utf-8")
-    assert "get_shot_type_form" in GEST
+    assert "guide_alpha_for_shot_type" in GEST
+    assert "form * 1.35" not in GEST
 
     print("shot_type_picker_check: ok")
     return 0

@@ -136,7 +136,6 @@ var _aim_circle: Line2D
 ## Pre-swing carry (first bounce) mark + roll connector to rest circle.
 var _aim_land_mark: Line2D
 var _aim_roll_line: Line2D
-var _wind_bias: Line2D
 var _wind_flag: WindFlag
 var _last_report: ShotReport
 var _last_result: ShotResult
@@ -299,13 +298,6 @@ func _setup_aim_visuals() -> void:
 	_aim_roll_line.begin_cap_mode = Line2D.LINE_CAP_ROUND
 	_aim_roll_line.end_cap_mode = Line2D.LINE_CAP_ROUND
 	add_child(_aim_roll_line)
-
-	_wind_bias = Line2D.new()
-	_wind_bias.width = 4.0
-	_wind_bias.default_color = Color(0.55, 0.85, 1.0, 0.9)
-	_wind_bias.z_index = 6
-	_wind_bias.visible = false
-	add_child(_wind_bias)
 
 	_wind_flag = WindFlag.new()
 	_wind_flag.name = "WindFlag"
@@ -542,13 +534,29 @@ func _setup_tee_positions() -> void:
 			_tee_pos = p["pos"]
 
 
+func _is_island_green() -> bool:
+	return (
+		hole.green_shape == HoleData.GreenShape.PENINSULA
+		or hole.layout == HoleData.LayoutStyle.ISLAND
+	)
+
+
+func _green_outer_radii() -> Vector2:
+	## World half-extents of the rendered green sprite (includes fringe / surface_frac).
+	return Vector2(
+		(hole.green_radius_x + 14.0) / 0.85,
+		(hole.green_radius_y + 14.0) / 0.85
+	)
+
+
 func _add_bent_fairway(width: float) -> void:
-	## Trapezoid / dogleg strip from tee to green.
-	## Stop at the green apron — old top (GREEN_Y - 20) ran fairway texture
-	## through the putting surface as a rectangular mismatched patch.
+	## Trapezoid / dogleg strip from tee into the green edge (true collar).
+	## Non-island: south silhouette collar so rough base never shows a moat.
+	## Island: stop short of water — apron tongue only (no collar into the ring).
 	## Fairway reaches Blue (back) tee so all three pads sit on the corridor.
 	var half := width * 0.5
 	var tee_y := _tee_back_pos.y
+	# Island-only apron stop (legacy). Collared holes ignore top_y — arc is the tip.
 	var top_y := GREEN_Y + maxf(hole.green_radius_y, 36.0) + 6.0
 	# Corner vertex: smooth-curve midpoint by default (matches the old fixed
 	# 0.45/0.55 y-weight + full-bend x exactly). Sharpened Dogleg Corners epic
@@ -569,14 +577,12 @@ func _add_bent_fairway(width: float) -> void:
 	var pts := PackedVector2Array()
 	pts.append(bot + Vector2(-half, 0))
 	pts.append(mid + Vector2(-half * 0.85, 0))
-	# Phase 1 fairway collar (Fairway True Collar epic): OVAL/KIDNEY greens taper
-	# the last stretch into the green's actual silhouette instead of a flat
-	# cutoff line. TIERED / L_SHAPED / COMPLEX intentionally keep the old flat
-	# cutoff for now — Phase 2 extends collar coverage once this is validated in
-	# playtesting. PENINSULA is permanently excluded: its "fairway" edge is
-	# water, not rough, so collaring it isn't meaningful.
-	if hole.green_shape == HoleData.GreenShape.OVAL or hole.green_shape == HoleData.GreenShape.KIDNEY:
-		pts.append_array(_collar_arc_points(half * 0.7))
+	# True collar: all non-island greens (oval/kidney/tiered/L/complex).
+	# Span up to fairway half or green outer width — no thin 0.7 tongue / rough shoulders.
+	if not _is_island_green():
+		var outer := _green_outer_radii()
+		var collar_half := minf(half, outer.x * 0.98)
+		pts.append_array(_collar_arc_points(collar_half))
 	else:
 		pts.append(top + Vector2(-half * 0.7, 0))
 		pts.append(top + Vector2(half * 0.7, 0))
@@ -595,18 +601,21 @@ func _add_bent_fairway(width: float) -> void:
 	course_root.add_child(area)
 
 
+## Slightly inside the rendered silhouette so AA/seams land under the green sprite.
+const COLLAR_UNDERLAP := 0.97
+
+
 func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:
 	## Traces the green's south-facing (fairway-approach) silhouette from the left
-	## flank to the right, replacing the flat top edge for OVAL/KIDNEY greens.
-	## Sampled around the true green center (not the bent fairway "top" point) so
-	## it matches the rendered green sprite regardless of dogleg bend/corner.
+	## flank to the right. Sampled around the true green center (not the bent
+	## fairway "top" point) so it matches the rendered sprite on doglegs.
 	var theta_edge := _theta_for_collar_x(edge_half_width)
-	var n := 9
+	var n := 14
 	var out := PackedVector2Array()
 	for i in n:
 		var t := float(i) / float(n - 1)
 		var theta := lerpf(PI - theta_edge, theta_edge, t)
-		var r := _green_boundary_radius(theta)
+		var r := _green_boundary_radius(theta) * COLLAR_UNDERLAP
 		out.append(_green_center + Vector2(cos(theta), sin(theta)) * r)
 	return out
 
@@ -614,9 +623,8 @@ func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:
 func _theta_for_collar_x(target_x: float) -> float:
 	## Bisects the polar angle (front-right quadrant, 0..PI/2) whose green-boundary
 	## point has this local x offset from the green center. Monotonic in that
-	## quadrant for both OVAL and KIDNEY — the kidney indent sits on the back side
-	## (see _green_boundary_radius) so it never affects this search.
-	var rx := (hole.green_radius_x + 14.0) / 0.85
+	## quadrant — kidney indent is on the back (non-approach) side only.
+	var rx := _green_outer_radii().x
 	var clamped_x := minf(target_x, rx * 0.96)
 	var lo := 0.0
 	var hi := PI * 0.5
@@ -637,13 +645,11 @@ func _green_boundary_radius(angle: float) -> float:
 	## fringe padding (see _add_green's surface_frac) so the collar traces the
 	## actual drawn edge, not just the smaller putting-surface detection radius.
 	## OVAL is an exact ellipse. KIDNEY approximates the same ellipse with a
-	## shallow indent on the back (non-approach) side — the current kidney art is
-	## a placeholder oval with no real concave edge, so keeping the indent off the
-	## collared front arc avoids the fairway polygon undershooting the rendered
-	## edge and leaving a seam; revisit once kidney art gets a true indented
-	## silhouette. Phase 1 only — see _add_bent_fairway for shapes still flat-cut.
-	var rx := (hole.green_radius_x + 14.0) / 0.85
-	var ry := (hole.green_radius_y + 14.0) / 0.85
+	## shallow indent on the back (non-approach) side — front arc stays smooth so
+	## the fairway poly does not undershoot the rendered edge.
+	var outer := _green_outer_radii()
+	var rx := outer.x
+	var ry := outer.y
 	var base := (rx * ry) / sqrt(pow(ry * cos(angle), 2.0) + pow(rx * sin(angle), 2.0))
 	if hole.green_shape != HoleData.GreenShape.KIDNEY:
 		return base
@@ -659,11 +665,7 @@ func _add_green(rx: float, ry: float) -> void:
 	spr.position = _green_center
 	# Scale so the putting surface (inside fringe / island shoreline) matches the
 	# detection ellipse. Island art spends ~38% of its span on beach + water ring.
-	var is_island := (
-		hole.green_shape == HoleData.GreenShape.PENINSULA
-		or hole.layout == HoleData.LayoutStyle.ISLAND
-	)
-	var surface_frac := 0.62 if is_island else 0.85
+	var surface_frac := 0.62 if _is_island_green() else 0.85
 	spr.scale = Vector2(
 		rx * 2.0 / surface_frac / float(tex.get_width()),
 		ry * 2.0 / surface_frac / float(tex.get_height())
@@ -1317,8 +1319,6 @@ func _sync_screen_line_widths() -> void:
 		_pin_ref_line.width = pin_w
 	if _aim_circle:
 		_aim_circle.width = 3.2 / z
-	if _wind_bias and _wind_bias.visible:
-		_wind_bias.width = 3.2 / z
 	if _green_book:
 		for c in _green_book.get_children():
 			if c is Line2D:
@@ -1533,8 +1533,9 @@ func _aim_force_preview(club_max: float, lie: String, wind: Vector2, severity: S
 	var aim_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
 	if aim_yd < 1.0:
 		aim_yd = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
-	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
-	return BallPhysics.force_factor(float(solved["true_pct"]), club_max, lie)
+	var st := _effective_shot_type_for_aim()
+	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity, st)
+	return BallPhysics.force_factor(float(solved["true_pct"]), club_max, lie, st)
 
 
 func _aim_radius_for_club(lie: String, club_max: float, wind: Vector2, severity: String) -> float:
@@ -1544,7 +1545,8 @@ func _aim_radius_for_club(lie: String, club_max: float, wind: Vector2, severity:
 
 
 func _refit_aim_along_bearing(club_max: float, wind: Vector2, severity: String) -> void:
-	## Keep aim bearing; set lock distance to this club's sensible carry (clearance club-swap).
+	## Keep aim bearing; set lock for club swap. Short types lock pin (honest dial);
+	## full/punch may lock past pin when stock pocket exceeds pin (true overclub / full floor).
 	var from := ball.global_position
 	var bearing := _aim_target - from
 	if bearing.length_squared() < 1.0:
@@ -1553,10 +1555,23 @@ func _refit_aim_along_bearing(club_max: float, wind: Vector2, severity: String) 
 		bearing = Vector2(0, -1)
 	var pin_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
 	var lie := ball.get_lie()
-	var solved := BallPhysics.solve_committed_power(pin_yd, club_max, lie, wind, severity)
-	var est := BallPhysics.estimate_carry_yards(float(solved["power"]), club_max, lie, severity)
-	_aim_target = AimControl.point_along_bearing(from, bearing, est)
-	_aim_lock_yards = est
+	var st := _effective_shot_type_for_aim()
+	var lock_yd: float
+	if not BallPhysics.shot_type_uses_full_pocket(st):
+		# Pitch / chip / flop: corridor on pin so short dial works.
+		if pin_yd <= club_max * 1.02:
+			lock_yd = maxf(pin_yd, 2.0)
+		else:
+			lock_yd = club_max * 0.95
+	else:
+		var solved := BallPhysics.solve_committed_power(
+			pin_yd, club_max, lie, wind, severity, st
+		)
+		lock_yd = BallPhysics.estimate_carry_yards(
+			float(solved["power"]), club_max, lie, severity, st
+		)
+	_aim_target = AimControl.point_along_bearing(from, bearing, lock_yd)
+	_aim_lock_yards = lock_yd
 
 
 func _begin_aim_phase(restore_aim: bool = false) -> void:
@@ -1887,6 +1902,18 @@ func _on_shot_type_toggled(on: bool, st: String) -> void:
 	_chosen_shot_type = st
 	_shot_type_manual = true
 	AudioBus.play_ui()
+	# Short types: pull aim lock back to pin if Full/overclub had expanded it.
+	if _aiming and not BallPhysics.shot_type_uses_full_pocket(st):
+		var from := ball.global_position
+		var pin_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
+		var club_max := float(_chosen_club.get("max_yards", 0.0))
+		var lock_yd := pin_yd if pin_yd <= club_max * 1.02 else club_max * 0.95
+		lock_yd = maxf(lock_yd, 2.0)
+		var bearing := _aim_target - from
+		if bearing.length_squared() < 1.0:
+			bearing = _cup_pos - from
+		_aim_target = AimControl.point_along_bearing(from, bearing, lock_yd)
+		_aim_lock_yards = lock_yd
 	for c in _shot_type_row.get_children():
 		if c is Button:
 			var b := c as Button
@@ -2090,8 +2117,6 @@ func _set_aim_visuals_visible(on: bool) -> void:
 		_aim_roll_line.visible = on and not is_putt
 	if _pin_ref_line:
 		_pin_ref_line.visible = on
-	if not on and _wind_bias:
-		_wind_bias.visible = false
 	if not on:
 		_hide_shot_type_row()
 
@@ -2100,7 +2125,6 @@ func _show_wind_flag(wind: Vector2, extra: String = "") -> void:
 	if _wind_flag == null:
 		return
 	_wind_flag.show_wind(wind, extra)
-	_refresh_wind_bias_arrow()
 
 
 func _refresh_wind_indicator(on: bool) -> void:
@@ -2108,39 +2132,12 @@ func _refresh_wind_indicator(on: bool) -> void:
 		return
 	if not on:
 		_wind_flag.hide_wind()
-		if _wind_bias:
-			_wind_bias.visible = false
 		return
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
 	if _wind_flag.visible:
 		_wind_flag.set_wind_vector(wind)
 	else:
 		_wind_flag.show_wind(wind)
-	_refresh_wind_bias_arrow()
-
-
-func _refresh_wind_bias_arrow() -> void:
-	## Small rim arrow on the aim circle — bias opposite wind push.
-	if _wind_bias == null or _aim_circle == null or not _aim_circle.visible:
-		if _wind_bias:
-			_wind_bias.visible = false
-		return
-	if ball != null and ball.get_lie() == "Green":
-		_wind_bias.visible = false
-		return
-	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
-	if wind.length() < 4.0:
-		_wind_bias.visible = false
-		return
-	var to := _aim_target
-	var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
-	var bias := -wind.normalized()
-	var tip := to + bias * radius_px
-	var base := to + bias * maxf(radius_px - 36.0, radius_px * 0.55)
-	var perp := Vector2(-bias.y, bias.x) * 10.0
-	_wind_bias.points = PackedVector2Array([base + perp, tip, base - perp, base + perp])
-	_wind_bias.width = 3.2 / maxf(camera.zoom.x, 0.35)
-	_wind_bias.visible = true
 
 
 func _aim_shape_bend() -> float:
@@ -2165,12 +2162,6 @@ func _aim_tree_clearance(
 	var severity := ball.get_lie_severity()
 	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
-	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
-	var carry_yd := BallPhysics.estimate_carry_yards(
-		float(solved["power"]), club_max, lie, severity
-	)
-	if carry_yd < 2.0:
-		return "none"
 	# Flight type for apex: punch ducks under; else player pick or distance recommend.
 	var shot_type: String
 	if punch:
@@ -2179,6 +2170,14 @@ func _aim_tree_clearance(
 		shot_type = shot_type_hint
 	else:
 		shot_type = TempoGrade.recommend_shot_type(lie, aim_yd, club_max)
+	var solved := BallPhysics.solve_committed_power(
+		aim_yd, club_max, lie, wind, severity, shot_type
+	)
+	var carry_yd := BallPhysics.estimate_carry_yards(
+		float(solved["power"]), club_max, lie, severity, shot_type
+	)
+	if carry_yd < 2.0:
+		return "none"
 	var total_px := BallPhysics.yards_to_pixels(carry_yd)
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var peak := BallPhysics.estimate_height_peak(club_max, carry_yd, shot_type)
@@ -2205,19 +2204,39 @@ func _aim_tree_clearance(
 	return "blocked" if any_block else "clear"
 
 
-func _aim_carry_land_point(
+func _aim_planned_total_yd(
 	from: Vector2, to: Vector2, club_max: float, lie: String, shot_type: String
-) -> Vector2:
-	## First-bounce along aim: total planned distance × air_distance_fraction.
+) -> float:
+	## Committed total yards after shot-type pocket floor / flop cap (honest preview).
 	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
 	var severity := ball.get_lie_severity() if ball else ""
-	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity)
+	var solved := BallPhysics.solve_committed_power(
+		aim_yd, club_max, lie, wind, severity, shot_type
+	)
 	var power := float(solved["power"])
 	if shot_type == "flop":
 		var lie_m := BallPhysics.lie_multiplier(lie, severity)
 		power = minf(power, BallPhysics.FLOP_MAX_YD / maxf(club_max * lie_m, 1.0))
-	var total_yd := BallPhysics.estimate_carry_yards(power, club_max, lie, severity, shot_type)
+	return BallPhysics.estimate_carry_yards(power, club_max, lie, severity, shot_type)
+
+
+func _aim_rest_point(
+	from: Vector2, to: Vector2, club_max: float, lie: String, shot_type: String
+) -> Vector2:
+	## Rest position along aim bearing at planned total (past drag when Full floors).
+	var total_yd := _aim_planned_total_yd(from, to, club_max, lie, shot_type)
+	var bearing := to - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
+	return from + bearing.normalized() * BallPhysics.yards_to_pixels(total_yd)
+
+
+func _aim_carry_land_point(
+	from: Vector2, to: Vector2, club_max: float, lie: String, shot_type: String
+) -> Vector2:
+	## First-bounce along aim: planned total × air_distance_fraction.
+	var total_yd := _aim_planned_total_yd(from, to, club_max, lie, shot_type)
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var bearing := to - from
 	if bearing.length_squared() < 1.0:
@@ -2281,15 +2300,19 @@ func _refresh_aim_visuals() -> void:
 			if rec0 != _chosen_shot_type:
 				_chosen_shot_type = rec0
 				_refresh_shot_type_button_labels()
+		var club_max := float(_chosen_club.get("max_yards", 0.0))
+		var st := _effective_shot_type_for_aim()
+		var punch := _punch_mode and ball.get_lie() == "Trees"
+		var flight_st := "punch" if punch else st
+		var lie_now := ball.get_lie()
+		# Full under-pocket floors power → rest past drag aim; preview must match commit.
+		var rest := _aim_rest_point(from, to, club_max, lie_now, flight_st)
 		# Cone's widest point (tip) matches the dispersion circle's own radius exactly —
 		# tight takeoff read at the ball, fanning out to the real landing-area width.
 		var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
 		var cone: Dictionary = AimControl.make_aim_cone(
-			from, to, _aim_shape_bend(), 10.0 * inv_z, radius_px, _power_previewing
+			from, rest, _aim_shape_bend(), 10.0 * inv_z, radius_px, _power_previewing
 		)
-		var club_max := float(_chosen_club.get("max_yards", 0.0))
-		var st := _effective_shot_type_for_aim()
-		var punch := _punch_mode and ball.get_lie() == "Trees"
 		var clearance := _aim_tree_clearance(from, to, club_max, punch, st)
 		var cols: PackedColorArray = _tint_cone_colors(cone["colors"], clearance)
 		_aim_cone.polygon = cone["points"]
@@ -2327,16 +2350,15 @@ func _refresh_aim_visuals() -> void:
 		_pin_ref_line.points = PackedVector2Array([from, _cup_pos])
 		_pin_ref_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
 		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.22)
-		_aim_circle.points = AimControl.make_circle_points(to, radius_px)
+		_aim_circle.points = AimControl.make_circle_points(rest, radius_px)
 		var circle_col := Color(1.0, 0.92, 0.35, 0.95 if _power_previewing else 0.85)
 		if clearance == "blocked":
 			circle_col = Color(0.95, 0.4, 0.32, 0.9)
 		elif clearance == "clear":
 			circle_col = Color(0.45, 0.92, 0.5, 0.9)
 		_aim_circle.default_color = circle_col
-		# Carry land (first bounce) + roll connector to rest circle at `to`.
-		var flight_st := "punch" if punch else st
-		var land := _aim_carry_land_point(from, to, club_max, ball.get_lie(), flight_st)
+		# Carry land (first bounce) + roll connector to rest circle (may be past drag aim).
+		var land := _aim_carry_land_point(from, to, club_max, lie_now, flight_st)
 		var land_r := maxf(radius_px * 0.38, 6.0 * inv_z)
 		if _aim_land_mark:
 			_aim_land_mark.points = AimControl.make_circle_points(land, land_r)
@@ -2344,7 +2366,7 @@ func _refresh_aim_visuals() -> void:
 			_aim_land_mark.default_color = Color(1.0, 1.0, 1.0, 0.78 if _power_previewing else 0.65)
 			_aim_land_mark.visible = true
 		if _aim_roll_line:
-			_aim_roll_line.points = PackedVector2Array([land, to])
+			_aim_roll_line.points = PackedVector2Array([land, rest])
 			_aim_roll_line.width = 2.0 / maxf(camera.zoom.x, 0.35)
 			_aim_roll_line.default_color = Color(1.0, 0.95, 0.7, 0.5 if _power_previewing else 0.38)
 			_aim_roll_line.visible = true
@@ -2352,8 +2374,6 @@ func _refresh_aim_visuals() -> void:
 	if _aiming:
 		_set_green_book_visible(_should_show_green_book())
 		_refresh_wind_indicator(not is_putt)
-	elif _wind_bias:
-		_wind_bias.visible = false
 
 
 func _refresh_shot_type_button_labels() -> void:

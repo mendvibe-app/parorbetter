@@ -151,12 +151,7 @@ func configure(
 		club_name = String(club["name"])
 		club_max_yards = float(club["max_yards"])
 
-	var solved := BallPhysics.solve_committed_power(
-		aim_distance_yd, club_max_yards, lie, wind, p_severity
-	)
-	committed_power = float(solved["power"])
-	true_power_pct = float(solved["true_pct"])
-	# Gesture/grade type; launch uses flight_shot_type() for punch loft/roll.
+	# Gesture/grade type first — power solve is shot-type aware (full floors pocket).
 	# Green always putt. Override only if club-eligible (manual shot-type picker).
 	if lie == "Green":
 		shot_type = "putt"
@@ -166,6 +161,12 @@ func configure(
 		shot_type = p_shot_type_override
 	else:
 		shot_type = TempoGrade.recommend_shot_type(lie, aim_distance_yd, club_max_yards)
+
+	var solved := BallPhysics.solve_committed_power(
+		aim_distance_yd, club_max_yards, lie, wind, p_severity, shot_type
+	)
+	committed_power = float(solved["power"])
+	true_power_pct = float(solved["true_pct"])
 
 	# Flop: hard-cap committed power so total cannot exceed FLOP_MAX_YD (Phase 5).
 	if shot_type == "flop":
@@ -198,6 +199,12 @@ func flight_shot_type() -> String:
 	return shot_type
 
 
+## Lateral swipe → shape: ignore thumb tremor, preserve full intentional range.
+## Deadzone just above playtest noise (~0.03); saturation = old 0.18 full-shape point.
+const LAT_DEADZONE := 0.035
+const LAT_SATURATION := 0.18
+
+
 static func _shape_authority(contact: ShotResult.ContactQuality) -> float:
 	## Mishits don't produce clean intentional draws (real golf + affordance).
 	match contact:
@@ -209,6 +216,19 @@ static func _shape_authority(contact: ShotResult.ContactQuality) -> float:
 			return 0.38
 		_:
 			return 0.12
+
+
+## Map raw max_lateral (pad-height units) to intentional swing_shape in [-1, 1].
+## Continuous remap after deadzone so |lat| at LAT_SATURATION still reaches ±1.
+static func swing_shape_from_lateral(lat: float) -> float:
+	var lat_mag := absf(lat)
+	if lat_mag <= LAT_DEADZONE:
+		return 0.0
+	var span := LAT_SATURATION - LAT_DEADZONE
+	if span <= 0.001:
+		return signf(lat)
+	var scaled := (lat_mag - LAT_DEADZONE) / span
+	return signf(lat) * clampf(scaled, 0.0, 1.0)
 
 
 func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
@@ -494,8 +514,8 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	else:
 		var lat := float(sample.get("max_lateral", 0.0))
 		# lat→shape: − = in-to-out = draw/left; + = out-to-in = fade/right (see tempo_gesture).
-		# ~0.16–0.20 pad half-width saturates intentional shape.
-		swing_shape = clampf(lat / 0.18, -1.0, 1.0)
+		# Deadzone kills tremor; remap so old 0.18 still saturates ±1 (not harder full shape).
+		swing_shape = swing_shape_from_lateral(lat)
 		# pull ≥ 0 = OTT/out-to-in bias (fade side +). Only when rushed past GOOD band.
 		var pull := float(verdict.get("transition_pull", 0.0))
 		var dispersion := 0.0

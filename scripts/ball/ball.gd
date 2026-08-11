@@ -720,6 +720,7 @@ func _on_area_entered(other: Area2D) -> void:
 		AudioBus.set_roll_intensity(0.0)
 		entered_hazard.emit("oob")
 		return
+	# Order matters when fairway collars under the green: sand/green beat fairway.
 	if other.is_in_group("sand"):
 		_apply_lie_string("Sand", false)
 	elif other.is_in_group("green"):

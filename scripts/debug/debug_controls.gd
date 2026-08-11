@@ -209,7 +209,20 @@ func _process(_delta: float) -> void:
 			t["shape_blend"] = float(t.get("path_error", 0.0))
 	var shot_type := str(m.get("shot_type", "")) if not m.is_empty() else ""
 	var type_bit := (" [%s]" % shot_type) if not shot_type.is_empty() else ""
-	var tempo_line := "Tempo: —%s" % type_bit
+	var guide_st := shot_type if not shot_type.is_empty() else "full"
+	var guide_bit: String
+	if GameState.is_survival() and GameState.run_active:
+		guide_bit = " ghost α%.2f H%d/%d" % [
+			GameState.guide_alpha_for_shot_type(guide_st),
+			GameState.current_hole,
+			GameState.HOLE_COUNT,
+		]
+	else:
+		guide_bit = " ghost α%.2f reps%d" % [
+			GameState.guide_alpha_for_shot_type(guide_st),
+			GameState.shot_type_rep_count(guide_st),
+		]
+	var tempo_line := "Tempo: —%s%s" % [type_bit, guide_bit]
 	if not t.is_empty():
 		if t.has("target_frac"):
 			tempo_line = "Putt frac %.2f (tgt %.2f)  bal %d%%%s\n%s" % [
@@ -227,7 +240,7 @@ func _process(_delta: float) -> void:
 				else "clean<%d" % int(TempoGrade.ACCEL_LO_FULL)
 			)
 			# guide/Δ/transV: transition-timing verify (debug only; negative Δ = shorter than guide)
-			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms (guide %d/%dms, Δ%+.0f%%)%s\naccel %.1f (%s)  jerk %.2f  transV %.2f\n%s" % [
+			tempo_line = "Tempo %.1f:1 (tgt %.0f)  bal %d%%  %d/%dms (guide %d/%dms, Δ%+.0f%%)%s%s\naccel %.1f (%s)  jerk %.2f  transV %.2f\n%s" % [
 				float(t.get("ratio", 0.0)),
 				tgt,
 				int(float(t.get("balance", 0.0)) * 100.0),
@@ -237,6 +250,7 @@ func _process(_delta: float) -> void:
 				int(t.get("guide_down_ms", 0)),
 				float(t.get("down_delta_pct", 0.0)),
 				type_bit,
+				guide_bit,
 				float(t.get("max_accel", 0.0)),
 				accel_hint,
 				float(t.get("max_jerk", 0.0)),

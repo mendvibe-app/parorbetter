@@ -454,8 +454,11 @@ func set_practice_swing_count(shot_type: String, v: int) -> void:
 	_save_records()
 
 
-## ~12 real swings at this type → max guide fade (playtest target, Phase 4).
-const SHOT_TYPE_GUIDE_REPS := 12.0
+## Stroke play / practice: real swings at this type → full guide fade (Phase 4).
+const SHOT_TYPE_GUIDE_REPS := 20.0
+## Novice / mastered ghost alpha (tempo pad + meter ticks share this).
+const GUIDE_ALPHA_NOVICE := 0.78
+const GUIDE_ALPHA_MASTERED := 0.0
 
 
 func shot_type_rep_count(shot_type: String) -> int:
@@ -472,6 +475,28 @@ func record_shot_type_rep(shot_type: String) -> void:
 ## 0 = novice at this type (strong guide); 1 = familiar (faded guide). Not global form.
 func get_shot_type_form(shot_type: String) -> float:
 	return clampf(float(shot_type_rep_count(shot_type)) / SHOT_TYPE_GUIDE_REPS, 0.0, 1.0)
+
+
+## 0 = start of round (strong guide); 1 = last hole (faded). Survival course progress.
+func survival_guide_form() -> float:
+	var n := maxi(HOLE_COUNT, 1)
+	if n <= 1:
+		return 0.0
+	return clampf(float(current_hole - 1) / float(n - 1), 0.0, 1.0)
+
+
+## Shared fade for tempo ghost + meter ticks.
+func guide_alpha_for_form(form: float) -> float:
+	return lerpf(GUIDE_ALPHA_NOVICE, GUIDE_ALPHA_MASTERED, clampf(form, 0.0, 1.0))
+
+
+func guide_alpha_for_shot_type(shot_type: String) -> float:
+	## Survival: ghost is strong on hole 1 and fades over the 18 as the course hardens.
+	## Ignores lifetime shot-type reps so a new Survival run always coaches early holes.
+	if is_survival() and run_active and not in_practice():
+		return guide_alpha_for_form(survival_guide_form())
+	# Stroke play / range practice path: per-type familiarity (Phase 4).
+	return guide_alpha_for_form(get_shot_type_form(shot_type))
 
 
 func _load_records() -> void:

@@ -13,7 +13,8 @@ static func default_aim_target(
 	severity: String = ""
 ) -> Vector2:
 	## Start on the ball→pin line: at the pin if reachable, else at club distance toward pin.
-	## Club-fit on: grossly oversized clubs lock past the pin (floored-power total).
+	## Overclub snap past pin only when the *recommended* type is full/punch (true mismatch).
+	## Pitch/chip/flop greenside must lock on pin — Full floor must not rewrite the corridor.
 	if lie == "Green":
 		return cup_pos
 	var to_pin := cup_pos - ball_pos
@@ -22,12 +23,13 @@ static func default_aim_target(
 		return cup_pos
 	var pin_yd := BallPhysics.pixels_to_yards(pin_dist_px)
 	if lie != "Green":
+		var rec := TempoGrade.recommend_shot_type(lie, pin_yd, club_max_yards)
 		var solved := BallPhysics.solve_committed_power(
-			pin_yd, club_max_yards, lie, wind, severity
+			pin_yd, club_max_yards, lie, wind, severity, rec
 		)
-		if bool(solved["overclub"]):
+		if bool(solved["overclub"]) and BallPhysics.shot_type_uses_full_pocket(rec):
 			var total_yd := BallPhysics.estimate_carry_yards(
-				float(solved["power"]), club_max_yards, lie, severity
+				float(solved["power"]), club_max_yards, lie, severity, rec
 			)
 			return point_along_bearing(ball_pos, to_pin, total_yd)
 	if pin_yd <= club_max_yards * 1.02:

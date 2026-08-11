@@ -60,17 +60,38 @@ def suggest_clubs(remaining: float, lie: str, count: int = 3):
     return available[start : start + window]
 
 
-def force_factor(power: float, club_max: float = 0.0, lie: str = "") -> float:
+def force_factor(
+    power: float, club_max: float = 0.0, lie: str = "", shot_type: str = "full"
+) -> float:
     p = max(0.0, min(1.0, power))
     if p > POWER_POCKET_HI:
         return min(1.0, (p - POWER_POCKET_HI) / (1.0 - POWER_POCKET_HI))
     if p < POWER_POCKET_LO:
-        if club_max > 0.0 and lie:
+        # Shortest-club exemption only for pitch/chip/flop — full still taxes.
+        uses_full_pocket = shot_type in ("full", "punch", "")
+        if club_max > 0.0 and lie and not uses_full_pocket:
             available = clubs_for_lie(lie)
             if available and club_max <= available[-1][1] + 0.5:
                 return 0.0
         return min(1.0, (POWER_POCKET_LO - p) / POWER_POCKET_LO)
     return 0.0
+
+
+def solve_committed_power(
+    remaining: float,
+    club_max: float,
+    lie: str = "Fairway",
+    shot_type: str = "full",
+) -> dict:
+    """Mirror BallPhysics.solve_committed_power pocket floor (no wind)."""
+    true_pct = max(0.05, min(1.0, remaining / max(club_max, 1.0)))
+    power = true_pct
+    overclub = False
+    uses_full_pocket = shot_type in ("full", "punch", "")
+    if lie != "Green" and true_pct < POWER_POCKET_LO and uses_full_pocket:
+        power = POWER_POCKET_LO
+        overclub = True
+    return {"power": power, "true_pct": true_pct, "overclub": overclub}
 
 
 def main() -> None:
@@ -109,13 +130,27 @@ def main() -> None:
     assert force_factor(1.0) == 1.0
     assert force_factor(0.0) == 1.0
     assert 0.4 < force_factor(0.3) < 0.6
-    # Lob is shortest — partial swing is correct short-game, not baby tax
-    assert force_factor(0.40, 65.0, "Fairway") == 0.0
-    assert force_factor(0.40, 65.0, "Sand") == 0.0
+    # Lob shortest: pitch/chip partials skip baby tax; Full still taxes
+    assert force_factor(0.40, 65.0, "Fairway", "pitch") == 0.0
+    assert force_factor(0.40, 65.0, "Sand", "chip") == 0.0
+    assert force_factor(0.40, 65.0, "Fairway", "full") > 0.3
     # PW partial still taxed (should have used a shorter wedge)
     assert force_factor(0.40, 110.0, "Fairway") > 0.3
     # Mash on Lob still taxed
     assert force_factor(1.0, 65.0, "Fairway") == 1.0
+
+    # Full floors pocket even on shortest club; pitch keeps baby dial
+    full_lw = solve_committed_power(25.0, 65.0, "Fairway", "full")
+    assert full_lw["overclub"] is True
+    assert abs(full_lw["power"] - POWER_POCKET_LO) < 1e-9
+    assert full_lw["true_pct"] < POWER_POCKET_LO
+    pitch_lw = solve_committed_power(25.0, 65.0, "Fairway", "pitch")
+    assert pitch_lw["overclub"] is False
+    assert abs(pitch_lw["power"] - pitch_lw["true_pct"]) < 1e-9
+    # Driver under-pocket still floors (existing club-fit)
+    drv = solve_committed_power(100.0, 260.0, "Tee", "full")
+    assert drv["overclub"] is True
+    assert abs(drv["power"] - POWER_POCKET_LO) < 1e-9
 
     # Display order + short labels (coach / tight UI)
     from pathlib import Path
@@ -159,6 +194,15 @@ def main() -> None:
     assert "dist_mul" in phys or "0.88" in phys
     assert "_preserve_aim_line" in hc
     assert "_refit_aim_along_bearing" in hc
+    # Full owns stock pocket — no shortest-club baby full (shot types dial short)
+    assert "shot_type: String = \"full\"" in phys or 'shot_type: String = "full"' in phys
+    assert "func shot_type_uses_full_pocket" in phys
+    assert "_aim_planned_total_yd" in hc and "_aim_rest_point" in hc
+    sr = (root / "shot" / "shot_routine.gd").read_text(encoding="utf-8")
+    assert "solve_committed_power(" in sr
+    # configure resolves shot_type before power solve
+    cfg = sr.split("func configure")[1].split("func ")[0] if "func configure" in sr else sr
+    assert cfg.find("shot_type =") < cfg.find("solve_committed_power")
     gs = (root / "autoload" / "game_state.gd").read_text(encoding="utf-8")
     assert "force: float" in gs or "force =" in gs.split("func get_aim_radius_yards")[1][:400]
     # Punch-out: low flight under trees

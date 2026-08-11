@@ -26,7 +26,8 @@ def main() -> int:
     assert "○%d yd" not in CTRL and "○%d" not in CTRL, "dispersion radius stays on the circle"
     assert "_show_wind_flag" in CTRL
     assert "WindFlag" in CTRL
-    assert "_wind_bias" in CTRL, "aim-circle wind bias arrow"
+    assert "_wind_bias" not in CTRL, "aim-circle wind triangle retired; flag stick shows wind"
+    assert "_refresh_wind_bias_arrow" not in CTRL
     assert "WIND_TEXTURES" not in CTRL, "arcade wind arrows retired"
     assert "_wind_sprite" not in CTRL
     assert "No wind adjust needed" not in CTRL
