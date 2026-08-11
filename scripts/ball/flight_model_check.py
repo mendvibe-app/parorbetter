@@ -204,6 +204,10 @@ def short_shot_hang_scale(total_yards: float) -> float:
     return clamp(lerp(HANG_LO, 1.0, total_yards / 40.0), HANG_LO, 1.0)
 
 
+def short_shot_line_scale(total_yards: float) -> float:
+    return clamp(total_yards / 55.0, 0.10, 1.0)
+
+
 _REAL_APEX_KEYS = sorted(REAL_APEX_FT.keys())
 
 
@@ -296,8 +300,10 @@ def sim_flight_land(
     spin: float,
     *,
     mode: str = "new",
-) -> tuple[float, float]:
-    """Integrate _process_flight spin (no wind). Returns (along_px, |lat|_px)."""
+    wind: tuple[float, float] = (0.0, 0.0),
+    reverse_guard: bool = True,
+) -> dict:
+    """Integrate _process_flight (wind * 6, spin, optional reverse-guard)."""
     base_speed = launch_speed_for(air_px, air_time)
     vx, vy = 0.0, -base_speed
     launch = (0.0, -1.0)
@@ -305,7 +311,13 @@ def sim_flight_land(
     dt = 1.0 / 60.0
     t = 0.0
     x = y = 0.0
+    guard_trips = 0
+    min_along_v = base_speed
+    max_lat_frac = 0.0  # |lat| / spd after spin+wind, before guard
     while t < air_time - 1e-9:
+        # ball.gd: velocity += wind * delta * 6.0
+        vx += wind[0] * dt * 6.0
+        vy += wind[1] * dt * 6.0
         spd = math.hypot(vx, vy)
         along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
         if spd > 0.01 and abs(spin) > 1e-6:
@@ -320,13 +332,18 @@ def sim_flight_land(
             if n > 1e-6:
                 vx = vx / n * spd
                 vy = vy / n * spd
-        # reverse-guard still present until CP3
         along_after = vx * launch[0] + vy * launch[1]
+        lat_v = vx * fr[0] + vy * fr[1]
+        spd2 = math.hypot(vx, vy)
+        if spd2 > 1e-6:
+            max_lat_frac = max(max_lat_frac, abs(lat_v) / spd2)
+        min_along_v = min(min_along_v, along_after)
         if along_after < along_spd * 0.15:
-            lat = vx * fr[0] + vy * fr[1]
-            along_spd2 = max(along_spd * 0.35, 12.0)
-            vx = launch[0] * along_spd2 + fr[0] * lat * 0.55
-            vy = launch[1] * along_spd2 + fr[1] * lat * 0.55
+            guard_trips += 1
+            if reverse_guard:
+                along_spd2 = max(along_spd * 0.35, 12.0)
+                vx = launch[0] * along_spd2 + fr[0] * lat_v * 0.55
+                vy = launch[1] * along_spd2 + fr[1] * lat_v * 0.55
         x += vx * dt
         y += vy * dt
         t += dt
@@ -336,7 +353,14 @@ def sim_flight_land(
             break
     along = max(x * launch[0] + y * launch[1], 0.0)
     lat = abs(x * fr[0] + y * fr[1])
-    return along, lat
+    return {
+        "along_px": along,
+        "lat_px": lat,
+        "guard_trips": guard_trips,
+        "min_along_v": min_along_v,
+        "max_lat_frac": max_lat_frac,
+        "reversed": min_along_v < -1.0,
+    }
 
 
 def recommended_power(remaining_yd: float, club_max: float, lie: str = "Fairway") -> float:
@@ -676,13 +700,78 @@ def verify_live_constants_reflected() -> None:
         grip = 0.78 if m >= 245 else 0.88 if m >= 180 else 1.0 if m >= 150 else 1.10
         spin0 = 0.5 * 0.95 * grip
         for path, spin in ((0.5, spin0), (-0.5, -spin0)):
-            ao, lo = sim_flight_land(air_px, r["air_time"], spin, mode="old")
-            an, ln = sim_flight_land(air_px, r["air_time"], spin, mode="new")
+            old = sim_flight_land(air_px, r["air_time"], spin, mode="old")
+            new = sim_flight_land(air_px, r["air_time"], spin, mode="new")
+            ao, lo = old["along_px"], old["lat_px"]
+            an, ln = new["along_px"], new["lat_px"]
             ratio = (ln / lo) if lo > 1e-6 else float("inf")
             print(
                 f"{name:16}{path:+6.1f}{ao/PX_PER_YARD:10.1f}{an/PX_PER_YARD:10.1f}"
                 f"{lo/PX_PER_YARD:9.1f}{ln/PX_PER_YARD:9.1f}{ratio:7.2f}"
             )
+
+    # Phase 5 CP3: reverse-guard trip / reverse sweep (report-first; do not delete here).
+    print("REVERSE-GUARD SWEEP (new coeff, guard ON vs OFF)")
+    print("-" * 74)
+    winds = {
+        "calm": (0.0, 0.0),
+        "head60": (0.0, 60.0),  # against launch -Y
+        "tail60": (0.0, -60.0),
+        "cross60": (60.0, 0.0),
+        "head+cross": (40.0, 40.0),
+    }
+    cases = [
+        ("LW pitch", 80.0, 1.55, 0.20, "pitch", [0.0, -0.22, -0.55, -1.0, 1.0]),
+        ("Driver", 260.0, 0.62, STOCK_POWER, "full", [0.0, 0.5, -0.5, 1.0, -1.0]),
+        ("7i soft", 160.0, 1.05, 0.50, "full", [0.0, 0.5, -1.0]),
+    ]
+    trips_any = 0
+    reverse_off_any = 0
+    print(
+        f"{'case':10}{'wind':12}{'path':>5}{'trips':>6}"
+        f"{'along_on':>9}{'along_off':>10}{'minV_off':>9}{'rev?':>5}"
+    )
+    for cname, m, lm, power, stype, paths in cases:
+        r = launch(m, lm, power, stype, "Fairway", "GOOD", 0.0)
+        air_px = r["carry_yd"] * PX_PER_YARD
+        grip = (
+            0.78
+            if m >= 245
+            else 0.88
+            if m >= 180
+            else 1.0
+            if m >= 150
+            else 1.10
+            if m >= 120
+            else 1.22
+        )
+        line = short_shot_line_scale(r["total_yd"]) if stype == "pitch" else 1.0
+        for wname, wind in winds.items():
+            for path in paths:
+                spin = path * 0.95 * grip * line
+                on = sim_flight_land(
+                    air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True
+                )
+                off = sim_flight_land(
+                    air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=False
+                )
+                trips_any += on["guard_trips"]
+                if off["reversed"]:
+                    reverse_off_any += 1
+                if on["guard_trips"] or off["reversed"] or abs(path) >= 0.55:
+                    print(
+                        f"{cname:10}{wname:12}{path:+5.2f}{on['guard_trips']:6d}"
+                        f"{on['along_px']/PX_PER_YARD:9.1f}{off['along_px']/PX_PER_YARD:10.1f}"
+                        f"{off['min_along_v']:9.1f}{'YES' if off['reversed'] else 'no':>5}"
+                    )
+    print(
+        f"  summary: guard_trips_total={trips_any}  "
+        f"reversed_without_guard={reverse_off_any}"
+    )
+    if trips_any == 0 and reverse_off_any == 0:
+        print("  CP3: guard never tripped and no reverse without it — safe to delete.")
+    else:
+        print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
