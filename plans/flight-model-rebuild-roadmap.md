@@ -150,6 +150,8 @@ punch clears nothing tall but ducks reliably; at least one club in the bag can c
 tree type; `Driver > pine` and `7i > pine` goldens PASS.
 **Playtest focus:** are trees a decision again rather than a coin flip?
 
+**Shipped (PR #46):** verified on device; canopy values unchanged from epic; tree-strike instrumentation fixed (`_capture_flight_metrics` on FLIGHT tree exit).
+
 ---
 
 ### Phase 3 — Carry and roll split
