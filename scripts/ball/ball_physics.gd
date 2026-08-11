@@ -682,9 +682,8 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 			return 1.0
 
 
-## Dampen path/spin on very short shots so sidespin can't outrun forward speed.
-## Playtest: full authority by ~55 yd (was 40) — soft 10–20 yd pitches keep mild shape
-## without half-distance outcomes under path ~0.2.
+## DEAD after Phase 5 CP4 — launch no longer calls this. Speed-proportional spin
+## + airspeed preserve own short-shot curve. Left for checks; Phase 6 deletes body.
 static func short_shot_line_scale(total_yards: float) -> float:
 	return clampf(total_yards / 55.0, 0.10, 1.0)
 
@@ -817,11 +816,8 @@ static func launch_velocity(
 		# Punch trades shape control for a low flight — less sidespin authority.
 		spin *= PUNCH_SPIN_SCALE
 		lateral *= 0.85
-	# Short greenside pitches: full-swing path/spin scale on ~3–15 yd total speed makes
-	# the ball go sideways/back (playtest: plan 3 yd, path +1, actual flies offline).
-	var line_scale := short_shot_line_scale(total_yards)
-	lateral *= line_scale
-	spin *= line_scale
+	# Phase 5 CP4: short_shot_line_scale call removed — curvature ∝ along_spd owns
+	# low-speed shape; launch lateral is no longer distance-damped here.
 
 	var right := Vector2(-dir.y, dir.x)
 	# Cap offline aim: keep launch mostly toward target (was 0.2 → nearly 80° offline OK).

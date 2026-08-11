@@ -105,9 +105,9 @@ def main() -> None:
     assert "flop" in PHYS
     assert "FLOP_MAX_YD" in PHYS
     assert "Lob Wedge" in PHYS
-    # Short-shot line damp + hang cap (LW pitch plan 13 / actual 6 playtest).
+    # short_shot_line_scale body kept dead until Phase 6; call site removed in CP4.
     assert "static func short_shot_line_scale" in PHYS
-    assert "short_shot_line_scale(total_yards)" in PHYS
+    assert "short_shot_line_scale(total_yards)" not in PHYS.split("static func launch_velocity")[1]
     assert "short_shot_hang_scale" in PHYS
     assert "total_yards / 55.0" in PHYS or "/ 55.0" in PHYS
     BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")

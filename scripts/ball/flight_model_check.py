@@ -745,10 +745,10 @@ def verify_live_constants_reflected() -> None:
             if m >= 120
             else 1.22
         )
-        line = short_shot_line_scale(r["total_yd"]) if stype == "pitch" else 1.0
         for wname, wind in winds.items():
             for path in paths:
-                spin = path * 0.95 * grip * line
+                # CP4: no short_shot_line_scale on launch spin.
+                spin = path * 0.95 * grip
                 on = sim_flight_land(
                     air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True
                 )
