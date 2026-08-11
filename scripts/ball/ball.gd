@@ -26,7 +26,7 @@ const LAND_R_SCREEN := 15.0
 const LAND_RING_W_SCREEN := 1.6
 ## Sidespin curvature ∝ along_spd (was flat 28 * spin_scale). 28/180 matches the
 ## old linear region at the former clamp knee → full-swing ~2.6× at driver speed.
-## PLAYTEST TARGET — not final; confirm driver feel on device before locking.
+## Confirmed on device (Phase 5): straight PERFECT + bent path +0.46 feel OK.
 const SPIN_CURVE_COEFF := 28.0 / 180.0
 
 var state: State = State.IDLE
