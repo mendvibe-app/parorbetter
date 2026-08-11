@@ -82,6 +82,18 @@ func refresh_practice_green(putts: int) -> void:
 		menu_btn.visible = true
 
 
+func refresh_short_game(swings: int, station_label: String = "") -> void:
+	_strokes = swings
+	hole_label.text = "SHORT GAME"
+	if station_label.is_empty():
+		score_label.text = "Shots %d" % swings
+	else:
+		score_label.text = "%s · %d" % [station_label, swings]
+	lives_row.visible = false
+	if menu_btn:
+		menu_btn.visible = true
+
+
 func _refresh_score() -> void:
 	if GameState.is_stroke_play():
 		var card := GameState.format_score_to_par(GameState.score_to_par)

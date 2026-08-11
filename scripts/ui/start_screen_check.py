@@ -38,6 +38,7 @@ def main() -> int:
     assert "signal stroke_play_pressed" in SS
     assert "signal green_pressed" in SS
     assert "signal range_pressed" in SS
+    assert "signal short_game_pressed" in SS
     assert "func show_screen" in SS
     assert "format_score_to_par" in SS
     assert "Survival" in SS or "stroke_play" in SS
@@ -57,21 +58,27 @@ def main() -> int:
     assert "func _save_records" in GS
     assert "_update_records_on_end" in GS
     assert "green_mode" in GS
+    assert "short_game_mode" in GS
     assert "func in_practice" in GS
     assert "func enter_green_mode" in GS
     assert "func exit_green_mode" in GS
+    assert "func enter_short_game_mode" in GS
+    assert "func exit_short_game_mode" in GS
 
     assert "GameState.add_score_to_par(diff)" in HC
     assert "func _hole_result_feedback" in HC
     assert "is_stroke_play()" in HC
     assert "func load_practice_green" in HC
+    assert "func load_short_game" in HC
     assert "GameState.green_mode:" in HC
     assert "func refresh_practice_green" in HUD
+    assert "func refresh_short_game" in HUD
     assert "lives_row.visible = GameState.is_survival()" in HUD
 
     assert "green_pressed.connect(_on_practice_green)" in MAIN
     assert "stroke_play_pressed" in MAIN
     assert "load_practice_green()" in MAIN
+    assert "load_short_game()" in MAIN
     assert "GameState.in_practice()" in MAIN
     assert "reset_run(stroke_play)" in MAIN or "reset_run(p_stroke_play" in GS
 
@@ -98,6 +105,8 @@ def main() -> int:
     assert "18 Hole Round" in scene_txt
     assert "Practice Green" in scene_txt
     assert "Practice Range" in scene_txt
+    assert "Short Game" in scene_txt
+    assert 'name="ShortGameButton"' in scene_txt
     assert 'path="res://scenes/ui/start_screen.tscn"' in (ROOT / "scenes" / "main.tscn").read_text(
         encoding="utf-8"
     )

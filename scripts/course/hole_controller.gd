@@ -87,6 +87,20 @@ var _tee_back_pos: Vector2 = Vector2(540, 860.0)  ## Blue (longest) — fairway 
 var _tee_pads: Array = []  ## {set, pos, rect} for all three colors
 var _active_tee: HoleData.TeeSet = HoleData.TeeSet.WHITE
 var _practice_green_pos: Vector2 = Vector2.ZERO
+## Short-game practice station: {id, label, surface, lie, yards, pos}.
+var _short_game_station: Dictionary = {}
+var _short_game_station_panel: Control
+var _change_station_btn: Button
+## Playtest knobs — distance bands for station rings (yd to pin).
+const SHORT_GAME_YARDS := {"close": 10.0, "medium": 30.0, "full": 55.0}
+const SHORT_GAME_SURFACES := [
+	{"id": "greenside", "label": "Greenside", "lie": "Fairway"},
+	{"id": "fairway", "label": "Fairway", "lie": "Fairway"},
+	{"id": "rough", "label": "Rough", "lie": "Rough"},
+	{"id": "sand", "label": "Sand", "lie": "Sand"},
+]
+const SHORT_GAME_DIST_ORDER := ["close", "medium", "full"]
+const SHORT_GAME_DIST_LABELS := {"close": "Close", "medium": "Medium", "full": "Full"}
 var _fairway_half: float = 70.0
 var _flight_zoom_base: float = 1.2  ## captured at full-shot start; flight fracs scale from this
 var _bunkers: Array = []  ## {c, r, sprite, img} — settle lie via paint alpha
@@ -185,15 +199,20 @@ func _ready() -> void:
 	_setup_change_club_btn()
 	_setup_punch_btn()
 	_setup_shot_type_row()
+	_setup_short_game_station_ui()
 	_setup_scorecard()
 	_setup_hole_map()
 	# Bag icon above map in tree (map was covering it); club select stays topmost modal.
 	if _change_club_btn:
 		ui_layer.move_child(_change_club_btn, -1)
+	if _change_station_btn:
+		ui_layer.move_child(_change_station_btn, -1)
 	if _punch_btn:
 		ui_layer.move_child(_punch_btn, -1)
 	if _shot_type_row:
 		ui_layer.move_child(_shot_type_row, -1)
+	if _short_game_station_panel:
+		ui_layer.move_child(_short_game_station_panel, -1)
 	if scorecard:
 		ui_layer.move_child(scorecard, -1)
 	ui_layer.move_child(_club_select, -1)
@@ -328,6 +347,9 @@ func load_hole(hole_index: int) -> void:
 			scorecard.hide_card()
 	GameState.exit_range_mode()
 	GameState.exit_green_mode()
+	GameState.exit_short_game_mode()
+	_short_game_station.clear()
+	_hide_short_game_station_picker()
 	_end_aim_phase()
 	hole = GameState.get_hole(hole_index)
 	GameState.begin_hole(hole_index)
@@ -351,6 +373,8 @@ func load_range() -> void:
 		scorecard.hide_card()
 	_end_aim_phase()
 	GameState.enter_range_mode()
+	_short_game_station.clear()
+	_hide_short_game_station_picker()
 	hole = _make_range_hole()
 	strokes = 0
 	hole_complete = false
@@ -374,6 +398,8 @@ func load_practice_green() -> void:
 		scorecard.hide_card()
 	_end_aim_phase()
 	GameState.enter_green_mode()
+	_short_game_station.clear()
+	_hide_short_game_station_picker()
 	hole = _make_practice_green_hole()
 	strokes = 0
 	hole_complete = false
@@ -391,6 +417,29 @@ func load_practice_green() -> void:
 	feedback.text = "GREEN — aim & putt. Ball resets after each."
 	feedback.modulate = Color(0.85, 0.95, 0.75)
 	_start_shot_ui()
+
+
+func load_short_game() -> void:
+	## Greenside stations — pick lie/distance, then club + aim + shot type.
+	if scorecard:
+		scorecard.hide_card()
+	_end_aim_phase()
+	GameState.enter_short_game_mode()
+	hole = _make_short_game_hole()
+	strokes = 0
+	hole_complete = false
+	ball_in_flight = false
+	_clear_putt_camera_lock()
+	_chosen_club.clear()
+	_short_game_station.clear()
+	_build_course()
+	camera.zoom = Vector2(1.8, 1.8)
+	if not camera.is_current():
+		camera.make_current()
+	_update_hud()
+	feedback.text = "SHORT GAME — pick a station (lie + distance)"
+	feedback.modulate = Color(0.85, 0.95, 0.75)
+	_show_short_game_station_picker()
 
 
 func _make_range_hole() -> HoleData:
@@ -436,6 +485,39 @@ func _make_practice_green_hole() -> HoleData:
 	d.archetype = "practice_green"
 	d.contour_profile = HoleData.ContourProfile.SIDE_SLOPE
 	d.yardage = 100.0
+	return d
+
+
+func _make_short_game_hole() -> HoleData:
+	var d := HoleData.new()
+	d.hole_number = 0
+	d.par = 3
+	d.fairway_width = 200.0
+	d.green_radius_x = 42.0
+	d.green_radius_y = 40.0
+	d.pin_offset = Vector2.ZERO
+	d.tee_offset_x = 0.0
+	d.fairway_bend = 0.0
+	d.wind_vector = Vector2.ZERO
+	d.green_slope = Vector2(0.18, 0.0)
+	d.timing_window_scale = 1.0
+	# One greenside bunker for sand stations (lie still forced on reset).
+	d.hazards = [
+		{
+			"kind": "sand",
+			"role": HoleData.ROLE_GREENSIDE,
+			"side": "left",
+			"along": 0.92,
+			"size": 1.15,
+			"art": 1,
+		}
+	]
+	d.hazard_bias = HoleData.HazardBias.NONE
+	d.suggested_shape = HoleData.SuggestedShape.STRAIGHT
+	d.name_label = "SHORT GAME"
+	d.archetype = "short_game"
+	d.contour_profile = HoleData.ContourProfile.FLAT
+	d.yardage = 80.0
 	return d
 
 
@@ -1394,6 +1476,16 @@ func _start_shot_ui() -> void:
 	if shot_result_panel and shot_result_panel.has_method("hide_now"):
 		shot_result_panel.hide_now()
 	var lie := ball.get_lie()
+	if GameState.short_game_mode:
+		if _short_game_station.is_empty():
+			_show_short_game_station_picker()
+			return
+		if not _chosen_club.is_empty():
+			# Sticky club — aim so shot-type picker stays available.
+			_begin_aim_phase()
+		else:
+			_begin_club_select()
+		return
 	if lie == "Green":
 		var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 		_chosen_club = BallPhysics.putter_for(pin_yd)
@@ -1485,6 +1577,7 @@ func _on_club_chosen(club: Dictionary) -> void:
 		_preserve_aim_line = false
 		_begin_range_swing()
 	else:
+		# Course + short game: aim phase (shot-type picker lives here).
 		var keep := _preserve_aim_line
 		_preserve_aim_line = false
 		_begin_aim_phase(keep)
@@ -1612,6 +1705,10 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 		confirm_aim_btn.visible = true
 	if _change_club_btn:
 		_change_club_btn.visible = not is_putt
+	if _change_station_btn:
+		_change_station_btn.visible = GameState.short_game_mode and not _short_game_station.is_empty()
+		if _change_station_btn.visible:
+			_park_change_station_btn()
 	_sync_punch_btn()
 	_shot_type_manual = false
 	_sync_shot_type_picker()
@@ -1676,6 +1773,180 @@ func _setup_change_club_btn() -> void:
 	ui_layer.add_child(_change_club_btn)
 	_change_club_btn.pressed.connect(_on_change_club_pressed)
 	_park_change_club_btn()
+
+
+func _setup_short_game_station_ui() -> void:
+	_change_station_btn = Button.new()
+	_change_station_btn.name = "ChangeStationButton"
+	_change_station_btn.visible = false
+	_change_station_btn.text = "Station"
+	_change_station_btn.focus_mode = Control.FOCUS_NONE
+	_change_station_btn.z_index = 6
+	_change_station_btn.custom_minimum_size = Vector2(120, 48)
+	_change_station_btn.add_theme_font_size_override("font_size", 28)
+	ui_layer.add_child(_change_station_btn)
+	_change_station_btn.pressed.connect(_on_change_station_pressed)
+
+	_short_game_station_panel = PanelContainer.new()
+	_short_game_station_panel.name = "ShortGameStationPanel"
+	_short_game_station_panel.visible = false
+	_short_game_station_panel.z_index = 8
+	_short_game_station_panel.set_anchors_preset(Control.PRESET_CENTER)
+	_short_game_station_panel.offset_left = -280
+	_short_game_station_panel.offset_right = 280
+	_short_game_station_panel.offset_top = -360
+	_short_game_station_panel.offset_bottom = 360
+	var margin := MarginContainer.new()
+	margin.add_theme_constant_override("margin_left", 16)
+	margin.add_theme_constant_override("margin_right", 16)
+	margin.add_theme_constant_override("margin_top", 16)
+	margin.add_theme_constant_override("margin_bottom", 16)
+	_short_game_station_panel.add_child(margin)
+	var vbox := VBoxContainer.new()
+	vbox.name = "StationList"
+	vbox.add_theme_constant_override("separation", 8)
+	margin.add_child(vbox)
+	var title := Label.new()
+	title.text = "Pick station"
+	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	title.add_theme_font_size_override("font_size", 36)
+	vbox.add_child(title)
+	var scroll := ScrollContainer.new()
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.custom_minimum_size = Vector2(0, 520)
+	vbox.add_child(scroll)
+	var list := VBoxContainer.new()
+	list.name = "Buttons"
+	list.add_theme_constant_override("separation", 6)
+	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(list)
+	ui_layer.add_child(_short_game_station_panel)
+
+
+func _short_game_stations() -> Array[Dictionary]:
+	## 4 surfaces × 3 distances around the pin (forced lie; polar placement).
+	var out: Array[Dictionary] = []
+	var n_surf := SHORT_GAME_SURFACES.size()
+	for si in n_surf:
+		var surf: Dictionary = SHORT_GAME_SURFACES[si]
+		var base_ang := -PI * 0.5 + float(si) * (TAU / float(n_surf))
+		for di in SHORT_GAME_DIST_ORDER.size():
+			var dkey: String = SHORT_GAME_DIST_ORDER[di]
+			var yd: float = float(SHORT_GAME_YARDS[dkey])
+			# Fan each distance slightly so rings don't stack on one ray.
+			var ang := base_ang + (float(di) - 1.0) * 0.18
+			var pos := _cup_pos + Vector2(cos(ang), sin(ang)) * BallPhysics.yards_to_pixels(yd)
+			var dlab: String = String(SHORT_GAME_DIST_LABELS[dkey])
+			var slab: String = String(surf["label"])
+			out.append({
+				"id": "%s_%s" % [surf["id"], dkey],
+				"label": "%s · %s" % [slab, dlab],
+				"surface": String(surf["id"]),
+				"lie": String(surf["lie"]),
+				"yards": yd,
+				"pos": pos,
+			})
+	return out
+
+
+func _show_short_game_station_picker() -> void:
+	if _short_game_station_panel == null or not GameState.short_game_mode:
+		return
+	_end_aim_phase()
+	shot_routine.set_active(false)
+	if _change_station_btn:
+		_change_station_btn.visible = false
+	var list: VBoxContainer = _short_game_station_panel.find_child("Buttons", true, false) as VBoxContainer
+	if list == null:
+		return
+	while list.get_child_count() > 0:
+		var c: Node = list.get_child(0)
+		list.remove_child(c)
+		c.queue_free()
+	for st in _short_game_stations():
+		var btn := Button.new()
+		btn.text = "%s  (%d yd)" % [st["label"], int(st["yards"])]
+		btn.custom_minimum_size = Vector2(480, 56)
+		btn.add_theme_font_size_override("font_size", 30)
+		btn.focus_mode = Control.FOCUS_NONE
+		var st_copy: Dictionary = st
+		btn.pressed.connect(func(): _on_short_game_station_picked(st_copy))
+		list.add_child(btn)
+	_short_game_station_panel.visible = true
+	feedback.text = "SHORT GAME — pick a station (lie + distance)"
+	feedback.modulate = Color(0.85, 0.95, 0.75)
+
+
+func _hide_short_game_station_picker() -> void:
+	if _short_game_station_panel:
+		_short_game_station_panel.visible = false
+
+
+func _on_short_game_station_picked(st: Dictionary) -> void:
+	AudioBus.play_ui()
+	_apply_short_game_station(st)
+	_hide_short_game_station_picker()
+	_begin_club_select()
+
+
+func _apply_short_game_station(st: Dictionary) -> void:
+	_short_game_station = st.duplicate(true)
+	# Recompute pos from current pin (hole may have been rebuilt).
+	var stations := _short_game_stations()
+	for s in stations:
+		if String(s.get("id", "")) == String(st.get("id", "")):
+			_short_game_station = s.duplicate(true)
+			break
+	var pos: Vector2 = _short_game_station.get("pos", _cup_pos + Vector2(0, 80))
+	var lie: String = String(_short_game_station.get("lie", "Fairway"))
+	ball.reset_at(pos, lie)
+	camera.global_position = Vector2(pos.x, pos.y - 60)
+	camera.zoom = Vector2(1.8, 1.8)
+	_set_aim_visuals_visible(false)
+	if _change_station_btn:
+		_change_station_btn.visible = true
+		_park_change_station_btn()
+	_update_hud()
+	feedback.text = "SHORT GAME — %s · %d yd — pick a club" % [
+		String(_short_game_station.get("label", "")),
+		int(_short_game_station.get("yards", 0)),
+	]
+	feedback.modulate = Color(0.85, 0.95, 0.75)
+
+
+func _reset_short_game_station() -> void:
+	if _short_game_station.is_empty():
+		_show_short_game_station_picker()
+		return
+	_apply_short_game_station(_short_game_station)
+	_set_aim_visuals_visible(false)
+	_start_shot_ui()
+
+
+func _on_change_station_pressed() -> void:
+	if not GameState.short_game_mode or hole_complete:
+		return
+	AudioBus.play_ui()
+	shot_routine.set_active(false)
+	if shot_routine.has_method("cancel_shot"):
+		shot_routine.cancel_shot()
+	_end_aim_phase()
+	_show_short_game_station_picker()
+
+
+func _park_change_station_btn() -> void:
+	if _change_station_btn == null:
+		return
+	var m := UiScale.viewport_safe_margins(get_viewport())
+	var right := 16.0 + m.x
+	var top := 16.0 + m.y + CHANGE_CLUB_ICON + 12.0
+	if _hole_map and _hole_map.visible:
+		top += 140.0
+	_change_station_btn.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_change_station_btn.offset_right = -right
+	_change_station_btn.offset_left = -right - 120.0
+	_change_station_btn.offset_top = top
+	_change_station_btn.offset_bottom = top + 48.0
 
 
 func _park_change_club_btn() -> void:
@@ -1938,11 +2209,13 @@ func _on_shot_type_toggled(on: bool, st: String) -> void:
 func _on_change_club_pressed() -> void:
 	if hole_complete:
 		return
-	# Course: only during aim. Range: anytime before/after a sticky swing.
-	if not GameState.range_mode and not _aiming:
+	# Course / short game: only during aim. Range: anytime before/after a sticky swing.
+	if not GameState.range_mode and not GameState.short_game_mode and not _aiming:
+		return
+	if GameState.short_game_mode and not _aiming and _chosen_club.is_empty():
 		return
 	AudioBus.play_ui()
-	if GameState.range_mode:
+	if GameState.range_mode or GameState.short_game_mode:
 		shot_routine.set_active(false)
 		if shot_routine.has_method("cancel_shot"):
 			shot_routine.cancel_shot()
@@ -2817,19 +3090,27 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	var actual := ball.distance_traveled_yards()
 	# Holed shots short-circuit below before _last_report.set_actual — record here so
 	# a made putt (the one "longest putt" actually cares about) isn't dropped.
-	var holed := pos.distance_to(_cup_pos) < CUP_RADIUS and not GameState.range_mode
+	var holed := (
+		pos.distance_to(_cup_pos) < CUP_RADIUS
+		and not GameState.range_mode
+	)
 	if _last_result and _last_report:
 		GameState.club_coach.record(_last_report.club_name, _last_result, GameState.last_tempo_metrics, actual, holed)
 	if GameState.green_mode and holed:
 		_on_practice_green_holed()
 		return
-	if not GameState.range_mode and not GameState.green_mode and holed:
+	if GameState.short_game_mode and holed:
+		_on_short_game_holed()
+		return
+	if not GameState.range_mode and not GameState.green_mode and not GameState.short_game_mode and holed:
 		_on_holed_out()
 		return
 	if GameState.range_mode:
 		ball.set_lie("Tee")
 	elif GameState.green_mode:
 		ball.set_lie("Green")
+	elif GameState.short_game_mode and not _short_game_station.is_empty():
+		ball.set_lie(String(_short_game_station.get("lie", "Fairway")))
 	else:
 		ball.set_lie(_classify_lie(pos))
 	_update_hud()
@@ -2871,6 +3152,9 @@ func _after_shot_continue() -> void:
 	if GameState.green_mode:
 		_reset_practice_green()
 		return
+	if GameState.short_game_mode:
+		_reset_short_game_station()
+		return
 	_start_shot_ui()
 
 
@@ -2898,6 +3182,23 @@ func _on_practice_green_holed() -> void:
 	await get_tree().create_timer(0.7).timeout
 	if GameState.green_mode and GameState.run_active:
 		_reset_practice_green()
+
+
+func _on_short_game_holed() -> void:
+	## Sink juice, then back to the same station — no scoring.
+	ball_in_flight = false
+	_end_aim_phase()
+	shot_routine.set_active(false)
+	AudioBus.play_putt_drop()
+	feedback.text = "IN THE HOLE"
+	feedback.modulate = Color(1.0, 0.95, 0.5)
+	_update_hud()
+	var cam_tw := create_tween()
+	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.15)
+	cam_tw.parallel().tween_property(camera, "zoom", Vector2(3.2, 3.2), 0.12)
+	await get_tree().create_timer(0.7).timeout
+	if GameState.short_game_mode and GameState.run_active:
+		_reset_short_game_station()
 
 
 func _classify_lie(pos: Vector2) -> String:
@@ -2989,6 +3290,13 @@ func _on_hazard(kind: String) -> void:
 		await get_tree().create_timer(0.45).timeout
 		if GameState.green_mode:
 			_reset_practice_green()
+		return
+	if GameState.short_game_mode:
+		feedback.text = "Hazard — try again"
+		_update_hud()
+		await get_tree().create_timer(0.45).timeout
+		if GameState.short_game_mode:
+			_reset_short_game_station()
 		return
 	strokes += 1
 	GameState.record_stroke()
@@ -3173,6 +3481,9 @@ func _update_hud() -> void:
 		hud.refresh_range(strokes)
 	elif GameState.green_mode and hud.has_method("refresh_practice_green"):
 		hud.refresh_practice_green(strokes)
+	elif GameState.short_game_mode and hud.has_method("refresh_short_game"):
+		var st_lab := String(_short_game_station.get("label", ""))
+		hud.refresh_short_game(strokes, st_lab)
 	elif hud.has_method("refresh"):
 		hud.refresh(hole, strokes)
 

@@ -4,6 +4,7 @@ signal start_pressed
 signal stroke_play_pressed
 signal green_pressed
 signal range_pressed
+signal short_game_pressed
 signal coach_pressed
 
 @onready var score_label: Label = $Panel/RecordBox/Inner/ScoreRow/RecordCol/ScoreLabel
@@ -12,6 +13,7 @@ signal coach_pressed
 @onready var stroke_play_btn: Button = $Panel/Buttons/StrokePlayButton
 @onready var green_btn: Button = $Panel/Buttons/GreenButton
 @onready var range_btn: Button = $Panel/Buttons/RangeButton
+@onready var short_game_btn: Button = $Panel/Buttons/ShortGameButton
 @onready var coach_btn: Button = $Panel/Buttons/CoachButton
 
 var _hcp_label: Label
@@ -36,6 +38,11 @@ func _ready() -> void:
 		AudioBus.play_ui()
 		range_pressed.emit()
 	)
+	if short_game_btn:
+		short_game_btn.pressed.connect(func():
+			AudioBus.play_ui()
+			short_game_pressed.emit()
+		)
 	coach_btn.pressed.connect(func():
 		AudioBus.play_ui()
 		coach_pressed.emit()
