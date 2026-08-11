@@ -521,7 +521,9 @@ func _process_flight(delta: float) -> void:
 	if spd > 0.01 and absf(spin) > 0.0001:
 		velocity += flight_right * spin * SPIN_CURVE_COEFF * along_spd * delta
 		velocity = velocity.normalized() * spd
-	# Never allow flight to reverse past the pin/launch line from spin alone.
+	# Wind/stall safety net — not a sidespin patch. Calm+spin never trips this
+	# after speed-proportional curvature (Phase 5 CP3); max headwind on soft
+	# shots still reverses without it. Keep until wind integration owns stall.
 	var along_after := velocity.dot(_launch_dir)
 	if along_after < along_spd * 0.15:
 		var lat := velocity.dot(flight_right)
