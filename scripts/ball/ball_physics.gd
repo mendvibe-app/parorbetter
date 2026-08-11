@@ -197,7 +197,9 @@ const CARRY_FRAC_LONG := 0.91   ## driver end (260 yd club)
 const CARRY_FRAC_SHORT := 0.98  ## lob wedge end (65 yd club)
 
 ## --- Phase 1: apex primary, hang derived (PLAYTEST TARGETS, not final) ---
-## Real PGA Tour average max height in FEET, by club max_yards. Monotonic by construction.
+## Real PGA Tour average max height in FEET, sampled at bag max_yards.
+## Looked up by piecewise-linear interp (_real_apex_ft_for) — not nearest-key —
+## so a distance retune cannot silently jump apex. Monotonic by construction.
 const REAL_APEX_FT := {
 	260.0: 102.0, 235.0: 95.0, 210.0: 94.0, 190.0: 93.0, 175.0: 92.0, 160.0: 92.0,
 	145.0: 91.0, 130.0: 89.0, 110.0: 87.0, 95.0: 84.0, 80.0: 80.0, 65.0: 76.0,
@@ -227,18 +229,30 @@ const APEX_SCALE_CONTACT := {
 const FLOP_MAX_YD := 30.0  ## hard total-distance cap for flop (Phase 5)
 
 
-## Nearest REAL_APEX_FT key by club max_yards (same pattern as club_loft_mul).
+## Piecewise-linear REAL_APEX_FT by club_max_yards.
+## Exact at every table key (today's bag byte-identical); linear between keys so a
+## max_yards nudge cannot jump to a neighbor and silently move apex. Clamp below
+## 65 / above 260 to the endpoint values.
+## Apex must not change as a side effect of a distance change — that coupling is
+## the bug this removes.
 static func _real_apex_ft_for(club_max_yards: float) -> float:
-	if club_max_yards <= 0.0:
-		return 80.0
-	var best_ft := 80.0
-	var best_d := 1.0e9
+	var keys: Array[float] = []
 	for k in REAL_APEX_FT.keys():
-		var d := absf(float(k) - club_max_yards)
-		if d < best_d:
-			best_d = d
-			best_ft = float(REAL_APEX_FT[k])
-	return best_ft
+		keys.append(float(k))
+	keys.sort()
+	if keys.is_empty():
+		return 80.0
+	if club_max_yards <= keys[0]:
+		return float(REAL_APEX_FT[keys[0]])
+	if club_max_yards >= keys[keys.size() - 1]:
+		return float(REAL_APEX_FT[keys[keys.size() - 1]])
+	for i in range(keys.size() - 1):
+		var k0 := keys[i]
+		var k1 := keys[i + 1]
+		if club_max_yards <= k1:
+			var t := (club_max_yards - k0) / (k1 - k0)
+			return lerpf(float(REAL_APEX_FT[k0]), float(REAL_APEX_FT[k1]), t)
+	return float(REAL_APEX_FT[keys[keys.size() - 1]])
 
 
 ## Contact quality → APEX_SCALE_CONTACT key. Unknown → GOOD (UI preview default).

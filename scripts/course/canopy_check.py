@@ -56,14 +56,21 @@ def main() -> int:
     real_ft = {float(k): float(v) for k, v in pairs}
     assert len(real_ft) >= 12
 
+    # Piecewise-linear — mirror BallPhysics._real_apex_ft_for (not nearest-key).
+    _apex_keys = sorted(real_ft.keys())
+
     def real_apex_ft(club_max: float) -> float:
-        best_ft, best_d = 80.0, 1e9
-        for k, v in real_ft.items():
-            d = abs(k - club_max)
-            if d < best_d:
-                best_d = d
-                best_ft = v
-        return best_ft
+        keys = _apex_keys
+        if club_max <= keys[0]:
+            return real_ft[keys[0]]
+        if club_max >= keys[-1]:
+            return real_ft[keys[-1]]
+        for i in range(len(keys) - 1):
+            k0, k1 = keys[i], keys[i + 1]
+            if club_max <= k1:
+                t = (club_max - k0) / (k1 - k0)
+                return real_ft[k0] + (real_ft[k1] - real_ft[k0]) * t
+        return real_ft[keys[-1]]
 
     def apex_for(club_max: float, power: float, shot_type: str = "full") -> float:
         a = apex_scale * real_apex_ft(club_max) * max(0.01, min(1.0, power))

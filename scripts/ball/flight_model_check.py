@@ -191,15 +191,22 @@ def short_shot_hang_scale(total_yards: float) -> float:
     return clamp(lerp(HANG_LO, 1.0, total_yards / 40.0), HANG_LO, 1.0)
 
 
+_REAL_APEX_KEYS = sorted(REAL_APEX_FT.keys())
+
+
 def _real_apex_ft_for(club_max: float) -> float:
-    best_ft = 80.0
-    best_d = 1e9
-    for k, v in REAL_APEX_FT.items():
-        d = abs(k - club_max)
-        if d < best_d:
-            best_d = d
-            best_ft = v
-    return best_ft
+    """Piecewise-linear REAL_APEX_FT — mirror of BallPhysics._real_apex_ft_for."""
+    keys = _REAL_APEX_KEYS
+    if club_max <= keys[0]:
+        return REAL_APEX_FT[keys[0]]
+    if club_max >= keys[-1]:
+        return REAL_APEX_FT[keys[-1]]
+    for i in range(len(keys) - 1):
+        k0, k1 = keys[i], keys[i + 1]
+        if club_max <= k1:
+            t = (club_max - k0) / (k1 - k0)
+            return lerp(REAL_APEX_FT[k0], REAL_APEX_FT[k1], t)
+    return REAL_APEX_FT[keys[-1]]
 
 
 def apex_for(
@@ -469,6 +476,26 @@ def verify_live_constants_reflected() -> None:
     assert abs(APEX_SCALE_CONTACT["GOOD"] - 1.0) < 1e-9
     assert abs(apex_for(160.0, STOCK_POWER, "full", "THIN") / apex_for(160.0, STOCK_POWER, "full", "GOOD") - 0.55) < 1e-6
     assert apex_for(160.0, STOCK_POWER, "full", "FAT") > apex_for(160.0, STOCK_POWER, "full", "GOOD")
+
+    # Piecewise-linear REAL_APEX_FT: exact at keys; midpoints strictly between unequal neighbors.
+    # Proves a bag max_yards nudge can no longer jump apex to a neighbor key.
+    assert "lerpf(float(REAL_APEX_FT[k0])" in PHYS or "lerpf(float(REAL_APEX_FT[" in PHYS
+    for k in _REAL_APEX_KEYS:
+        assert abs(_real_apex_ft_for(k) - REAL_APEX_FT[k]) < 1e-12, (k, _real_apex_ft_for(k))
+        expect_apex = APEX_SCALE * REAL_APEX_FT[k] * STOCK_POWER
+        assert abs(apex_for(k, STOCK_POWER, "full") - expect_apex) < 1e-9, (k, apex_for(k, STOCK_POWER))
+    for i in range(len(_REAL_APEX_KEYS) - 1):
+        k0, k1 = _REAL_APEX_KEYS[i], _REAL_APEX_KEYS[i + 1]
+        v0, v1 = REAL_APEX_FT[k0], REAL_APEX_FT[k1]
+        mid = 0.5 * (k0 + k1)
+        vm = _real_apex_ft_for(mid)
+        if abs(v0 - v1) < 1e-12:
+            assert abs(vm - v0) < 1e-12, (mid, vm, v0)  # plateau
+        else:
+            lo, hi = (v0, v1) if v0 < v1 else (v1, v0)
+            assert lo < vm < hi, (mid, vm, v0, v1)
+    assert abs(_real_apex_ft_for(50.0) - REAL_APEX_FT[_REAL_APEX_KEYS[0]]) < 1e-12
+    assert abs(_real_apex_ft_for(300.0) - REAL_APEX_FT[_REAL_APEX_KEYS[-1]]) < 1e-12
 
     # Phase 3: continuous carry ramp — ratio, gaps, monotonic air_frac (Driver low → LW high).
     prev_af = 0.0
