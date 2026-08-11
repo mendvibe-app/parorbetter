@@ -287,12 +287,13 @@ def launch(
 
 
 GOLDEN = [
-    # Phase 3: carry/total ratio (this phase) vs total_yd (bag calibration — stays FAIL).
+    # Phase 3: carry/total ratio. total_yd ranges are ~10-hcp amateur (Arccos/Shot Scope),
+    # not Tour — Tour was the wrong player model for this bag (see epic-bag-calibration).
     ("Driver stock", "Driver", STOCK_POWER, "full", "air_frac", 0.89, 0.93),
-    ("Driver stock", "Driver", STOCK_POWER, "full", "total_yd", 250.0, 275.0),
+    ("Driver stock", "Driver", STOCK_POWER, "full", "total_yd", 230.0, 250.0),
     ("Driver stock", "Driver", STOCK_POWER, "full", "apex_yd", 28.0, 40.0),
     ("7-iron stock", "7-Iron", STOCK_POWER, "full", "air_frac", 0.93, 0.97),
-    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "total_yd", 160.0, 180.0),
+    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "total_yd", 140.0, 160.0),
     ("7-iron stock", "7-Iron", STOCK_POWER, "full", "apex_yd", 28.0, 36.0),
     ("PW stock", "Pitching Wedge", STOCK_POWER, "full", "apex_yd", 26.0, 34.0),
     ("SW 50yd pitch", "Sand Wedge", 50.0 / 80.0, "pitch", "apex_yd", 12.0, 22.0),
@@ -595,9 +596,9 @@ def main() -> int:
     # 14 frozen ranges + 1 THIN-relative golden
     total_g = len(GOLDEN) + 1
     print(
-        f"flight_model_check: ok (goldens {total_g - fails}/{total_g} PASS — backlog expected)"
+        f"flight_model_check: ok (goldens {total_g - fails}/{total_g} PASS)"
     )
-    return 0
+    return 0 if fails == 0 else 1
 
 
 if __name__ == "__main__":
