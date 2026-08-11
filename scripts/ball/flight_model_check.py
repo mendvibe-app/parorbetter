@@ -47,7 +47,8 @@ _require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
 
 PX_PER_YARD = _f(PHYS, r"const PX_PER_YARD\s*:=\s*([0-9.]+)")
-AIR_DISTANCE_FRACTION = _f(PHYS, r"const AIR_DISTANCE_FRACTION\s*:=\s*([0-9.]+)")
+CARRY_FRAC_LONG = _f(PHYS, r"const CARRY_FRAC_LONG\s*:=\s*([0-9.]+)")
+CARRY_FRAC_SHORT = _f(PHYS, r"const CARRY_FRAC_SHORT\s*:=\s*([0-9.]+)")
 POWER_POCKET_LO = _f(PHYS, r"const POWER_POCKET_LO\s*:=\s*([0-9.]+)")
 POWER_POCKET_HI = _f(PHYS, r"const POWER_POCKET_HI\s*:=\s*([0-9.]+)")
 FLOP_MAX_YD = _f(PHYS, r"const FLOP_MAX_YD\s*:=\s*([0-9.]+)")
@@ -94,6 +95,22 @@ assert _flop_m, "flop air_distance_fraction not found"
 FLOP_AIR_A, FLOP_AIR_B = float(_flop_m.group(1)), float(_flop_m.group(2))
 FLOP_CLAMP_LO, FLOP_CLAMP_HI = float(_flop_m.group(3)), float(_flop_m.group(4))
 
+# Pitch is absolute 0.90 (Phase 3); punch clamp hi parsed from source.
+_pitch_m = re.search(
+    r'shot_type == "pitch":[\s\S]*?return ([0-9.]+)',
+    PHYS,
+)
+assert _pitch_m, "pitch absolute air_distance_fraction not found"
+PITCH_AIR_FRAC = float(_pitch_m.group(1))
+_punch_clamp_m = re.search(
+    r'shot_type == "punch":[\s\S]*?clampf\(full \* PUNCH_AIR_FRAC_SCALE,\s*([0-9.]+),\s*([0-9.]+)\)',
+    PHYS,
+)
+assert _punch_clamp_m, "punch air_frac clamp not found"
+PUNCH_CLAMP_LO, PUNCH_CLAMP_HI = float(_punch_clamp_m.group(1)), float(_punch_clamp_m.group(2))
+# Sand relative tax: full * (0.55 / 0.68) — keep literals in sync with ball_physics.gd comment.
+SAND_AIR_TAX = 0.55 / 0.68
+
 CONTACT_MUL = {
     "PERFECT": _f(PHYS, r"ContactQuality\.PERFECT:\s*\n\s*return ([0-9.]+)"),
     "GOOD": _f(PHYS, r"ContactQuality\.GOOD:\s*\n\s*return ([0-9.]+)"),
@@ -139,19 +156,11 @@ def force_factor(power: float, shot_type: str = "full") -> float:
 
 
 def air_fraction_full(m: float) -> float:
-    if m >= 245.0:
-        return 0.68
-    if m >= 180.0:
-        return 0.72
-    if m >= 150.0:
-        return AIR_DISTANCE_FRACTION
-    if m >= 120.0:
-        return 0.84
-    if m >= 95.0:
-        return 0.90
-    if m >= 75.0:
-        return 0.93
-    return 0.96
+    return lerp(
+        CARRY_FRAC_SHORT,
+        CARRY_FRAC_LONG,
+        clamp((m - 65.0) / (260.0 - 65.0), 0.0, 1.0),
+    )
 
 
 def air_distance_fraction(m: float, shot_type: str = "full") -> float:
@@ -163,7 +172,7 @@ def air_distance_fraction(m: float, shot_type: str = "full") -> float:
             CHIP_CLAMP_HI,
         )
     if shot_type == "pitch":
-        return clamp(lerp(full, 0.72, 0.55), 0.68, 0.82)
+        return PITCH_AIR_FRAC
     if shot_type == "flop":
         return clamp(
             lerp(FLOP_AIR_A, FLOP_AIR_B, clamp((110.0 - m) / 40.0, 0.0, 1.0)),
@@ -171,7 +180,7 @@ def air_distance_fraction(m: float, shot_type: str = "full") -> float:
             FLOP_CLAMP_HI,
         )
     if shot_type == "punch":
-        return clamp(full * PUNCH_AIR_FRAC_SCALE, 0.52, 0.78)
+        return clamp(full * PUNCH_AIR_FRAC_SCALE, PUNCH_CLAMP_LO, PUNCH_CLAMP_HI)
     return full
 
 
@@ -257,7 +266,7 @@ def launch(
     apex_px = apex_for(club_max, power, shot_type, contact)
     air_frac = air_distance_fraction(club_max, shot_type)
     if lie == "Sand" and shot_type == "full":
-        air_frac = 0.55
+        air_frac = air_fraction_full(club_max) * SAND_AIR_TAX
 
     air_px = total_px * air_frac
     base_speed = air_px / max(air_time, 0.05)
@@ -278,9 +287,12 @@ def launch(
 
 
 GOLDEN = [
-    ("Driver stock", "Driver", STOCK_POWER, "full", "carry_yd", 250.0, 275.0),
+    # Phase 3: carry/total ratio (this phase) vs total_yd (bag calibration — stays FAIL).
+    ("Driver stock", "Driver", STOCK_POWER, "full", "air_frac", 0.89, 0.93),
+    ("Driver stock", "Driver", STOCK_POWER, "full", "total_yd", 250.0, 275.0),
     ("Driver stock", "Driver", STOCK_POWER, "full", "apex_yd", 28.0, 40.0),
-    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "carry_yd", 160.0, 180.0),
+    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "air_frac", 0.93, 0.97),
+    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "total_yd", 160.0, 180.0),
     ("7-iron stock", "7-Iron", STOCK_POWER, "full", "apex_yd", 28.0, 36.0),
     ("PW stock", "Pitching Wedge", STOCK_POWER, "full", "apex_yd", 26.0, 34.0),
     ("SW 50yd pitch", "Sand Wedge", 50.0 / 80.0, "pitch", "apex_yd", 12.0, 22.0),
@@ -332,16 +344,25 @@ def run_table() -> None:
     print(f"FULL BAG — {STOCK_POWER:.0%} power (stock), fairway, GOOD contact")
     print("-" * 74)
     print(
-        f"{'club':16}{'total':>7}{'carry':>7}{'roll':>7}{'airT':>7}"
-        f"{'speed':>8}{'apex px':>9}{'apex yd':>9}"
+        f"{'club':16}{'total':>7}{'carry':>7}{'roll':>7}{'airF':>7}"
+        f"{'airT':>7}{'speed':>8}{'apex px':>9}{'apex yd':>9}"
     )
+    carries: list[float] = []
     for name, m, lm in BAG:
         r = launch(m, lm, STOCK_POWER)
+        carries.append(r["carry_yd"])
         print(
             f"{name:16}{r['total_yd']:7.0f}{r['carry_yd']:7.0f}{r['roll_yd']:7.0f}"
-            f"{r['air_time']:7.2f}{r['speed_px_s']:8.0f}"
+            f"{r['air_frac']:7.3f}{r['air_time']:7.2f}{r['speed_px_s']:8.0f}"
             f"{r['apex_px']:9.1f}{r['apex_yd']:9.1f}"
         )
+    print("\nADJACENT CARRY GAPS")
+    print("-" * 74)
+    for i in range(len(BAG) - 1):
+        gap = carries[i] - carries[i + 1]
+        n0, n1 = BAG[i][0], BAG[i + 1][0]
+        ok = "OK" if gap >= 8.0 - 1e-9 else "LOW"
+        print(f"  {ok}  {n0:16} -> {n1:16}  {gap:5.1f} yd")
     print("\nSHORT GAME — Sand Wedge, fairway, GOOD contact")
     print("-" * 74)
     print(
@@ -413,10 +434,18 @@ def verify_live_constants_reflected() -> None:
     assert abs(PX_PER_YARD - 2.25) < 1e-9
     assert abs(POWER_POCKET_HI - 0.92) < 1e-9
     assert abs(CONTACT_MUL["PERFECT"] - 1.06) < 1e-9
+    assert abs(CARRY_FRAC_LONG - 0.91) < 1e-9
+    assert abs(CARRY_FRAC_SHORT - 0.98) < 1e-9
+    assert abs(PITCH_AIR_FRAC - 0.90) < 1e-9
+    assert abs(PUNCH_AIR_FRAC_SCALE - 0.88) < 1e-9
+    assert abs(PUNCH_CLAMP_HI - 0.90) < 1e-9
+    assert "AIR_DISTANCE_FRACTION" not in PHYS
     assert any(n == "Lob Wedge" for n, _, _ in BAG)
     assert any(n == "Sand Wedge" and abs(m - 80.0) < 0.01 for n, m, _ in BAG)
     chip_sw = air_distance_fraction(80.0, "chip")
     assert 0.20 <= chip_sw <= 0.33, chip_sw
+    assert abs(chip_sw - 0.28) < 1e-9, chip_sw  # byte-identical chip branch
+    assert abs(air_distance_fraction(80.0, "pitch") - 0.90) < 1e-9
     assert force_factor(STOCK_POWER, "full") == 0.0
     assert force_factor(1.0, "full") > 0.99
     assert short_shot_hang_scale(13.0) < 0.75  # dead func still present
@@ -439,10 +468,29 @@ def verify_live_constants_reflected() -> None:
     assert abs(APEX_SCALE_CONTACT["GOOD"] - 1.0) < 1e-9
     assert abs(apex_for(160.0, STOCK_POWER, "full", "THIN") / apex_for(160.0, STOCK_POWER, "full", "GOOD") - 0.55) < 1e-6
     assert apex_for(160.0, STOCK_POWER, "full", "FAT") > apex_for(160.0, STOCK_POWER, "full", "GOOD")
+
+    # Phase 3: continuous carry ramp — ratio, gaps, monotonic air_frac (Driver low → LW high).
+    prev_af = 0.0
+    for name, m, lm in BAG:
+        rr = launch(m, lm, STOCK_POWER)
+        expect = air_fraction_full(m)
+        assert abs(rr["air_frac"] - expect) < 1e-9, (name, rr["air_frac"], expect)
+        assert rr["air_frac"] + 1e-9 >= prev_af, (name, rr["air_frac"], prev_af)
+        prev_af = rr["air_frac"]
+    carries = [launch(m, lm, STOCK_POWER)["carry_yd"] for _n, m, lm in BAG]
+    for i in range(len(carries) - 1):
+        gap = carries[i] - carries[i + 1]
+        assert gap >= 8.0 - 1e-6, (BAG[i][0], BAG[i + 1][0], gap)
+
+    # Sand relative tax
+    sand = launch(260.0, 0.62, STOCK_POWER, "full", lie="Sand")
+    assert abs(sand["air_frac"] - air_fraction_full(260.0) * SAND_AIR_TAX) < 1e-9
+
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
         f"chip_air_sw={chip_sw:.2f} APEX_SCALE={APEX_SCALE} G={GRAVITY_PX} "
         f"dr_apex={dr['apex_px']:.1f} chip3_apex={chip['apex_px']:.1f} "
+        f"CARRY={CARRY_FRAC_LONG}-{CARRY_FRAC_SHORT} "
         f"contact_thin={APEX_SCALE_CONTACT['THIN']}"
     )
 
@@ -544,7 +592,7 @@ def main() -> int:
             make_chart()
         except ImportError:
             print("matplotlib not installed — skip --chart")
-    # 12 frozen ranges + 1 THIN-relative golden
+    # 14 frozen ranges + 1 THIN-relative golden
     total_g = len(GOLDEN) + 1
     print(
         f"flight_model_check: ok (goldens {total_g - fails}/{total_g} PASS — backlog expected)"

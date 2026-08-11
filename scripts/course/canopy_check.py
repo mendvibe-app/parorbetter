@@ -71,20 +71,13 @@ def main() -> int:
             a *= punch_scale
         return max(a, 0.01)
 
+    # Phase 3 carry ramp (read-only mirror of ball_physics._air_fraction_full)
+    carry_long = _f(PHYS, r"const CARRY_FRAC_LONG\s*:=\s*([0-9.]+)")
+    carry_short = _f(PHYS, r"const CARRY_FRAC_SHORT\s*:=\s*([0-9.]+)")
+
     def air_frac_full(m: float) -> float:
-        if m >= 245.0:
-            return 0.68
-        if m >= 180.0:
-            return 0.72
-        if m >= 150.0:
-            return _f(PHYS, r"const AIR_DISTANCE_FRACTION\s*:=\s*([0-9.]+)")
-        if m >= 120.0:
-            return 0.84
-        if m >= 95.0:
-            return 0.90
-        if m >= 75.0:
-            return 0.93
-        return 0.96
+        t = max(0.0, min(1.0, (m - 65.0) / (260.0 - 65.0)))
+        return carry_short + (carry_long - carry_short) * t
 
     def height_at_total_frac(
         total_frac: float, apex: float, club_max: float, shot_type: str = "full"
@@ -122,7 +115,7 @@ def main() -> int:
     h20 = height_at_total_frac(0.20, dr_apex, 260.0)
     n20 = clears_count(h20)
     check(
-        "driver 20% clears ≤2",
+        "driver 20% clears <=2",
         n20 <= 2,
         f"h={h20:.1f} apex={dr_apex:.1f} clears={n20}",
     )
@@ -131,7 +124,7 @@ def main() -> int:
     h35 = height_at_total_frac(0.35, dr_apex, 260.0)
     n35 = clears_count(h35)
     check(
-        "driver 35% clears ≥4",
+        "driver 35% clears >=4",
         n35 >= 4,
         f"h={h35:.1f} apex={dr_apex:.1f} clears={n35}",
     )

@@ -5,8 +5,6 @@ extends RefCounted
 ## Distances use a shared yards↔pixels scale so UI estimates match flight.
 
 const PX_PER_YARD := 2.25
-## Mid-iron baseline air share (see air_distance_fraction for per-club identity).
-const AIR_DISTANCE_FRACTION := 0.78
 
 ## Full bag, longest → shortest. Neighbor max gaps ~15–25 yd so overlap is real.
 ## loft_mul scales visual apex + air_time (wedges fly higher for tree carries).
@@ -187,10 +185,16 @@ static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 
 ## Punch: lower apex (canopy duck) + more roll. Playtest knobs.
 const PUNCH_LOFT_SCALE := 0.48
-const PUNCH_AIR_FRAC_SCALE := 0.72
+const PUNCH_AIR_FRAC_SCALE := 0.88
 const PUNCH_SPIN_SCALE := 0.55
 ## Flight under foliage if height ≤ this × canopy_h (see ball tree collision).
 const PUNCH_UNDER_CANOPY_FRAC := 0.88
+
+## --- Phase 3: carry share of total (PLAYTEST TARGETS, not final) ---
+## Long clubs land shallow and release; short clubs land steep and stop.
+## Continuous ramp — replaces the old bucket ladder that collapsed mid-iron gapping.
+const CARRY_FRAC_LONG := 0.91   ## driver end (260 yd club)
+const CARRY_FRAC_SHORT := 0.98  ## lob wedge end (65 yd club)
 
 ## --- Phase 1: apex primary, hang derived (PLAYTEST TARGETS, not final) ---
 ## Real PGA Tour average max height in FEET, by club max_yards. Monotonic by construction.
@@ -294,31 +298,26 @@ static func air_distance_fraction(club_max_yards: float, shot_type: String = "fu
 			lerpf(0.28, 0.22, clampf((club_max_yards - 85.0) / 50.0, 0.0, 1.0)), 0.20, 0.33
 		)
 	if shot_type == "pitch":
-		# More carry than chip, still more release than a stock full wedge.
-		return clampf(lerpf(full, 0.72, 0.55), 0.68, 0.82)
+		# Absolute — partial wedge lands steep and stops. Pinned so base-ramp retunes
+		# do not silently drift pitch rollout (Phase 3 playtest target).
+		return 0.90
 	if shot_type == "flop":
 		# Near-zero roll — soft high stop (air higher than pitch). Playtest target.
 		return clampf(lerpf(0.94, 0.97, clampf((110.0 - club_max_yards) / 40.0, 0.0, 1.0)), 0.92, 0.98)
 	if shot_type == "punch":
-		# Flatter flight — less carry share, more runout after land.
-		return clampf(full * PUNCH_AIR_FRAC_SCALE, 0.52, 0.78)
+		# Knockdown lands shallow and runs — still less carry share than full.
+		return clampf(full * PUNCH_AIR_FRAC_SCALE, 0.52, 0.90)
 	return full
 
 
 static func _air_fraction_full(club_max_yards: float) -> float:
-	if club_max_yards >= 245.0:  # Driver — low, hot, releases hard
-		return 0.68
-	if club_max_yards >= 180.0:  # 3W / Hybrid / long iron
-		return 0.72
-	if club_max_yards >= 150.0:  # Mid (6–7) — baseline
-		return AIR_DISTANCE_FRACTION
-	if club_max_yards >= 120.0:  # Short (8–9)
-		return 0.84
-	if club_max_yards >= 95.0:  # PW / GW
-		return 0.90
-	if club_max_yards >= 75.0:  # SW
-		return 0.93
-	return 0.96  # LW — highest flight share
+	# Continuous ramp: short clubs stop, long clubs release. Replaces the bucket
+	# ladder that collapsed mid-iron carry gaps to <3 yd.
+	return lerpf(
+		CARRY_FRAC_SHORT,
+		CARRY_FRAC_LONG,
+		clampf((club_max_yards - 65.0) / (260.0 - 65.0), 0.0, 1.0)
+	)
 
 
 ## Path-spin multiplier — mild club identity (pre-pack driver 0.75; avoid 0.92 over-flatten).
@@ -716,7 +715,11 @@ static func launch_velocity(
 	var apex := apex_for(club_max_yards, result.power, shot_type, contact)
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
 	if lie == "Sand" and shot_type == "full":
-		air_frac = 0.55
+		# Relative to full air share — not an absolute. Absolute 0.55 was calibrated
+		# against the old driver bucket (0.68) and goes silently wrong when the
+		# carry scale moves (same failure mode as the old apex 28.0 constant).
+		# 0.55/0.68 preserves the original ~19% sand tax. Do not "simplify" to a literal.
+		air_frac = _air_fraction_full(club_max_yards) * (0.55 / 0.68)
 
 	var air_px := total_px * air_frac
 	var base_speed := air_px / maxf(air_time, 0.05)
