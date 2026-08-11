@@ -180,6 +180,11 @@ reads as release rather than a skid; chip roll ratio lands in the retuned window
 **Playtest focus:** does a driver on firm fairway release the way it should, and does a chip
 finally check-and-run instead of stopping dead?
 
+**Shipped (`feature/carry-roll-split`, cb4d624):** verified on device; adjacent carry gaps
+12–19 yd bag-wide (mid-iron collapse fixed — 6i/7i/8i separated ~12–18 yd at 85% tee);
+carry/total ratios grounded in amateur launch-monitor data (~0.91 driver / ~0.98 wedge).
+Trees feel harder (longer carry stretches the arc) — canopy touch-up deferred, not this phase.
+
 ---
 
 ### Phase 4 — One owner for distance
