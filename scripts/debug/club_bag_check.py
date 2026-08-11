@@ -153,6 +153,7 @@ def main() -> None:
     assert abs(drv["power"] - POWER_POCKET_LO) < 1e-9
 
     # Display order + short labels (coach / tight UI)
+    import re
     from pathlib import Path
 
     root = Path(__file__).resolve().parents[1]
@@ -188,7 +189,10 @@ def main() -> None:
     assert "Lob Wedge" in phys and "Sand Wedge" in phys and "Gap Wedge" in phys
     # BAG entries must not keep the merged club (legacy short-name alias may remain).
     assert '{"name": "Gap/Sand Wedge"' not in phys
-    assert "TREE_CANOPY_H" in hc and "42.0" in hc  # tall wall
+    assert "TREE_CANOPY_H" in hc
+    # Tall wall = max of TREE_CANOPY_H (do not string-match a fixed literal — it drifts).
+    _canopy_vals = [float(x) for x in re.findall(r"const TREE_CANOPY_H:[\s\S]*?=\s*\[([^\]]+)\]", hc)[0].split(",") if x.strip()]
+    assert len(_canopy_vals) >= 8 and max(_canopy_vals) == _canopy_vals[-1], _canopy_vals
     # Club-fit: force shortens distance; aim radius can scale with force
     assert "true_power" in (root / "shot" / "shot_result.gd").read_text(encoding="utf-8")
     assert "dist_mul" in phys or "0.88" in phys

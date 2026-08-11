@@ -273,9 +273,17 @@ func _process(_delta: float) -> void:
 		var h_max := float(m.get("height_max", -1.0))
 		var height_line := "Apex —"
 		if h_peak >= 0.0 or h_max >= 0.0:
-			height_line = "Apex peak %.1f · max %.1f (canopy short~22–28 pine~38 tall~42)" % [
+			# Indices: airy=4 (lowest), oak=3 (mid), tall=7 (wall) — single source TREE_CANOPY_H.
+			var ch: Array = HoleController.TREE_CANOPY_H
+			var airy_h := float(ch[4]) if ch.size() > 4 else 55.0
+			var oak_h := float(ch[3]) if ch.size() > 3 else 72.0
+			var tall_h := float(ch[7]) if ch.size() > 7 else 92.0
+			height_line = "Apex peak %.1f · max %.1f (canopy airy~%.0f oak~%.0f tall~%.0f)" % [
 				h_peak if h_peak >= 0.0 else 0.0,
 				h_max if h_max >= 0.0 else 0.0,
+				airy_h,
+				oak_h,
+				tall_h,
 			]
 		var flight: Dictionary = {}
 		if m.get("flight") is Dictionary:
@@ -444,14 +452,27 @@ class ElevationSparkline extends Control:
 		draw_rect(r, Color(0.25, 0.3, 0.28, 0.9), false, 1.0)
 		var pad := 8.0
 		var plot := Rect2(pad, pad, maxf(size.x - pad * 2.0, 4.0), maxf(size.y - pad * 2.0, 4.0))
-		var canopies := [25.0, 38.0, 42.0]
-		var labels := ["short", "pine", "tall"]
+		# Ref lines from production table (airy / oak / tall) — no second hardcoded scale.
+		var ch: Array = HoleController.TREE_CANOPY_H
+		var canopies: Array = []
+		var labels: Array = []
+		if ch.size() > 4:
+			canopies.append(float(ch[4]))
+			labels.append("airy")
+		if ch.size() > 3:
+			canopies.append(float(ch[3]))
+			labels.append("oak")
+		if ch.size() > 7:
+			canopies.append(float(ch[7]))
+			labels.append("tall")
 		var y_max := 48.0
+		for ch_v in canopies:
+			y_max = maxf(y_max, float(ch_v) * 1.05)
 		if _has:
 			y_max = maxf(y_max, _apex * 1.15)
 		# Canopy reference lines
 		for i in canopies.size():
-			var h: float = canopies[i]
+			var h: float = float(canopies[i])
 			var ty := plot.position.y + plot.size.y * (1.0 - clampf(h / y_max, 0.0, 1.0))
 			var col := Color(0.55, 0.55, 0.5, 0.55)
 			_draw_dashed_h(plot.position.x, plot.position.x + plot.size.x, ty, col)

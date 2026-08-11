@@ -535,9 +535,14 @@ func _process_flight(delta: float) -> void:
 		_begin_roll()
 
 
-func _begin_roll() -> void:
+func _capture_flight_metrics() -> void:
+	## Hang/carry for F1 harness cross-check. Call on every FLIGHT exit (roll or settle).
 	_hang_time_actual = _air_timer
 	_carry_px_actual = _traveled_along()
+
+
+func _begin_roll() -> void:
+	_capture_flight_metrics()
 	_height = 0.0
 	state = State.ROLL
 	var speed := _landing_speed
@@ -710,6 +715,8 @@ func _on_area_entered(other: Area2D) -> void:
 			# Punch: stay in the under-foliage band (top-down disk = canopy footprint).
 			if _punch_flight and _height <= canopy * BallPhysics.PUNCH_UNDER_CANOPY_FRAC:
 				return  # under
+			# Tree strike ends FLIGHT without _begin_roll — capture hang/carry here.
+			_capture_flight_metrics()
 		_apply_lie_string("Trees", false)
 		velocity = Vector2.ZERO
 		state = State.SETTLED
@@ -718,6 +725,7 @@ func _on_area_entered(other: Area2D) -> void:
 		settled.emit(global_position, _lie)
 		return
 	# Ground groups (water/sand/fairway/…) only count on ROLL.
+	# Water/OOB never end FLIGHT directly — after roll, hang/carry already set in _begin_roll.
 	if state != State.ROLL:
 		return
 	if other.is_in_group("cup"):

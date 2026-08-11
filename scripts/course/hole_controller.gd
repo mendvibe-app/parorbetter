@@ -70,8 +70,10 @@ const TREE_TEXTURES := [
 ]
 ## Clear height (same units as ball._height peak). Ball carries if _height >= this in flight.
 ## Index matches TREE_TEXTURES: round, pine, cluster, oak, airy, dark, broad, tall.
-## Short ~22–28 (mid-iron/wedge); pine rare full-wedge; tall ~42 hard wall.
-const TREE_CANOPY_H: Array[float] = [24.0, 38.0, 28.0, 32.0, 22.0, 30.0, 26.0, 42.0]
+## Calibrated against Phase 1 apex via height-at-tree (estimate_height_at_along), not apex alone.
+## Trees 20–35% of total planned distance. ALL PLAYTEST TARGETS.
+const TREE_CANOPY_H: Array[float] = [62.0, 80.0, 68.0, 72.0, 55.0, 70.0, 64.0, 92.0]
+##                                   round  pine cluster oak  airy  dark broad tall
 ## Portrait course framing: dark rough belt just outside fairway + tree line on it.
 ## Camera aims to keep this corridor ~half of screen width (not oceans of mid-rough).
 const SIDE_BELT_W := 58.0
