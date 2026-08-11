@@ -4,9 +4,6 @@
 Follows scripts/**/*_check.py convention (AGENTS.md). Golden expected ranges encode
 real golf (frozen backlog), not current pass rate. Stock fulls use power 0.92 (pocket hi).
 
-Phase 0 models pre-rebuild physics: loft-based air_time and the ball.gd
-(28.0 + speed * 0.02) * loft apex formula. Phase 1 replaces the model portion.
-
 Usage:
   python scripts/ball/flight_model_check.py
   python scripts/ball/flight_model_check.py --chart
@@ -40,21 +37,14 @@ _require(PHYS, "const BAG:")
 _require(PHYS, "static func launch_velocity")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
-_require(PHYS, "static func short_shot_hang_scale")
-# Phase 0: loft-era air_time (not apex-primary hang_time).
-_require(PHYS, "lerpf(0.55, 1.15,")
-_require(PHYS, "short_shot_hang_scale(total_yards)")
-# ball.gd still owns apex via 28.0 formula; instrumentation present.
-_require(BALL, "(28.0 + velocity.length() * 0.02)")
-_require(BALL, "func flight_metrics()")
-_require(BALL, "var _hang_time_actual")
-_require(BALL, "var _carry_px_actual")
-_require(BALL, "var _launch_speed")
-# Phase 1 markers must not be present yet.
-assert "static func apex_for" not in PHYS
-assert "static func hang_time" not in PHYS
-assert "const REAL_APEX_FT" not in PHYS
-assert 'launch_data.get("apex"' not in BALL
+_require(PHYS, "static func short_shot_hang_scale")  # dead but kept until Phase 6
+_require(PHYS, "static func apex_for")
+_require(PHYS, "static func hang_time")
+_require(PHYS, "const REAL_APEX_FT")
+_require(PHYS, "const APEX_SCALE")
+_require(PHYS, "const GRAVITY_PX")
+_require(PHYS, "const APEX_SCALE_CONTACT")
+_require(BALL, 'launch_data.get("apex"')
 
 PX_PER_YARD = _f(PHYS, r"const PX_PER_YARD\s*:=\s*([0-9.]+)")
 AIR_DISTANCE_FRACTION = _f(PHYS, r"const AIR_DISTANCE_FRACTION\s*:=\s*([0-9.]+)")
@@ -67,6 +57,26 @@ MASH_POWER_LERP = _f(PHYS, r"power_mul \*= lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
 DIST_MUL_LO = _f(PHYS, r"var dist_mul := lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
 HANG_LO = _f(PHYS, r"return clampf\(lerpf\(([0-9.]+),\s*1\.0,\s*total_yards / 40\.0\)")
 HANG_FULL_YD = _f(PHYS, r"if total_yards >= ([0-9.]+):\s*\n\s*return 1\.0")
+
+# Phase 1 apex-primary knobs
+APEX_SCALE = _f(PHYS, r"const APEX_SCALE\s*:=\s*([0-9.]+)")
+GRAVITY_PX = _f(PHYS, r"const GRAVITY_PX\s*:=\s*([0-9.]+)")
+APEX_SCALE_CHIP = _f(PHYS, r"const APEX_SCALE_CHIP\s*:=\s*([0-9.]+)")
+APEX_SCALE_PUNCH = _f(PHYS, r"const APEX_SCALE_PUNCH\s*:=\s*([0-9.]+)")
+APEX_SCALE_FLOP = _f(PHYS, r"const APEX_SCALE_FLOP\s*:=\s*([0-9.]+)")
+_contact_block = PHYS[
+    PHYS.find("const APEX_SCALE_CONTACT") : PHYS.find("const APEX_SCALE_CONTACT") + 220
+]
+_contact_pairs = re.findall(r'"([A-Z]+)":\s*([0-9.]+)', _contact_block)
+assert len(_contact_pairs) >= 5, f"APEX_SCALE_CONTACT parse incomplete: {_contact_pairs}"
+APEX_SCALE_CONTACT = {k: float(v) for k, v in _contact_pairs}
+assert abs(APEX_SCALE_CONTACT.get("GOOD", -1.0) - 1.0) < 1e-9, APEX_SCALE_CONTACT
+_real_apex_pairs = re.findall(
+    r"(\d+\.0):\s*(\d+\.0)",
+    PHYS[PHYS.find("const REAL_APEX_FT") : PHYS.find("const REAL_APEX_FT") + 400],
+)
+assert len(_real_apex_pairs) >= 12, f"REAL_APEX_FT parse incomplete: {_real_apex_pairs}"
+REAL_APEX_FT = {float(k): float(v) for k, v in _real_apex_pairs}
 
 _chip_m = re.search(
     r'shot_type == "chip":[\s\S]*?lerpf\(([0-9.]+),\s*([0-9.]+),[\s\S]*?clampf\([^,]+,\s*([0-9.]+),\s*([0-9.]+)\)',
@@ -166,9 +176,47 @@ def air_distance_fraction(m: float, shot_type: str = "full") -> float:
 
 
 def short_shot_hang_scale(total_yards: float) -> float:
+    """Mirror of dead GD func (still in source for Phase 6)."""
     if total_yards >= HANG_FULL_YD:
         return 1.0
     return clamp(lerp(HANG_LO, 1.0, total_yards / 40.0), HANG_LO, 1.0)
+
+
+def _real_apex_ft_for(club_max: float) -> float:
+    best_ft = 80.0
+    best_d = 1e9
+    for k, v in REAL_APEX_FT.items():
+        d = abs(k - club_max)
+        if d < best_d:
+            best_d = d
+            best_ft = v
+    return best_ft
+
+
+def apex_for(
+    club_max: float,
+    power: float,
+    shot_type: str = "full",
+    contact: str = "GOOD",
+) -> float:
+    a = APEX_SCALE * _real_apex_ft_for(club_max) * clamp(power, 0.01, 1.0)
+    if shot_type == "chip":
+        a *= APEX_SCALE_CHIP
+    elif shot_type == "punch":
+        a *= APEX_SCALE_PUNCH
+    elif shot_type == "flop":
+        a *= APEX_SCALE_FLOP
+    a *= APEX_SCALE_CONTACT.get(contact, 1.0)
+    return max(a, 0.01)
+
+
+def hang_time(
+    club_max: float,
+    power: float,
+    shot_type: str = "full",
+    contact: str = "GOOD",
+) -> float:
+    return math.sqrt(8.0 * apex_for(club_max, power, shot_type, contact) / GRAVITY_PX)
 
 
 def launch(
@@ -180,7 +228,6 @@ def launch(
     contact: str = "GOOD",
     path_error: float = 0.0,
 ) -> dict:
-    """Mirror launch_velocity air/distance + ball.gd loft×(28+speed) apex."""
     force = force_factor(power, shot_type)
     power_mul = power * LIE_MUL.get(lie, 1.0) * CONTACT_MUL[contact]
     if force > 0.0 and power > POWER_POCKET_HI:
@@ -194,6 +241,7 @@ def launch(
         total_yards = min(total_yards, FLOP_MAX_YD)
     total_px = total_yards * PX_PER_YARD
 
+    # loft still used for thin/fat return parity only (not hang/apex)
     loft = 0.9 * loft_mul
     if contact == "THIN":
         loft = 0.55 * loft_mul
@@ -205,18 +253,14 @@ def launch(
         loft *= 1.35
     loft = clamp(loft, 0.35, 1.55)
 
-    # Pre-Phase-1: loft-based hang + short-shot hang scale.
-    air_time = lerp(0.55, 1.15, clamp(power, 0.0, 1.0)) * loft
-    air_time *= short_shot_hang_scale(total_yards)
-
+    air_time = hang_time(club_max, power, shot_type, contact)
+    apex_px = apex_for(club_max, power, shot_type, contact)
     air_frac = air_distance_fraction(club_max, shot_type)
     if lie == "Sand" and shot_type == "full":
         air_frac = 0.55
 
     air_px = total_px * air_frac
     base_speed = air_px / max(air_time, 0.05)
-    # ball.gd: _height_peak = (28.0 + velocity.length() * 0.02) * loft_h
-    apex_px = (28.0 + base_speed * 0.02) * loft
     roll_px = total_px * (1.0 - air_frac)
     landing_speed = math.sqrt(2.0 * 144.0 * roll_px) if roll_px > 1.0 else 0.0
     return {
@@ -254,9 +298,11 @@ def run_golden() -> int:
     print(f"  stock power for fulls = {STOCK_POWER} (POWER_POCKET_HI={POWER_POCKET_HI})")
     print("-" * 74)
     fails = 0
+    total = len(GOLDEN)
     for label, club, power, st, metric, lo, hi in GOLDEN:
         m, lm = BY_NAME[club]
-        val = launch(m, lm, power, st)[metric]
+        # Frozen range goldens assume GOOD contact (APEX_SCALE_CONTACT["GOOD"] == 1.0).
+        val = launch(m, lm, power, st, contact="GOOD")[metric]
         ok = lo <= val <= hi
         if not ok:
             fails += 1
@@ -264,8 +310,21 @@ def run_golden() -> int:
             f"  {'PASS' if ok else 'FAIL'}  {label:16} {metric:10} "
             f"{val:8.1f}   want {lo:.1f}-{hi:.1f}"
         )
+    # Relative golden: THIN must cut apex shape, not only carry yards.
+    total += 1
+    m7, lm7 = BY_NAME["7-Iron"]
+    good_apex = launch(m7, lm7, STOCK_POWER, "full", contact="GOOD")["apex_px"]
+    thin_apex = launch(m7, lm7, STOCK_POWER, "full", contact="THIN")["apex_px"]
+    thin_ok = thin_apex < 0.60 * good_apex
+    if not thin_ok:
+        fails += 1
+    print(
+        f"  {'PASS' if thin_ok else 'FAIL'}  {'7i THIN apex':16} {'ratio':10} "
+        f"{thin_apex:8.1f}   want <60% of GOOD {good_apex:.1f} "
+        f"({100.0 * thin_apex / good_apex if good_apex else 0:.0f}%)"
+    )
     print("-" * 74)
-    print(f"  {len(GOLDEN) - fails}/{len(GOLDEN)} passing\n")
+    print(f"  {total - fails}/{total} passing\n")
     return fails
 
 
@@ -318,10 +377,8 @@ def run_table() -> None:
 
 def make_chart() -> None:
     import matplotlib
-
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
-
     fig, ax = plt.subplots(figsize=(11, 5.5))
     shots = [
         ("Driver stock", "Driver", STOCK_POWER, "full", "#2b6cb0"),
@@ -335,19 +392,14 @@ def make_chart() -> None:
         carry_px = r["carry_yd"] * PX_PER_YARD
         xs = [carry_px * i / 200 for i in range(201)]
         ys = [math.sin((x / max(carry_px, 0.01)) * math.pi) * r["apex_px"] for x in xs]
-        ax.plot(
-            xs,
-            ys,
-            color=color,
-            lw=2.2,
-            label=f"{label} — carry {r['carry_yd']:.0f} yd, apex {r['apex_px']:.0f} px",
-        )
+        ax.plot(xs, ys, color=color, lw=2.2,
+                label=f"{label} — carry {r['carry_yd']:.0f} yd, apex {r['apex_px']:.0f} px")
     for k, v in CANOPY.items():
         ax.axhline(v, ls="--", lw=1, color="#888")
         ax.text(2, v + 0.8, f"{k} canopy ({v:.0f})", fontsize=8, color="#666")
     ax.set_xlabel("distance downrange (px)")
     ax.set_ylabel("height (px)")
-    ax.set_title("Phase 0 model — trajectory profiles (flight_model_check)")
+    ax.set_title("Current model — trajectory profiles (flight_model_check)")
     ax.set_xlim(0, 120)
     ax.legend(fontsize=9, loc="upper right")
     ax.grid(alpha=0.2)
@@ -367,21 +419,31 @@ def verify_live_constants_reflected() -> None:
     assert 0.20 <= chip_sw <= 0.33, chip_sw
     assert force_factor(STOCK_POWER, "full") == 0.0
     assert force_factor(1.0, "full") > 0.99
-    assert short_shot_hang_scale(13.0) < 0.75
+    assert short_shot_hang_scale(13.0) < 0.75  # dead func still present
     assert short_shot_hang_scale(50.0) == 1.0
     r = launch(80.0, 1.55, 0.3, "flop")
     assert r["total_yd"] <= FLOP_MAX_YD + 1e-6
-    # Phase 0 model: loft-based hang; short chips still ride the 28.0 floor (high apex).
-    chip = launch(80.0, 1.55, 3.0 / 80.0, "chip")
+    # Phase 1: apex primary — chip << driver; mono bag; linear power
     dr = launch(260.0, 0.62, STOCK_POWER, "full")
-    assert chip["apex_px"] > 10.0, chip["apex_px"]  # 28*loft floor — known backlog
-    assert dr["air_time"] > 0.4
+    chip = launch(80.0, 1.55, 3.0 / 80.0, "chip")
+    assert chip["apex_px"] < dr["apex_px"] * 0.1, (chip["apex_px"], dr["apex_px"])
+    assert abs(apex_for(260.0, 0.46, "full") / apex_for(260.0, 0.92, "full") - 0.5) < 1e-6
+    prev = 0.0
+    for _n, m, _lm in reversed(BAG):  # short → long
+        a = apex_for(m, STOCK_POWER, "full")
+        assert a + 1e-6 >= prev, f"non-mono apex at {_n}: {a} < {prev}"
+        prev = a
     punch = launch(160.0, 1.05, 0.80, "punch")
     assert punch["apex_px"] <= 22.0, punch["apex_px"]
+    # Contact scales apex shape; GOOD is identity so bag calibration holds.
+    assert abs(APEX_SCALE_CONTACT["GOOD"] - 1.0) < 1e-9
+    assert abs(apex_for(160.0, STOCK_POWER, "full", "THIN") / apex_for(160.0, STOCK_POWER, "full", "GOOD") - 0.55) < 1e-6
+    assert apex_for(160.0, STOCK_POWER, "full", "FAT") > apex_for(160.0, STOCK_POWER, "full", "GOOD")
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
-        f"chip_air_sw={chip_sw:.2f} model=loft+28.0 "
-        f"dr_apex={dr['apex_px']:.1f} chip3_apex={chip['apex_px']:.1f}"
+        f"chip_air_sw={chip_sw:.2f} APEX_SCALE={APEX_SCALE} G={GRAVITY_PX} "
+        f"dr_apex={dr['apex_px']:.1f} chip3_apex={chip['apex_px']:.1f} "
+        f"contact_thin={APEX_SCALE_CONTACT['THIN']}"
     )
 
 
@@ -416,6 +478,7 @@ def resolve_club(name: str) -> str:
 
 def run_shot_lookup(argv: list[str]) -> int:
     """One-shot lookup: --shot <club> <power> <type> <lie> <contact>"""
+    # argv is args after --shot
     if len(argv) < 5:
         print(
             "usage: python scripts/ball/flight_model_check.py --shot "
@@ -468,6 +531,7 @@ def run_shot_lookup(argv: list[str]) -> int:
 
 
 def main() -> int:
+    # One-shot lookup: skip tables/goldens (parsing still loads at import).
     if "--shot" in sys.argv:
         i = sys.argv.index("--shot")
         return run_shot_lookup(sys.argv[i + 1 :])
@@ -480,8 +544,10 @@ def main() -> int:
             make_chart()
         except ImportError:
             print("matplotlib not installed — skip --chart")
+    # 12 frozen ranges + 1 THIN-relative golden
+    total_g = len(GOLDEN) + 1
     print(
-        f"flight_model_check: ok (goldens {len(GOLDEN) - fails}/{len(GOLDEN)} PASS — backlog expected)"
+        f"flight_model_check: ok (goldens {total_g - fails}/{total_g} PASS — backlog expected)"
     )
     return 0
 

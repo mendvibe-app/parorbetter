@@ -293,8 +293,8 @@ func launch(
 	_air_duration = launch_data["airborne_time"]
 	_air_timer = 0.0
 	_height = 0.0
-	var loft_h := clampf(float(launch_data.get("loft", 0.9)), 0.35, 1.55)
-	_height_peak = (28.0 + velocity.length() * 0.02) * loft_h
+	# Phase 1: apex from launch (apex_for × shot-type × contact); not loft×(28+speed).
+	_height_peak = float(launch_data.get("apex", 0.0))
 	_height_max = 0.0
 	_punch_flight = shot_type == "punch"
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
