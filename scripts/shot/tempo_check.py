@@ -99,19 +99,32 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
     return float(balance_detail(sample, tighten, shot_type)["score"])
 
 
+def target_ratio(shot_type: str) -> float:
+    """Mirror TempoGrade.target_ratio — punch joins short 2:1; keeps TOL_FULL separately."""
+    if shot_type in ("putt", "pitch", "flop", "punch"):
+        return TARGET_SHORT
+    return TARGET_FULL
+
+
+def base_tolerance(shot_type: str) -> float:
+    if shot_type in ("putt", "pitch"):
+        return TOL_SHORT
+    return TOL_FULL  # punch included
+
+
 def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_scale: float = 1.0) -> float:
-    base_tol = TOL_SHORT if shot_type in ("putt", "pitch") else TOL_FULL
+    base_tol = base_tolerance(shot_type)
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     shrink = 0.35 + (1.0 - 0.35) * min(max(bal, 0.0), 1.0)
     return base * shrink
 
 
 def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: float = 1.0, bal_tighten: float = 1.0) -> dict:
-    target = TARGET_SHORT if shot_type in ("putt", "pitch") else TARGET_FULL
+    target = target_ratio(shot_type)
     bal = balance(sample, bal_tighten, shot_type)
     r = ratio(sample["t_takeaway"], sample["t_top"], sample["t_impact"])
     err = r - target
-    base_tol = TOL_SHORT if shot_type in ("putt", "pitch") else TOL_FULL
+    base_tol = base_tolerance(shot_type)
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     raw_n = abs(err) / max(base, 0.01)
     bal_for_tol = max(bal, 0.70) if raw_n <= BAND_GOOD else bal
@@ -164,6 +177,9 @@ def main() -> int:
     assert "TARGET_SHORT := 2.0" in GRADE
     assert "TOL_FULL := 1.1" in GRADE
     assert "TOL_SHORT := 1.35" in GRADE
+    assert 'or shot_type == "punch"' in GRADE  # punch targets 2:1
+    assert target_ratio("punch") == TARGET_SHORT
+    assert base_tolerance("punch") == TOL_FULL  # not TOL_SHORT (double-gift)
     assert "is_pitch" in GRADE  # pitch softens accel/transition vs full
     assert "BAND_PERFECT := 0.50" in GRADE
     assert "BAND_GOOD := 1.15" in GRADE
@@ -177,6 +193,7 @@ def main() -> int:
     assert "over_band" in GRADE  # pull gated past BAND_GOOD
     # OTT bias applied as +pull (out-to-in / fade side), not −pull (old draw bias).
     ROUTINE = (DIR / "shot_routine.gd").read_text(encoding="utf-8")
+    assert "flight_shot_type()" in ROUTINE  # grade + pad share punch identity
     assert "swing_shape + pull" in ROUTINE or "modulated := clampf(swing_shape + pull" in ROUTINE
     assert "max_lateral" in ROUTINE
     # Lateral deadzone: tremor not intent; full shape still at old saturation.
@@ -603,9 +620,11 @@ def main() -> int:
     # Ghost follow is lane-relative (not fixed pad-height).
     follow_fn = GESTURE.split("func _ghost_follow_pos")[1].split("func ")[0]
     assert "lane_len" in follow_fn and "0.14" in follow_fn
-    # Pitch lane is shorter than full (ghost must not race a driver-length path at 2:1).
-    assert "_is_pitch()" in GESTURE.split("func address_hint")[1].split("func ")[0]
-    assert "_is_pitch()" in GESTURE.split("func top_hint")[1].split("func ")[0]
+    # Short lane (pitch/flop/punch) is shorter than full — separate from _is_pitch physics.
+    assert "_uses_short_lane()" in GESTURE.split("func address_hint")[1].split("func ")[0]
+    assert "_uses_short_lane()" in GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert "func _uses_short_lane" in GESTURE
+    assert 'shot_type == "punch"' not in GESTURE.split("func _is_pitch")[1].split("func ")[0]
     # Range wedges land in pitch band (stock 85% max never did).
     range_swing = HOLE.split("func _begin_range_swing")[1].split("func ")[0]
     assert "club_max <= 110.0" in range_swing
@@ -641,9 +660,9 @@ def main() -> int:
     assert "%dms back / %dms thru" in GRADE
     addr_fn = GESTURE.split("func address_hint")[1].split("func ")[0]
     top_fn = GESTURE.split("func top_hint")[1].split("func ")[0]
-    assert "_is_putt()" in addr_fn and "_is_chip()" in addr_fn and "_is_pitch()" in addr_fn
-    assert "_is_putt()" in top_fn and "_is_chip()" in top_fn and "_is_pitch()" in top_fn
-    assert "0.80" in top_fn  # pitch shorter top than full 0.92
+    assert "_is_putt()" in addr_fn and "_is_chip()" in addr_fn and "_uses_short_lane()" in addr_fn
+    assert "_is_putt()" in top_fn and "_is_chip()" in top_fn and "_uses_short_lane()" in top_fn
+    assert "0.80" in top_fn  # short-lane top shorter than full 0.92
     # Lane is stroke axis for all shots (marks + progress share x); trail/cursor free.
     assert "func _lane_project" not in GESTURE
     assert "_address = address_hint()" in GESTURE

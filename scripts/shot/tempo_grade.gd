@@ -67,25 +67,41 @@ static func recommend_shot_type(lie: String, remaining_yd: float, club_max_yards
 
 
 static func target_ratio(shot_type: String) -> float:
-	# Punch uses full 3:1; putt/pitch/flop are short-game 2:1 tempo.
-	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else TARGET_FULL
+	# Punch is an abbreviated backswing (Tour Tempo: shorter BS → lower ratio).
+	# putt/pitch/flop/punch → 2:1; full → 3:1. Punch still uses TOL_FULL (not TOL_SHORT).
+	return (
+		TARGET_SHORT
+		if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+		else TARGET_FULL
+	)
 
 
 static func base_tolerance(shot_type: String) -> float:
 	if shot_type == "flop":
 		return TOL_FLOP
+	# Punch keeps TOL_FULL — short target + short tol would make everything PERFECT.
 	return TOL_SHORT if shot_type == "putt" or shot_type == "pitch" else TOL_FULL
 
 
 ## Minimum backswing/follow-through length (fraction of pad size.y) to avoid the
 ## balance() short-swing penalty. Single source of truth — grading and the pad's
 ## drawn floor markers (tempo_gesture.gd) both read from here.
+## Punch matches short-lane geometry (0.10/0.04) so abbreviated strokes aren't
+## double-taxed against a full-swing floor after the 2:1 target fix.
 static func bs_floor(shot_type: String) -> float:
-	return 0.10 if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else 0.18
+	return (
+		0.10
+		if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+		else 0.18
+	)
 
 
 static func ft_floor(shot_type: String) -> float:
-	return 0.04 if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else 0.08
+	return (
+		0.04
+		if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+		else 0.08
+	)
 
 
 static func ratio(sample: Dictionary) -> float:

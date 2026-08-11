@@ -2157,7 +2157,8 @@ func _aim_shape_bend() -> float:
 func _aim_tree_clearance(
 	from: Vector2, to: Vector2, club_max: float, punch: bool = false, shot_type_hint: String = ""
 ) -> String:
-	## "none" | "clear" | "blocked" — clean-strike prediction for aim cone tint.
+	## "none" | "clear" | "under" | "blocked" — clean-strike prediction for aim cone tint.
+	## clear = fly over; under = punch ducks under foliage (mirrors ball.gd tree collision).
 	if _trees.is_empty() or club_max <= 0.0:
 		return "none"
 	var lie := ball.get_lie()
@@ -2190,6 +2191,7 @@ func _aim_tree_clearance(
 	var land := from + bearing.normalized() * total_px
 	var any_hit := false
 	var any_block := false
+	var any_under := false
 	for tr in _trees:
 		var c: Vector2 = tr["c"]
 		var r: float = float(tr["r"])
@@ -2199,11 +2201,20 @@ func _aim_tree_clearance(
 			continue
 		any_hit = true
 		var h := BallPhysics.estimate_height_at_along(along, total_px, air_frac, peak)
-		if h < canopy:
-			any_block = true
+		if h >= canopy:
+			continue  # fly over — clear for this tree
+		# Punch ducks under foliage rather than carrying it (mirrors ball.gd).
+		if punch and h <= canopy * BallPhysics.PUNCH_UNDER_CANOPY_FRAC:
+			any_under = true
+			continue
+		any_block = true
 	if not any_hit:
 		return "none"
-	return "blocked" if any_block else "clear"
+	if any_block:
+		return "blocked"
+	if any_under:
+		return "under"
+	return "clear"
 
 
 func _aim_planned_total_yd(
@@ -2254,6 +2265,9 @@ func _tint_cone_colors(cols: PackedColorArray, kind: String) -> PackedColorArray
 		tint = Color(0.95, 0.32, 0.28, 1.0)
 	elif kind == "clear":
 		tint = Color(0.35, 0.88, 0.42, 1.0)
+	elif kind == "under":
+		# Punch duck-under — distinct from fly-over green so the model is legible.
+		tint = Color(0.35, 0.75, 0.95, 1.0)
 	var out := PackedColorArray()
 	for i in cols.size():
 		var c := cols[i]
@@ -2345,6 +2359,8 @@ func _refresh_aim_visuals() -> void:
 			edge_col = Color(0.95, 0.35, 0.3, edge_a + 0.15)
 		elif clearance == "clear":
 			edge_col = Color(0.4, 0.9, 0.45, edge_a + 0.12)
+		elif clearance == "under":
+			edge_col = Color(0.4, 0.78, 0.95, edge_a + 0.12)
 		_aim_cone_edge.default_color = edge_col
 		_aim_cone_edge_r.points = edge_r
 		_aim_cone_edge_r.width = _aim_cone_edge.width
@@ -2358,6 +2374,8 @@ func _refresh_aim_visuals() -> void:
 			circle_col = Color(0.95, 0.4, 0.32, 0.9)
 		elif clearance == "clear":
 			circle_col = Color(0.45, 0.92, 0.5, 0.9)
+		elif clearance == "under":
+			circle_col = Color(0.4, 0.8, 0.95, 0.9)
 		_aim_circle.default_color = circle_col
 		# Carry land (first bounce) + roll connector to rest circle (may be past drag aim).
 		var land := _aim_carry_land_point(from, to, club_max, lie_now, flight_st)
