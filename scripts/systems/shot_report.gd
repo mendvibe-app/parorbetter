@@ -47,7 +47,18 @@ static func from_shot(
 	if p_lie == "Green":
 		r.planned_yards = p_club_max * result.power * r.lie_mul
 	else:
-		r.planned_yards = p_club_max * result.power * r.lie_mul * r.contact_mul
+		# Same owner as launch — Plan matches Actual when force/path/contact agree.
+		var force_p := result.true_power if result.true_power > 0.0 else -1.0
+		r.planned_yards = BallPhysics.resolve_distance(
+			p_club_max,
+			result.power,
+			p_lie,
+			p_severity,
+			result.contact_quality,
+			"full",
+			result.path_error,
+			force_p
+		)
 	r.aim_radius_yd = p_aim_radius_yd
 	r.aim_offset = p_aim_offset
 	r.wind_note = p_wind_note
