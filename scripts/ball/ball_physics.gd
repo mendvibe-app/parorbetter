@@ -41,15 +41,18 @@ static func club_loft_mul(club_max_yards: float) -> float:
 	return best_mul
 
 
-## Clean-strike apex estimate (GOOD contact, same units as ball._height / canopy_h).
+## Apex estimate for UI preview (defaults GOOD — no contact yet at aim time).
 ## Same owner as launch — apex_for / hang_time (Phase 1).
 static func estimate_height_peak(
-	club_max_yards: float, total_yards: float, shot_type: String = "full"
+	club_max_yards: float,
+	total_yards: float,
+	shot_type: String = "full",
+	contact: String = "GOOD"
 ) -> float:
 	if club_max_yards <= 0.0 or total_yards <= 0.5:
 		return 0.0
 	var power := clampf(total_yards / maxf(club_max_yards, 1.0), 0.01, 1.0)
-	return apex_for(club_max_yards, power, shot_type)
+	return apex_for(club_max_yards, power, shot_type, contact)
 
 
 ## Height along the flight arc at distance `along_px` from the ball (0 on ground/roll).
@@ -204,6 +207,14 @@ const GRAVITY_PX := 535.0
 const APEX_SCALE_CHIP := 0.70
 const APEX_SCALE_PUNCH := 0.35
 const APEX_SCALE_FLOP := 1.80
+## Contact apex multipliers — THIN low / FAT balloon (shape, not just distance). PLAYTEST TARGETS.
+const APEX_SCALE_CONTACT := {
+	"PERFECT": 1.04,
+	"GOOD": 1.0,
+	"THIN": 0.55,
+	"FAT": 1.15,
+	"MISS": 0.7,
+}
 
 
 ## Carry share of total distance by club category (rest is roll). Same yard buckets
@@ -226,8 +237,31 @@ static func _real_apex_ft_for(club_max_yards: float) -> float:
 	return best_ft
 
 
+## Contact quality → APEX_SCALE_CONTACT key. Unknown → GOOD (UI preview default).
+static func contact_apex_label(quality: ShotResult.ContactQuality) -> String:
+	match quality:
+		ShotResult.ContactQuality.PERFECT:
+			return "PERFECT"
+		ShotResult.ContactQuality.GOOD:
+			return "GOOD"
+		ShotResult.ContactQuality.THIN:
+			return "THIN"
+		ShotResult.ContactQuality.FAT:
+			return "FAT"
+		ShotResult.ContactQuality.MISS:
+			return "MISS"
+		_:
+			return "GOOD"
+
+
 ## Apex in the same units as _height / canopy_h. Primary quantity — hang derives from it.
-static func apex_for(club_max_yards: float, power: float, shot_type: String = "full") -> float:
+## `contact` is a quality label (PERFECT/GOOD/THIN/FAT/MISS); default GOOD for previews.
+static func apex_for(
+	club_max_yards: float,
+	power: float,
+	shot_type: String = "full",
+	contact: String = "GOOD"
+) -> float:
 	var a := APEX_SCALE * _real_apex_ft_for(club_max_yards) * clampf(power, 0.01, 1.0)
 	match shot_type:
 		"chip":
@@ -238,12 +272,18 @@ static func apex_for(club_max_yards: float, power: float, shot_type: String = "f
 			a *= APEX_SCALE_FLOP
 		_:
 			pass  # full / pitch / empty = 1.0
+	a *= float(APEX_SCALE_CONTACT.get(contact, 1.0))
 	return maxf(a, 0.01)
 
 
 ## Hang time in seconds, derived from apex. Nothing else may invent air time.
-static func hang_time(club_max_yards: float, power: float, shot_type: String = "full") -> float:
-	return sqrt(8.0 * apex_for(club_max_yards, power, shot_type) / GRAVITY_PX)
+static func hang_time(
+	club_max_yards: float,
+	power: float,
+	shot_type: String = "full",
+	contact: String = "GOOD"
+) -> float:
+	return sqrt(8.0 * apex_for(club_max_yards, power, shot_type, contact) / GRAVITY_PX)
 
 
 static func air_distance_fraction(club_max_yards: float, shot_type: String = "full") -> float:
@@ -670,9 +710,10 @@ static func launch_velocity(
 	elif shot_type == "flop":
 		loft *= 1.35  ## open-face pop — playtest loft scale
 
-	# Phase 1: hang from apex_for; no loft lerp, no short_shot_hang_scale.
-	var air_time := hang_time(club_max_yards, result.power, shot_type)
-	var apex := apex_for(club_max_yards, result.power, shot_type)
+	# Phase 1: hang from apex_for (incl. contact scale); no loft lerp / short_shot_hang_scale.
+	var contact := contact_apex_label(result.contact_quality)
+	var air_time := hang_time(club_max_yards, result.power, shot_type, contact)
+	var apex := apex_for(club_max_yards, result.power, shot_type, contact)
 	var air_frac := air_distance_fraction(club_max_yards, shot_type)
 	if lie == "Sand" and shot_type == "full":
 		air_frac = 0.55

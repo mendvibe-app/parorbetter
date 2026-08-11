@@ -43,6 +43,7 @@ _require(PHYS, "static func hang_time")
 _require(PHYS, "const REAL_APEX_FT")
 _require(PHYS, "const APEX_SCALE")
 _require(PHYS, "const GRAVITY_PX")
+_require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
 
 PX_PER_YARD = _f(PHYS, r"const PX_PER_YARD\s*:=\s*([0-9.]+)")
@@ -63,6 +64,13 @@ GRAVITY_PX = _f(PHYS, r"const GRAVITY_PX\s*:=\s*([0-9.]+)")
 APEX_SCALE_CHIP = _f(PHYS, r"const APEX_SCALE_CHIP\s*:=\s*([0-9.]+)")
 APEX_SCALE_PUNCH = _f(PHYS, r"const APEX_SCALE_PUNCH\s*:=\s*([0-9.]+)")
 APEX_SCALE_FLOP = _f(PHYS, r"const APEX_SCALE_FLOP\s*:=\s*([0-9.]+)")
+_contact_block = PHYS[
+    PHYS.find("const APEX_SCALE_CONTACT") : PHYS.find("const APEX_SCALE_CONTACT") + 220
+]
+_contact_pairs = re.findall(r'"([A-Z]+)":\s*([0-9.]+)', _contact_block)
+assert len(_contact_pairs) >= 5, f"APEX_SCALE_CONTACT parse incomplete: {_contact_pairs}"
+APEX_SCALE_CONTACT = {k: float(v) for k, v in _contact_pairs}
+assert abs(APEX_SCALE_CONTACT.get("GOOD", -1.0) - 1.0) < 1e-9, APEX_SCALE_CONTACT
 _real_apex_pairs = re.findall(
     r"(\d+\.0):\s*(\d+\.0)",
     PHYS[PHYS.find("const REAL_APEX_FT") : PHYS.find("const REAL_APEX_FT") + 400],
@@ -185,7 +193,12 @@ def _real_apex_ft_for(club_max: float) -> float:
     return best_ft
 
 
-def apex_for(club_max: float, power: float, shot_type: str = "full") -> float:
+def apex_for(
+    club_max: float,
+    power: float,
+    shot_type: str = "full",
+    contact: str = "GOOD",
+) -> float:
     a = APEX_SCALE * _real_apex_ft_for(club_max) * clamp(power, 0.01, 1.0)
     if shot_type == "chip":
         a *= APEX_SCALE_CHIP
@@ -193,11 +206,17 @@ def apex_for(club_max: float, power: float, shot_type: str = "full") -> float:
         a *= APEX_SCALE_PUNCH
     elif shot_type == "flop":
         a *= APEX_SCALE_FLOP
+    a *= APEX_SCALE_CONTACT.get(contact, 1.0)
     return max(a, 0.01)
 
 
-def hang_time(club_max: float, power: float, shot_type: str = "full") -> float:
-    return math.sqrt(8.0 * apex_for(club_max, power, shot_type) / GRAVITY_PX)
+def hang_time(
+    club_max: float,
+    power: float,
+    shot_type: str = "full",
+    contact: str = "GOOD",
+) -> float:
+    return math.sqrt(8.0 * apex_for(club_max, power, shot_type, contact) / GRAVITY_PX)
 
 
 def launch(
@@ -234,8 +253,8 @@ def launch(
         loft *= 1.35
     loft = clamp(loft, 0.35, 1.55)
 
-    air_time = hang_time(club_max, power, shot_type)
-    apex_px = apex_for(club_max, power, shot_type)
+    air_time = hang_time(club_max, power, shot_type, contact)
+    apex_px = apex_for(club_max, power, shot_type, contact)
     air_frac = air_distance_fraction(club_max, shot_type)
     if lie == "Sand" and shot_type == "full":
         air_frac = 0.55
@@ -279,9 +298,11 @@ def run_golden() -> int:
     print(f"  stock power for fulls = {STOCK_POWER} (POWER_POCKET_HI={POWER_POCKET_HI})")
     print("-" * 74)
     fails = 0
+    total = len(GOLDEN)
     for label, club, power, st, metric, lo, hi in GOLDEN:
         m, lm = BY_NAME[club]
-        val = launch(m, lm, power, st)[metric]
+        # Frozen range goldens assume GOOD contact (APEX_SCALE_CONTACT["GOOD"] == 1.0).
+        val = launch(m, lm, power, st, contact="GOOD")[metric]
         ok = lo <= val <= hi
         if not ok:
             fails += 1
@@ -289,8 +310,21 @@ def run_golden() -> int:
             f"  {'PASS' if ok else 'FAIL'}  {label:16} {metric:10} "
             f"{val:8.1f}   want {lo:.1f}-{hi:.1f}"
         )
+    # Relative golden: THIN must cut apex shape, not only carry yards.
+    total += 1
+    m7, lm7 = BY_NAME["7-Iron"]
+    good_apex = launch(m7, lm7, STOCK_POWER, "full", contact="GOOD")["apex_px"]
+    thin_apex = launch(m7, lm7, STOCK_POWER, "full", contact="THIN")["apex_px"]
+    thin_ok = thin_apex < 0.60 * good_apex
+    if not thin_ok:
+        fails += 1
+    print(
+        f"  {'PASS' if thin_ok else 'FAIL'}  {'7i THIN apex':16} {'ratio':10} "
+        f"{thin_apex:8.1f}   want <60% of GOOD {good_apex:.1f} "
+        f"({100.0 * thin_apex / good_apex if good_apex else 0:.0f}%)"
+    )
     print("-" * 74)
-    print(f"  {len(GOLDEN) - fails}/{len(GOLDEN)} passing\n")
+    print(f"  {total - fails}/{total} passing\n")
     return fails
 
 
@@ -401,10 +435,15 @@ def verify_live_constants_reflected() -> None:
         prev = a
     punch = launch(160.0, 1.05, 0.80, "punch")
     assert punch["apex_px"] <= 22.0, punch["apex_px"]
+    # Contact scales apex shape; GOOD is identity so bag calibration holds.
+    assert abs(APEX_SCALE_CONTACT["GOOD"] - 1.0) < 1e-9
+    assert abs(apex_for(160.0, STOCK_POWER, "full", "THIN") / apex_for(160.0, STOCK_POWER, "full", "GOOD") - 0.55) < 1e-6
+    assert apex_for(160.0, STOCK_POWER, "full", "FAT") > apex_for(160.0, STOCK_POWER, "full", "GOOD")
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
         f"chip_air_sw={chip_sw:.2f} APEX_SCALE={APEX_SCALE} G={GRAVITY_PX} "
-        f"dr_apex={dr['apex_px']:.1f} chip3_apex={chip['apex_px']:.1f}"
+        f"dr_apex={dr['apex_px']:.1f} chip3_apex={chip['apex_px']:.1f} "
+        f"contact_thin={APEX_SCALE_CONTACT['THIN']}"
     )
 
 
@@ -505,8 +544,10 @@ def main() -> int:
             make_chart()
         except ImportError:
             print("matplotlib not installed — skip --chart")
+    # 12 frozen ranges + 1 THIN-relative golden
+    total_g = len(GOLDEN) + 1
     print(
-        f"flight_model_check: ok (goldens {len(GOLDEN) - fails}/{len(GOLDEN)} PASS — backlog expected)"
+        f"flight_model_check: ok (goldens {total_g - fails}/{total_g} PASS — backlog expected)"
     )
     return 0
 
