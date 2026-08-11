@@ -259,14 +259,30 @@ func _process(_delta: float) -> void:
 				float(t.get("transition_ratio", 0.0)),
 				str(t.get("note", "")),
 			]
+	# Phase 0 swing instrumentation: amplitude vs aim-solved vs rolled (no unit pick yet).
+	var amp_line := ""
+	if t.has("backswing_len") or t.has("backswing_frac") or m.has("committed_power"):
+		var bs_len := float(t.get("backswing_len", 0.0))
+		var bs_frac := float(t.get("backswing_frac", 0.0))
+		var commit_p := float(t.get("committed_power", m.get("committed_power", 0.0)))
+		var true_p := float(t.get("true_power", m.get("true_power", 0.0)))
+		var rolled_p := float(t.get("rolled_power", m.get("power", 0.0)))
+		amp_line = "\nAmp BS len %.2f frac %.2f · commit %d%% · true %d%% · rolled %d%%" % [
+			bs_len,
+			bs_frac,
+			int(commit_p * 100.0),
+			int(true_p * 100.0),
+			int(rolled_p * 100.0),
+		]
 	if m.is_empty():
-		metrics.text = "Adapt: %s (%.2f)\nForm: %s (%.2f) circle %d yd\n%s\nLast shot: —" % [
+		metrics.text = "Adapt: %s (%.2f)\nForm: %s (%.2f) circle %d yd\n%s%s\nLast shot: —" % [
 			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
 			GameState.get_form(),
 			int(GameState.get_aim_radius_yards(false)),
 			tempo_line,
+			amp_line,
 		]
 	else:
 		var h_peak := float(m.get("height_peak", -1.0))
@@ -325,13 +341,14 @@ func _process(_delta: float) -> void:
 			"\nPath %+.2f  (−draw/L  +fade/R)  sign:%s\nShape lat %+.2f swipe %+.2f pull %+.2f → blend %+.2f"
 			% [path_v, sign_tag, lat_v, swipe_v, pull_v, blend_v]
 		)
-		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s\n%s\nPwr %d%%  Bal %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s\n%s%s" % [
+		metrics.text = "Adapt: %s (%.2f)\nForm: %s · Aim ○ %d yd · %s\n%s%s\n%s\nPwr %d%%  Bal %d%%  Path %+.2f\nContact %s  Lie %s\nPlan %d yd → Actual %s\n%s%s" % [
 			GameState.bias_label(),
 			GameState.get_adaptation_bias(),
 			GameState.form_label(),
 			int(float(m.get("aim_radius_yd", GameState.get_aim_radius_yards(false)))),
 			str(m.get("aim_offset", "")),
 			tempo_line,
+			amp_line,
 			str(m.get("summary", "")),
 			int(float(m.get("power", 0.0)) * 100.0),
 			int(float(m.get("stability", 0.0)) * 100.0),
