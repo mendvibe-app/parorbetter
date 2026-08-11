@@ -48,6 +48,11 @@ _require(PHYS, "const APEX_SCALE")
 _require(PHYS, "const GRAVITY_PX")
 _require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
+_require(BALL, "const SPIN_CURVE_COEFF")
+_require(BALL, "normalized() * spd")
+_m_spin = re.search(r"const SPIN_CURVE_COEFF\s*:=\s*([0-9.]+)\s*/\s*([0-9.]+)", BALL)
+assert _m_spin, "SPIN_CURVE_COEFF parse failed"
+SPIN_CURVE_COEFF = float(_m_spin.group(1)) / float(_m_spin.group(2))
 # Distance owner must keep literal 0.88 for club_bag_check + honesty of mash tax.
 _require(PHYS, "lerpf(1.0, 0.88, force)")
 _require(PHYS, "lerpf(1.0, 0.94, force)")
@@ -283,6 +288,55 @@ def estimate_carry_yards(
 def launch_speed_for(air_px: float, air_time: float) -> float:
     """Mirror BallPhysics.launch_speed_for — thin pass-through, not resolve_distance."""
     return air_px / max(air_time, 0.05)
+
+
+def sim_flight_land(
+    air_px: float,
+    air_time: float,
+    spin: float,
+    *,
+    mode: str = "new",
+) -> tuple[float, float]:
+    """Integrate _process_flight spin (no wind). Returns (along_px, |lat|_px)."""
+    base_speed = launch_speed_for(air_px, air_time)
+    vx, vy = 0.0, -base_speed
+    launch = (0.0, -1.0)
+    fr = (1.0, 0.0)
+    dt = 1.0 / 60.0
+    t = 0.0
+    x = y = 0.0
+    while t < air_time - 1e-9:
+        spd = math.hypot(vx, vy)
+        along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
+        if spd > 0.01 and abs(spin) > 1e-6:
+            if mode == "new":
+                kick = spin * SPIN_CURVE_COEFF * along_spd * dt
+            else:
+                ss = max(0.08, min(1.0, along_spd / 180.0))
+                kick = spin * 28.0 * dt * ss
+            vx += fr[0] * kick
+            vy += fr[1] * kick
+            n = math.hypot(vx, vy)
+            if n > 1e-6:
+                vx = vx / n * spd
+                vy = vy / n * spd
+        # reverse-guard still present until CP3
+        along_after = vx * launch[0] + vy * launch[1]
+        if along_after < along_spd * 0.15:
+            lat = vx * fr[0] + vy * fr[1]
+            along_spd2 = max(along_spd * 0.35, 12.0)
+            vx = launch[0] * along_spd2 + fr[0] * lat * 0.55
+            vy = launch[1] * along_spd2 + fr[1] * lat * 0.55
+        x += vx * dt
+        y += vy * dt
+        t += dt
+        along = max(x * launch[0] + y * launch[1], 0.0)
+        path_len = math.hypot(x, y)
+        if along >= air_px or path_len >= air_px or t >= air_time - 1e-12:
+            break
+    along = max(x * launch[0] + y * launch[1], 0.0)
+    lat = abs(x * fr[0] + y * fr[1])
+    return along, lat
 
 
 def recommended_power(remaining_yd: float, club_max: float, lie: str = "Fairway") -> float:
@@ -610,6 +664,25 @@ def verify_live_constants_reflected() -> None:
     assert "resolve_distance(" in (
         Path(__file__).resolve().parents[1] / "systems" / "shot_report.gd"
     ).read_text(encoding="utf-8")
+
+    # Phase 5 CP2: shaped-shot along/lateral — old spin_scale vs new coeff (report only).
+    print("SHAPED FLIGHT old-vs-new (path=±0.5, GOOD, preserve spd + reverse-guard)")
+    print("-" * 74)
+    print(f"{'club':16}{'path':>6}{'along_old':>10}{'along_new':>10}{'lat_old':>9}{'lat_new':>9}{'lat×':>7}")
+    for name, m, lm in (("Driver", 260.0, 0.62), ("7-Iron", 160.0, 1.05)):
+        r = launch(m, lm, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
+        air_px = r["carry_yd"] * PX_PER_YARD
+        # Mirror launch_velocity spin for intended_shape ≈ path (stab~1, force=0, GOOD).
+        grip = 0.78 if m >= 245 else 0.88 if m >= 180 else 1.0 if m >= 150 else 1.10
+        spin0 = 0.5 * 0.95 * grip
+        for path, spin in ((0.5, spin0), (-0.5, -spin0)):
+            ao, lo = sim_flight_land(air_px, r["air_time"], spin, mode="old")
+            an, ln = sim_flight_land(air_px, r["air_time"], spin, mode="new")
+            ratio = (ln / lo) if lo > 1e-6 else float("inf")
+            print(
+                f"{name:16}{path:+6.1f}{ao/PX_PER_YARD:10.1f}{an/PX_PER_YARD:10.1f}"
+                f"{lo/PX_PER_YARD:9.1f}{ln/PX_PER_YARD:9.1f}{ratio:7.2f}"
+            )
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -11,6 +12,9 @@ PHYS = (ROOT / "scripts" / "ball" / "ball_physics.gd").read_text(encoding="utf-8
 BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
 
 PX = 2.25
+_m = re.search(r"const SPIN_CURVE_COEFF\s*:=\s*([0-9.]+)\s*/\s*([0-9.]+)", BALL)
+assert _m, "SPIN_CURVE_COEFF missing"
+SPIN_CURVE_COEFF = float(_m.group(1)) / float(_m.group(2))
 
 
 def short_shot_line_scale(total_yards: float) -> float:
@@ -23,15 +27,15 @@ def short_shot_hang_scale(total_yards: float) -> float:
     return max(0.42, min(1.0, 0.42 + (1.0 - 0.42) * (total_yards / 40.0)))
 
 
-def sim_flight_along_yd(
+def sim_flight(
     total_yd: float,
     power: float,
     loft_mul: float,
     shape: float,
     *,
     preserve_speed: bool,
-) -> float:
-    """Crude flight along-yards at land (launch = -Y). Mirrors ball._process_flight spin."""
+) -> tuple[float, float]:
+    """Crude flight; returns (along_yd, |lateral|_yd) at land. Mirrors _process_flight."""
     total_px = total_yd * PX
     loft = 0.9 * loft_mul
     air_time = (0.55 + (1.15 - 0.55) * power) * loft
@@ -51,11 +55,10 @@ def sim_flight_along_yd(
     while t < air_time - 1e-9:
         spd = math.hypot(vx, vy)
         along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
-        ss = max(0.08, min(1.0, along_spd / 180.0))
         fr = (1.0, 0.0)
         if spd > 0.01 and abs(spin) > 1e-6:
-            vx += fr[0] * spin * 28.0 * dt * ss
-            vy += fr[1] * spin * 28.0 * dt * ss
+            vx += fr[0] * spin * SPIN_CURVE_COEFF * along_spd * dt
+            vy += fr[1] * spin * SPIN_CURVE_COEFF * along_spd * dt
             if preserve_speed:
                 n = math.hypot(vx, vy)
                 if n > 1e-6:
@@ -75,13 +78,27 @@ def sim_flight_along_yd(
         if along >= air_px or path_len >= air_px:
             break
     along = max(x * launch[0] + y * launch[1], 0.0)
-    return along / PX
+    lat = abs(x * fr[0] + y * fr[1])
+    return along / PX, lat / PX
+
+
+def sim_flight_along_yd(
+    total_yd: float,
+    power: float,
+    loft_mul: float,
+    shape: float,
+    *,
+    preserve_speed: bool,
+) -> float:
+    return sim_flight(total_yd, power, loft_mul, shape, preserve_speed=preserve_speed)[0]
 
 
 def main() -> int:
     assert "short_shot_hang_scale" in PHYS
     assert "normalized() * spd" in BALL
+    assert "SPIN_CURVE_COEFF" in BALL
     assert "path_len" in BALL
+    assert "var spin_scale" not in BALL
 
     # Hang scale cuts soft LW hang (playtest apex was ~41 on 13 yd).
     assert short_shot_hang_scale(13.0) < 0.75
@@ -89,16 +106,18 @@ def main() -> int:
 
     # Mild path short pitch: carry along should stay near planned air share.
     planned_air = 13.0 * 0.82
-    along = sim_flight_along_yd(13.0, 0.20, 1.62, -0.22, preserve_speed=True)
+    along, lat = sim_flight(13.0, 0.20, 1.62, -0.22, preserve_speed=True)
     assert along >= planned_air * 0.85, f"short pitch carry too low: {along:.2f} yd (want ≥ {planned_air*0.85:.2f})"
 
     # Stronger path still shouldn't collapse to ~half total before roll.
-    along_hard = sim_flight_along_yd(13.0, 0.20, 1.62, -0.55, preserve_speed=True)
+    along_hard, lat_hard = sim_flight(13.0, 0.20, 1.62, -0.55, preserve_speed=True)
     assert along_hard >= planned_air * 0.70, f"shaped pitch carry too low: {along_hard:.2f}"
 
     print(
-        f"short_pitch_distance_check: ok along13={along:.2f}yd "
-        f"hang13={short_shot_hang_scale(13.0):.2f} line13={short_shot_line_scale(13.0):.2f}"
+        f"short_pitch_distance_check: ok along13={along:.2f}yd lat={lat:.2f} "
+        f"hard={along_hard:.2f}yd lat_hard={lat_hard:.2f} "
+        f"coeff={SPIN_CURVE_COEFF:.4f} hang13={short_shot_hang_scale(13.0):.2f} "
+        f"line13={short_shot_line_scale(13.0):.2f}"
     )
     return 0
 

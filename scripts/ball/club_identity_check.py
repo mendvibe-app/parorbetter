@@ -111,7 +111,8 @@ def main() -> None:
     assert "short_shot_hang_scale" in PHYS
     assert "total_yards / 55.0" in PHYS or "/ 55.0" in PHYS
     BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
-    assert "spin_scale" in BALL and "along_spd" in BALL
+    assert "SPIN_CURVE_COEFF" in BALL and "along_spd" in BALL
+    assert "var spin_scale" not in BALL  # flight clamp gone; roll_spin_scale may remain
     # Speed-preserving curve — spin must not bleed airspeed on soft pitches.
     assert "normalized() * spd" in BALL
     assert "path_len" in BALL

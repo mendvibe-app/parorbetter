@@ -24,6 +24,9 @@ const TRACER_DRY_RATE := 0.95
 ## Landing target circle (screen px). Faint in air, lights up on first bounce.
 const LAND_R_SCREEN := 15.0
 const LAND_RING_W_SCREEN := 1.6
+## Sidespin curvature ∝ along_spd (was flat 28 * spin_scale). 28/180 matches the
+## old linear region at the former clamp knee; full-swing shape is stronger — CP2.
+const SPIN_CURVE_COEFF := 28.0 / 180.0
 
 var state: State = State.IDLE
 var spin: float = 0.0
@@ -508,16 +511,14 @@ func _process_flight(delta: float) -> void:
 		_height_max = _height
 
 	velocity += wind * delta * 6.0
-	# Curve offline relative to launch. Scale by forward speed so weak short pitches
-	# don't get absolute sidespin that reverse/sideways the ball (plan ~3 yd cases).
-	# Preserve airspeed when applying spin — additive lateral was bleeding forward
-	# progress on soft LW pitches (playtest: plan 13 yd pure / path −0.22 → actual ~6).
+	# Curve offline relative to launch. Curvature ∝ along_spd so soft pitches curve
+	# gently without a separate spin_scale clamp. Preserve airspeed — additive lateral
+	# alone bled forward progress (playtest: plan 13 yd / path −0.22 → actual ~6).
 	var flight_right := Vector2(-_launch_dir.y, _launch_dir.x)
 	var spd := velocity.length()
 	var along_spd := maxf(velocity.dot(_launch_dir), 0.0)
-	var spin_scale := clampf(along_spd / 180.0, 0.08, 1.0)
 	if spd > 0.01 and absf(spin) > 0.0001:
-		velocity += flight_right * spin * 28.0 * delta * spin_scale
+		velocity += flight_right * spin * SPIN_CURVE_COEFF * along_spd * delta
 		velocity = velocity.normalized() * spd
 	# Never allow flight to reverse past the pin/launch line from spin alone.
 	var along_after := velocity.dot(_launch_dir)
