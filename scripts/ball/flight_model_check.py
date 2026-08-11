@@ -35,6 +35,8 @@ def _require(src: str, needle: str) -> None:
 
 _require(PHYS, "const BAG:")
 _require(PHYS, "static func launch_velocity")
+_require(PHYS, "static func resolve_distance")
+_require(PHYS, "static func estimate_carry_yards")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
 _require(PHYS, "static func short_shot_hang_scale")  # dead but kept until Phase 6
@@ -45,6 +47,9 @@ _require(PHYS, "const APEX_SCALE")
 _require(PHYS, "const GRAVITY_PX")
 _require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
+# Distance owner must keep literal 0.88 for club_bag_check + honesty of mash tax.
+_require(PHYS, "lerpf(1.0, 0.88, force)")
+_require(PHYS, "lerpf(1.0, 0.94, force)")
 
 PX_PER_YARD = _f(PHYS, r"const PX_PER_YARD\s*:=\s*([0-9.]+)")
 CARRY_FRAC_LONG = _f(PHYS, r"const CARRY_FRAC_LONG\s*:=\s*([0-9.]+)")
@@ -58,6 +63,8 @@ MASH_POWER_LERP = _f(PHYS, r"power_mul \*= lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
 DIST_MUL_LO = _f(PHYS, r"var dist_mul := lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
 HANG_LO = _f(PHYS, r"return clampf\(lerpf\(([0-9.]+),\s*1\.0,\s*total_yards / 40\.0\)")
 HANG_FULL_YD = _f(PHYS, r"if total_yards >= ([0-9.]+):\s*\n\s*return 1\.0")
+assert abs(MASH_POWER_LERP - 0.94) < 1e-9, MASH_POWER_LERP
+assert abs(DIST_MUL_LO - 0.88) < 1e-9, DIST_MUL_LO
 
 # Phase 1 apex-primary knobs
 APEX_SCALE = _f(PHYS, r"const APEX_SCALE\s*:=\s*([0-9.]+)")
@@ -235,6 +242,59 @@ def hang_time(
     return math.sqrt(8.0 * apex_for(club_max, power, shot_type, contact) / GRAVITY_PX)
 
 
+def resolve_distance(
+    club_max: float,
+    power: float,
+    lie: str = "Fairway",
+    contact: str = "GOOD",
+    shot_type: str = "full",
+    path_error: float = 0.0,
+    force_power: float | None = None,
+) -> float:
+    """Mirror BallPhysics.resolve_distance (Fairway-style force_factor; no shortest-club baby exempt)."""
+    is_putt = lie == "Green"
+    force_p = power if force_power is None else force_power
+    force = 0.0 if is_putt else force_factor(force_p, shot_type)
+    power_mul = power * LIE_MUL.get(lie, 1.0)
+    if not is_putt:
+        power_mul *= CONTACT_MUL[contact]
+    if force > 0.0 and power > POWER_POCKET_HI:
+        power_mul *= lerp(1.0, MASH_POWER_LERP, force)
+    total_yards = club_max * power_mul
+    if force > 0.0 and not is_putt:
+        dist_mul = lerp(1.0, DIST_MUL_LO, force)
+        dist_mul *= 1.0 + clamp(path_error, -1.0, 1.0) * force * 0.04
+        total_yards *= dist_mul
+    if shot_type == "flop":
+        total_yards = min(total_yards, FLOP_MAX_YD)
+    return total_yards
+
+
+def estimate_carry_yards(
+    power: float,
+    club_max: float,
+    lie: str = "Fairway",
+    shot_type: str = "full",
+) -> float:
+    return resolve_distance(club_max, clamp(power, 0.0, 1.0), lie, "GOOD", shot_type, 0.0)
+
+
+def recommended_power(remaining_yd: float, club_max: float, lie: str = "Fairway") -> float:
+    if lie == "Green":
+        effective = club_max * LIE_MUL.get(lie, 1.0)
+        if effective <= 0.01:
+            return 1.0
+        return clamp(max(remaining_yd, 0.667) / effective, 0.0267, 1.0)
+    max_yd = resolve_distance(club_max, POWER_POCKET_HI, lie, "GOOD", "full", 0.0)
+    need = max(remaining_yd, 2.0)
+    if need >= max_yd:
+        return POWER_POCKET_HI
+    effective = club_max * LIE_MUL.get(lie, 1.0)
+    if effective <= 0.01:
+        return POWER_POCKET_HI
+    return clamp(need / effective, 0.05, POWER_POCKET_HI)
+
+
 def launch(
     club_max: float,
     loft_mul: float,
@@ -244,17 +304,7 @@ def launch(
     contact: str = "GOOD",
     path_error: float = 0.0,
 ) -> dict:
-    force = force_factor(power, shot_type)
-    power_mul = power * LIE_MUL.get(lie, 1.0) * CONTACT_MUL[contact]
-    if force > 0.0 and power > POWER_POCKET_HI:
-        power_mul *= lerp(1.0, MASH_POWER_LERP, force)
-    total_yards = club_max * power_mul
-    if force > 0.0:
-        dist_mul = lerp(1.0, DIST_MUL_LO, force)
-        dist_mul *= 1.0 + clamp(path_error, -1.0, 1.0) * force * 0.04
-        total_yards *= dist_mul
-    if shot_type == "flop":
-        total_yards = min(total_yards, FLOP_MAX_YD)
+    total_yards = resolve_distance(club_max, power, lie, contact, shot_type, path_error)
     total_px = total_yards * PX_PER_YARD
 
     # loft still used for thin/fat return parity only (not hang/apex)
@@ -513,6 +563,35 @@ def verify_live_constants_reflected() -> None:
     # Sand relative tax
     sand = launch(260.0, 0.62, STOCK_POWER, "full", lie="Sand")
     assert abs(sand["air_frac"] - air_fraction_full(260.0) * SAND_AIR_TAX) < 1e-9
+
+    # Phase 4: estimate_carry == launch total (GOOD, path_error 0) across bag × powers.
+    print("ESTIMATE == LAUNCH (GOOD, path_error=0)")
+    print("-" * 74)
+    powers = (0.5, 0.8, 0.92, 0.96, 1.0)
+    hdr = f"{'club':16}" + "".join(f"{p:>10.2f}" for p in powers)
+    print(hdr)
+    for name, m, lm in BAG:
+        cells = []
+        for p in powers:
+            est = estimate_carry_yards(p, m, "Fairway", "full")
+            launched = launch(m, lm, p, "full", "Fairway", "GOOD", 0.0)["total_yd"]
+            assert abs(est - launched) < 1e-9, (name, p, est, launched)
+            cells.append(f"{est:10.1f}")
+        print(f"{name:16}" + "".join(cells))
+    # recommended_power never recommends above the distance-maximising pocket hi.
+    for rem in (200.0, 230.0, 250.0, 300.0):
+        rp = recommended_power(rem, 260.0, "Fairway")
+        assert rp <= POWER_POCKET_HI + 1e-12, (rem, rp)
+    assert abs(recommended_power(300.0, 260.0) - POWER_POCKET_HI) < 1e-12
+    assert recommended_power(100.0, 260.0) < POWER_POCKET_HI  # short of max → in-pocket
+    assert resolve_distance(260.0, POWER_POCKET_HI) > resolve_distance(260.0, 1.0)
+    # launch_velocity must call the owner (no parallel total_yards *= outside it).
+    launch_body = PHYS.split("static func launch_velocity")[1].split("static func ")[0]
+    assert "resolve_distance(" in launch_body
+    assert "total_yards *= dist_mul" not in launch_body
+    assert "resolve_distance(" in (
+        Path(__file__).resolve().parents[1] / "systems" / "shot_report.gd"
+    ).read_text(encoding="utf-8")
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "

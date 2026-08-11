@@ -90,9 +90,10 @@ def main() -> int:
     assert abs(p3 - 0.625) > 0.2
     assert abs(p20 - 0.625) > 0.01
 
-    # Source: putt path skips contact_multiplier on distance
+    # Source: resolve_distance putt path skips contact_multiplier on distance
     assert "if not is_putt:" in PHYS
-    assert "contact_multiplier(result.contact_quality)" in PHYS
+    assert "power_mul *= contact_multiplier(contact)" in PHYS
+    assert "static func resolve_distance" in PHYS
     # MISS dist_err removed (no 0.65 branch)
     assert "ShotResult.ContactQuality.MISS:" not in PHYS.split("if is_putt:")[1].split("return {")[0] or \
         "dist_err = 0.65" not in PHYS

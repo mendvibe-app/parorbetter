@@ -72,8 +72,11 @@ def main() -> None:
     assert "air_distance_fraction(club_max_yards" in PHYS
     assert "spin_grip_mul(club_max_yards)" in PHYS
     assert 'shot_type: String = "full"' in PHYS or "shot_type: String = \"full\"" in PHYS
-    full = PHYS.split('var is_putt := lie == "Green"')[1]
+    # Distance owner also declares is_putt — join from first split so launch body is included.
+    _is_putt = 'var is_putt := lie == "Green"'
+    full = _is_putt.join(PHYS.split(_is_putt)[1:])
     assert "air_distance_fraction(club_max_yards, shot_type)" in full
+    assert "resolve_distance(" in PHYS
     assert "CARRY_FRAC_LONG" in PHYS and "CARRY_FRAC_SHORT" in PHYS
     assert "AIR_DISTANCE_FRACTION" not in PHYS
 

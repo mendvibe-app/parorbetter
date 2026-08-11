@@ -521,6 +521,42 @@ static func pixels_to_yards(pixels: float) -> float:
 	return pixels / PX_PER_YARD
 
 
+## THE single owner of total shot distance. No other code may compute or scale total_yards.
+## Pre-swing callers pass GOOD contact and path_error 0 — contact is unknowable until grade.
+## force_power < 0 → use power. Launch passes true_power override as force_power while the
+## mash gate stays on power (matches historical force_p vs result.power split).
+static func resolve_distance(
+	club_max_yards: float,
+	power: float,
+	lie: String,
+	severity: String = "",
+	contact: ShotResult.ContactQuality = ShotResult.ContactQuality.GOOD,
+	shot_type: String = "full",
+	path_error: float = 0.0,
+	force_power: float = -1.0
+) -> float:
+	var is_putt := lie == "Green"
+	var force_p := power if force_power < 0.0 else force_power
+	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie, shot_type)
+	# Putts: tempo already leaked distance into power — don't stack contact.
+	var power_mul := power * lie_multiplier(lie, severity)
+	if not is_putt:
+		power_mul *= contact_multiplier(contact)
+	# Mash doesn't buy clean extra yards — contact gets jumpy instead.
+	if force > 0.0 and power > POWER_POCKET_HI:
+		power_mul *= lerpf(1.0, 0.94, force)
+	var total_yards := club_max_yards * power_mul
+	# Forced swings lose distance control (bias short + path wobble). In-pocket: no change.
+	# Literal 0.88 kept for club_bag_check string assert — update that check if renamed.
+	if force > 0.0 and not is_putt:
+		var dist_mul := lerpf(1.0, 0.88, force)
+		dist_mul *= 1.0 + clampf(path_error, -1.0, 1.0) * force * 0.04
+		total_yards *= dist_mul
+	if shot_type == "flop":
+		total_yards = minf(total_yards, FLOP_MAX_YD)
+	return total_yards
+
+
 ## Estimated total distance for UI (assumes solid / good contact).
 static func estimate_carry_yards(
 	power: float,
@@ -529,10 +565,15 @@ static func estimate_carry_yards(
 	severity: String = "",
 	shot_type: String = "full"
 ) -> float:
-	var y := club_max_yards * clampf(power, 0.0, 1.0) * lie_multiplier(lie, severity)
-	if shot_type == "flop":
-		y = minf(y, FLOP_MAX_YD)
-	return y
+	return resolve_distance(
+		club_max_yards,
+		clampf(power, 0.0, 1.0),
+		lie,
+		severity,
+		ShotResult.ContactQuality.GOOD,
+		shot_type,
+		0.0
+	)
 
 
 static func recommended_power(
@@ -542,19 +583,33 @@ static func recommended_power(
 	wind: Vector2 = Vector2.ZERO,
 	severity: String = ""
 ) -> float:
-	var effective_max := club_max_yards * lie_multiplier(lie, severity)
-	if effective_max <= 0.01:
-		return 1.0
 	var wind_yards := 0.0
 	if lie != "Green":
 		wind_yards = -wind.y * 0.35 + absf(wind.x) * 0.08
 	# Putts get their own floor — 2 ft (a real tap-in), not the full-shot 2 yd / 0.05
 	# floor. lie_multiplier("Green") == 1.0, so effective_max == club_max_yards here.
 	if lie == "Green":
+		var effective_putt := club_max_yards * lie_multiplier(lie, severity)
+		if effective_putt <= 0.01:
+			return 1.0
 		var need_putt := maxf(remaining_yd, 0.667)
-		return clampf(need_putt / effective_max, 0.0267, 1.0)
+		return clampf(need_putt / effective_putt, 0.0267, 1.0)
+	# Peak distance is at POWER_POCKET_HI (mash taxes above). Never recommend a power
+	# whose resolved distance is shorter than a lower power's.
+	# ponytail: sub-0.60 baby non-monotonicity is pre-existing / out of scope —
+	# solve_committed_power floors full/punch to POWER_POCKET_LO.
+	var max_yd := resolve_distance(
+		club_max_yards, POWER_POCKET_HI, lie, severity,
+		ShotResult.ContactQuality.GOOD, "full", 0.0
+	)
 	var need := maxf(remaining_yd + wind_yards, 2.0)
-	return clampf(need / effective_max, 0.05, 1.0)
+	if need >= max_yd:
+		return POWER_POCKET_HI
+	# In-pocket force=0 → distance = club_max * power * lie (GOOD contact).
+	var effective_max := club_max_yards * lie_multiplier(lie, severity)
+	if effective_max <= 0.01:
+		return POWER_POCKET_HI
+	return clampf(need / effective_max, 0.05, POWER_POCKET_HI)
 
 
 ## Club-fit solve: uncapped true % + optional POWER_POCKET_LO floor for overclub.
@@ -660,23 +715,18 @@ static func launch_velocity(
 	var force_p := result.power
 	if result.true_power > 0.0:
 		force_p = result.true_power
+	# force still drives lateral/spin accuracy tax below; distance has one owner.
 	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie, shot_type)
-	# Putts: tempo power_mul already leaked distance — don't stack contact ×0.4.
-	var power_mul := result.power * lie_multiplier(lie, severity)
-	if not is_putt:
-		power_mul *= contact_multiplier(result.contact_quality)
-	# Mash doesn't buy clean extra yards — contact gets jumpy instead.
-	if force > 0.0 and result.power > POWER_POCKET_HI:
-		power_mul *= lerpf(1.0, 0.94, force)
-	var total_yards := club_max_yards * power_mul
-	# Forced swings lose distance control (bias short + path wobble). In-pocket: no change.
-	if force > 0.0 and not is_putt:
-		var dist_mul := lerpf(1.0, 0.88, force)
-		dist_mul *= 1.0 + clampf(result.path_error, -1.0, 1.0) * force * 0.04
-		total_yards *= dist_mul
-	# Flop: hard total-distance ceiling (playtest ~30 yd) — not just discouraged.
-	if shot_type == "flop":
-		total_yards = minf(total_yards, FLOP_MAX_YD)
+	var total_yards := resolve_distance(
+		club_max_yards,
+		result.power,
+		lie,
+		severity,
+		result.contact_quality,
+		shot_type,
+		result.path_error,
+		force_p
+	)
 	var total_px := yards_to_pixels(total_yards)
 
 	if is_putt:
