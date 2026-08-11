@@ -168,6 +168,12 @@ After Phase 1–2, punch remained hard to read: full-swing 3:1 tempo target, ful
 
 Does not change `APEX_SCALE_PUNCH` / canopy constants. Does not start Phase 3.
 
+### Canopy restore — shipped (`fix/canopy-restore`, 3dd2cc6)
+
+`TREE_CANOPY_H` rescaled x0.90 after Phase 3 lengthened carry; 7-iron downrange
+clearance restored; new 7i@35% assertion added to `canopy_check`. Device-verified.
+Does not start Phase 4.
+
 ---
 
 ### Phase 3 — Carry and roll split
