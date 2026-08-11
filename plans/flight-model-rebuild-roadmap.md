@@ -174,6 +174,18 @@ Does not change `APEX_SCALE_PUNCH` / canopy constants. Does not start Phase 3.
 clearance restored; new 7i@35% assertion added to `canopy_check`. Device-verified.
 Does not start Phase 4.
 
+### Bag calibration Part A + apex decoupling — shipped (`fix/bag-calibration`)
+
+- **Part A (`5a0bca4`):** `total_yd` goldens re-spec'd from Tour to ~10-handicap amateur
+  ranges. Suite now **15/15**.
+- **Apex decoupling (`bdc36ef`):** `REAL_APEX_FT` nearest-key lookup replaced with
+  piecewise-linear interpolation. Bag changes can no longer silently shift apex. Today's
+  bag produces byte-identical results.
+
+**Part B (bag rescale) — deferred, unapproved.** Open issues if revisited: 6-iron would
+cross the 180-yard dispersion bucket, and the carry ramp endpoints `(65, 260)` would stop
+matching the bag ends. Does not start Phase 4.
+
 ---
 
 ### Phase 3 — Carry and roll split
