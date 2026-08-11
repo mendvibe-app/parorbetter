@@ -67,13 +67,19 @@ static func recommend_shot_type(lie: String, remaining_yd: float, club_max_yards
 
 
 static func target_ratio(shot_type: String) -> float:
-	# Punch uses full 3:1; putt/pitch/flop are short-game 2:1 tempo.
-	return TARGET_SHORT if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" else TARGET_FULL
+	# Punch is an abbreviated backswing (Tour Tempo: shorter BS → lower ratio).
+	# putt/pitch/flop/punch → 2:1; full → 3:1. Punch still uses TOL_FULL (not TOL_SHORT).
+	return (
+		TARGET_SHORT
+		if shot_type == "putt" or shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+		else TARGET_FULL
+	)
 
 
 static func base_tolerance(shot_type: String) -> float:
 	if shot_type == "flop":
 		return TOL_FLOP
+	# Punch keeps TOL_FULL — short target + short tol would make everything PERFECT.
 	return TOL_SHORT if shot_type == "putt" or shot_type == "pitch" else TOL_FULL
 
 

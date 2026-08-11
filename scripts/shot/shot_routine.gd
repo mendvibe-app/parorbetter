@@ -193,7 +193,8 @@ func configure(
 
 
 func flight_shot_type() -> String:
-	## Physics flight identity (punch lowers apex); not the tempo pad type.
+	## Shared identity for physics, grade, and pad ghost when punch is on.
+	## (Picker shot_type stays full/pitch/…; punch_mode remaps here.)
 	if punch_mode and shot_type != "putt" and shot_type != "chip":
 		return "punch"
 	return shot_type
@@ -236,7 +237,9 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	phase = Phase.ACTIVE
 	last_verdict.clear()
 	tempo_gesture.reset()
-	tempo_gesture.shot_type = shot_type
+	# Grade + ghost share flight identity so punch gets 2:1 target and short guide.
+	var pad_type := flight_shot_type()
+	tempo_gesture.shot_type = pad_type
 	# Always pass club max so pad drag head matches bag (driver/wood/hybrid/iron/wedge).
 	tempo_gesture.club_max_yards = club_max_yards
 	if shot_type == "putt" or shot_type == "chip":
@@ -246,7 +249,7 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		tempo_gesture.putt_show_marker = false
 	tempo_gesture.set_enabled(true)
 	if meter_display:
-		meter_display.set_shot_context(shot_type, timing_scale, practice_mode)
+		meter_display.set_shot_context(pad_type, timing_scale, practice_mode)
 		if shot_type == "putt" or shot_type == "chip":
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	_layout_shot_chrome()
@@ -255,15 +258,15 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		if shot_type == "putt" or shot_type == "chip":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		elif punch_mode:
-			hint_label.text = "PRACTICE PUNCH — low flight · same 3:1 · keep it under."
+			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · keep it under."
 		else:
-			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(shot_type)
+			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(pad_type)
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
 		hint_label.text = "CHIP — feel the distance · small stroke · through the ball."
 	elif punch_mode:
-		hint_label.text = "PUNCH — low · through the ball · more roll after."
+		hint_label.text = "PUNCH ~2:1 — low · abbreviated · through the ball · more roll."
 	elif shot_type == "pitch":
 		hint_label.text = "PITCH ~2:1 — address · to the top · through the ball."
 	elif shot_type == "flop":
@@ -405,8 +408,10 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 			current_severity
 		)
 	else:
+		# flight_shot_type(): punch_mode remaps to "punch" for grade (same as physics).
+		var grade_type := flight_shot_type()
 		verdict = TempoGrade.grade(
-			sample, shot_type, timing_scale, tol_scale, bal_tighten, club_max_yards
+			sample, grade_type, timing_scale, tol_scale, bal_tighten, club_max_yards
 		)
 	last_verdict = verdict
 	GameState.last_tempo_metrics = verdict
@@ -429,9 +434,10 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 				"downswing_ms": 400,
 			}
 		else:
+			var tgt_pf := TempoGrade.target_ratio(flight_shot_type())
 			verdict = {
-				"ratio": TempoGrade.target_ratio(shot_type),
-				"target": TempoGrade.target_ratio(shot_type),
+				"ratio": tgt_pf,
+				"target": tgt_pf,
 				"balance": 1.0,
 				"contact": ShotResult.ContactQuality.PERFECT,
 				"power_mul": 1.0,
@@ -462,7 +468,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		else:
 			verdict = {
 				"ratio": 1.2,
-				"target": TempoGrade.target_ratio(shot_type),
+				"target": TempoGrade.target_ratio(flight_shot_type()),
 				"balance": 0.25,
 				"contact": ShotResult.ContactQuality.FAT,
 				"power_mul": 0.55,

@@ -99,19 +99,32 @@ def balance(sample: dict, tighten: float = 1.0, shot_type: str = "full") -> floa
     return float(balance_detail(sample, tighten, shot_type)["score"])
 
 
+def target_ratio(shot_type: str) -> float:
+    """Mirror TempoGrade.target_ratio — punch joins short 2:1; keeps TOL_FULL separately."""
+    if shot_type in ("putt", "pitch", "flop", "punch"):
+        return TARGET_SHORT
+    return TARGET_FULL
+
+
+def base_tolerance(shot_type: str) -> float:
+    if shot_type in ("putt", "pitch"):
+        return TOL_SHORT
+    return TOL_FULL  # punch included
+
+
 def tolerance_width(shot_type: str, bal: float, timing_scale: float = 1.0, tol_scale: float = 1.0) -> float:
-    base_tol = TOL_SHORT if shot_type in ("putt", "pitch") else TOL_FULL
+    base_tol = base_tolerance(shot_type)
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     shrink = 0.35 + (1.0 - 0.35) * min(max(bal, 0.0), 1.0)
     return base * shrink
 
 
 def grade(sample: dict, shot_type: str, timing_scale: float = 1.0, tol_scale: float = 1.0, bal_tighten: float = 1.0) -> dict:
-    target = TARGET_SHORT if shot_type in ("putt", "pitch") else TARGET_FULL
+    target = target_ratio(shot_type)
     bal = balance(sample, bal_tighten, shot_type)
     r = ratio(sample["t_takeaway"], sample["t_top"], sample["t_impact"])
     err = r - target
-    base_tol = TOL_SHORT if shot_type in ("putt", "pitch") else TOL_FULL
+    base_tol = base_tolerance(shot_type)
     base = base_tol * max(tol_scale, 0.15) * max(timing_scale, 0.35)
     raw_n = abs(err) / max(base, 0.01)
     bal_for_tol = max(bal, 0.70) if raw_n <= BAND_GOOD else bal
@@ -164,6 +177,9 @@ def main() -> int:
     assert "TARGET_SHORT := 2.0" in GRADE
     assert "TOL_FULL := 1.1" in GRADE
     assert "TOL_SHORT := 1.35" in GRADE
+    assert 'or shot_type == "punch"' in GRADE  # punch targets 2:1
+    assert target_ratio("punch") == TARGET_SHORT
+    assert base_tolerance("punch") == TOL_FULL  # not TOL_SHORT (double-gift)
     assert "is_pitch" in GRADE  # pitch softens accel/transition vs full
     assert "BAND_PERFECT := 0.50" in GRADE
     assert "BAND_GOOD := 1.15" in GRADE
@@ -177,6 +193,7 @@ def main() -> int:
     assert "over_band" in GRADE  # pull gated past BAND_GOOD
     # OTT bias applied as +pull (out-to-in / fade side), not −pull (old draw bias).
     ROUTINE = (DIR / "shot_routine.gd").read_text(encoding="utf-8")
+    assert "flight_shot_type()" in ROUTINE  # grade + pad share punch identity
     assert "swing_shape + pull" in ROUTINE or "modulated := clampf(swing_shape + pull" in ROUTINE
     assert "max_lateral" in ROUTINE
     # Lateral deadzone: tremor not intent; full shape still at old saturation.
