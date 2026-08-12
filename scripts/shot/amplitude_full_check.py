@@ -69,7 +69,8 @@ def main() -> int:
     assert "static func power_from_amplitude" in PHYS
     assert "static func amplitude_for_power" in PHYS
     assert "static func full_lane_pad_len" in PHYS
-    assert "TempoGrade.bs_floor(\"full\")" in PHYS
+    assert "TempoGrade.bs_floor(shot_type)" in PHYS
+    assert "static func lane_pad_len" in PHYS
     # Geometry sync with gesture defaults for full.
     assert "var y := 0.30" in GESTURE
     assert re.search(r"func top_hint[\s\S]*?var y := 0\.92", GESTURE), "full top_hint y drifted"
@@ -115,14 +116,13 @@ def main() -> int:
     assert "amp_power if amp_power >= 0.0 else true_power_pct" in ROUTINE
 
     # --- Safety: punch stays aim-solved (bit-identical path) ---
-    # Amplitude branch is gated on flight_shot_type() == "full" only.
-    assert 'if flight_shot_type() == "full":' in ROUTINE
+    # Amplitude branch gated; punch excluded via uses_amplitude_power.
+    assert "uses_amplitude_power" in ROUTINE or 'flight_shot_type() == "full"' in ROUTINE
     assert "power = clampf(amp_power * power_mul, 0.05, 1.0)" in ROUTINE
     assert "power = clampf(committed_power * power_mul, 0.05, 1.0)" in ROUTINE
-    # Punch pad/grade identity still remaps via flight_shot_type; power else-branch.
     assert 'return "punch"' in ROUTINE or "punch_mode" in ROUTINE
-    # Markers only when pad_type == "full".
-    assert 'if pad_type == "full":' in ROUTINE
+    # Markers only when uses_amplitude_power types.
+    assert "uses_amplitude_power" in ROUTINE or 'pad_type == "full"' in ROUTINE
     assert "full_show_markers = true" in ROUTINE
     assert "_draw_full_amplitude_markers" in GESTURE
 
@@ -133,7 +133,7 @@ def main() -> int:
     print(f"  LEN_FULL={len_full:.2f} floor={BS_FLOOR_FULL:.2f} pocket_len={pocket_len:.3f}")
     print(f"  power@floor={power_from_amplitude(BS_FLOOR_FULL):.2f} @top={full_pull:.2f}")
     print(f"  force_factor(@top)={mash:.2f} (mash tax fires)")
-    print("  punch/non-full: committed*power_mul path retained")
+    print("  punch/non-amp: committed*power_mul path retained")
     return 0
 
 

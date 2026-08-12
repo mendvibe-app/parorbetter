@@ -845,7 +845,9 @@ func _draw() -> void:
 		_draw_trail()
 		if dragging:
 			_draw_drag_club_head()
-	if full_show_markers and shot_type == "full":
+	if full_show_markers and (
+		shot_type == "full" or shot_type == "pitch" or shot_type == "flop"
+	):
 		_draw_full_amplitude_markers()
 	_draw_golfer()
 

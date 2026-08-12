@@ -1,6 +1,6 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 1 shipped on main (mixed window open). Phase 2 in progress — close the window.
+**Status:** Phase 2 on `feature/amplitude-power-short` (pitch/flop amplitude; chip already PuttStroke). Punch still aim-solved until Phase 3.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -107,9 +107,10 @@ On-pad target + pocket (`POWER_POCKET_HI`) marks; `true_power` from amplitude so
 `force_factor` mash tax fires on overswing (device-confirmed: 239.2 → 215.1 yd at full mash).
 
 ### Phase 2 — Extend to pitch, chip, flop
-Each already has its own lane geometry and carry-fraction model. Give each its own
-amplitude→power mapping in the same pattern as Phase 1, reusing the per-type lane
-infrastructure rather than inventing a second system.
+**Shipped on `feature/amplitude-power-short`.** Pitch/flop use the same pad-H linear map as
+full (`lane_pad_len` 0.50, `bs_floor` 0.10). Chip stays on `PuttStroke.power_from_frac` (already
+amplitude-primary) with pull-length hints + scored pace marker. Punch remains aim-solved
+until Phase 3. Mixed window now: **punch only** (plus putt Phase 4 alignment).
 
 ### Phase 3 — Extend to punch
 Punch's lane was just fixed to match pitch's geometry. Same amplitude→power treatment,
