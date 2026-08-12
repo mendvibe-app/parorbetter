@@ -193,6 +193,17 @@ owner shared with `_process_roll`. Sand/rough settle error reduced from ~10–15
 1 yd (Driver Sand −14.6 → −0.8, Rough −10.5 → −0.7). No gameplay change on Fairway/Tee
 (decel still 144). Found by Phase 5 CP6; see `plans/correction-landing-speed-lie.md`.
 
+### Reverse-guard planned floor — shipped (`cursor/reverse-guard-planned-floor-5ed0`, #47)
+
+Reverse-guard floor now scales with planned speed (`air_px` / `air_time`) instead of a flat
+12 px/s or a fraction of the shot's own along-speed. Fixes lob-wedge sky-balling under
+headwind; a real headwind still costs real distance, which is correct. Trip onset
+unchanged — only the floor once fired. CP3 pitch-under-headwind still load-bearing.
+
+**Open follow-up (not fixed here):** `recommended_power` biases on world-space `wind.y`
+while flight applies world wind against launch-dir — same mag is a different effective
+headwind per hole bearing. Project wind onto aim/launch before the yards bias.
+
 ---
 
 ### Phase 3 — Carry and roll split
@@ -248,14 +259,15 @@ device-verified merges):** CP4 (short-shot launch lateral / spread after droppin
 line_scale) and CP6 (roll settle without clamp). Flag if short-game offline or roll-out
 feel wrong later.
 
-**Known follow-up (logged, not fixed):** `landing_speed` hardcodes fairway's friction
-constant (`144 = 2.4 × 60`) unconditionally, so sand/rough get fairway landing energy then
-decelerate at lie friction — ~10–15 yd short settle on non-fairway. Should key off landing
-lie friction the same way roll deceleration already does. Separate small correction.
+**Known follow-up (logged, not fixed):** `recommended_power` wind bias uses world-space
+`wind.y` (`-wind.y * 0.35 + abs(wind.x) * 0.08` in `ball_physics.gd`), while flight applies
+wind as a raw world-space velocity add and the reverse-guard measures along-launch. Same
+wind mag is a different effective headwind per hole bearing — plan power and flight disagree
+on orientation. Separate small correction (project wind onto aim/launch before the yards
+bias); do not bundle with reverse-guard floor work.
 
 Phase 6 is nearly empty after this — remaining work is deleting dead function bodies and
-closing the ledger, not re-litigating reverse-guard / multi-exit. Do not start until the
-landing_speed follow-up is scoped.
+closing the ledger, not re-litigating reverse-guard / multi-exit.
 
 ---
 
@@ -269,8 +281,8 @@ If one *can't* come out, that is a real finding and gets documented rather than 
 silently.
 
 **Status after Phase 5:** call sites / clamp / `spin_scale` already gone or explicitly kept
-(see Phase 5 shipped). Near-empty — close out properly after landing_speed follow-up; do not
-start from this merge.
+(see Phase 5 shipped). `landing_speed` lie friction shipped separately. Near-empty — close
+out properly; do not start from this merge.
 
 ---
 

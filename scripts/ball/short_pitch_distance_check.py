@@ -67,7 +67,7 @@ def sim_flight(
         along_after = vx * launch[0] + vy * launch[1]
         if along_after < along_spd * 0.15:
             lat = vx * fr[0] + vy * fr[1]
-            along_spd2 = max(along_spd * 0.35, 12.0)
+            along_spd2 = base_speed * 0.35  # planned air/hang — mirrors ball.gd
             vx = launch[0] * along_spd2 + fr[0] * lat * 0.55
             vy = launch[1] * along_spd2 + fr[1] * lat * 0.55
         x += vx * dt

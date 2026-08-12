@@ -524,10 +524,13 @@ func _process_flight(delta: float) -> void:
 	# Wind/stall safety net — not a sidespin patch. Calm+spin never trips this
 	# after speed-proportional curvature (Phase 5 CP3); max headwind on soft
 	# shots still reverses without it. Keep until wind integration owns stall.
+	# Floor is 0.35 × planned air/hang (launch_speed_for), not along_spd / a flat
+	# 12 px/s — flat floor sky-balled full-swing LW under headwind (playtest).
 	var along_after := velocity.dot(_launch_dir)
 	if along_after < along_spd * 0.15:
 		var lat := velocity.dot(flight_right)
-		velocity = _launch_dir * maxf(along_spd * 0.35, 12.0) + flight_right * lat * 0.55
+		var planned_spd := (_planned_distance_px * _air_fraction) / maxf(_air_duration, 0.05)
+		velocity = _launch_dir * (planned_spd * 0.35) + flight_right * lat * 0.55
 
 	var collision := move_and_collide(velocity * delta)
 	var along := _traveled_along()
