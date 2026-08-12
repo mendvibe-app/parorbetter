@@ -302,8 +302,14 @@ def sim_flight_land(
     mode: str = "new",
     wind: tuple[float, float] = (0.0, 0.0),
     reverse_guard: bool = True,
+    exit_mode: str = "all",
 ) -> dict:
-    """Integrate _process_flight (wind * 6, spin, optional reverse-guard)."""
+    """Integrate _process_flight (wind * 6, spin, optional reverse-guard).
+
+    exit_mode:
+      all — current: t>=1 or along or path_len
+      path — CP5 candidate: path_len only (hang detect via time cap)
+    """
     base_speed = launch_speed_for(air_px, air_time)
     vx, vy = 0.0, -base_speed
     launch = (0.0, -1.0)
@@ -314,7 +320,9 @@ def sim_flight_land(
     guard_trips = 0
     min_along_v = base_speed
     max_lat_frac = 0.0  # |lat| / spd after spin+wind, before guard
-    while t < air_time - 1e-9:
+    time_cap = air_time * 3.0 + 0.5  # hang detector for path-only mode
+    first_exit = ""
+    while t < time_cap:
         # ball.gd: velocity += wind * delta * 6.0
         vx += wind[0] * dt * 6.0
         vy += wind[1] * dt * 6.0
@@ -349,17 +357,47 @@ def sim_flight_land(
         t += dt
         along = max(x * launch[0] + y * launch[1], 0.0)
         path_len = math.hypot(x, y)
-        if along >= air_px or path_len >= air_px or t >= air_time - 1e-12:
-            break
+        t_done = t + 1e-12 >= air_time
+        along_done = along >= air_px
+        path_done = path_len >= air_px
+        if exit_mode == "path":
+            if path_done:
+                first_exit = "path_len"
+                break
+        else:
+            # Mirror OR order: t, along, path_len (collision N/A offline).
+            if t_done or along_done or path_done:
+                if t_done and not along_done and not path_done:
+                    first_exit = "t"
+                elif along_done and not path_done and not t_done:
+                    first_exit = "along"
+                elif path_done and not along_done and not t_done:
+                    first_exit = "path_len"
+                elif path_done and along_done and not t_done:
+                    first_exit = "path+along"
+                elif t_done and (along_done or path_done):
+                    first_exit = "t+dist"  # simultaneous — timer not alone
+                else:
+                    first_exit = "t"
+                break
+    else:
+        first_exit = "HANG"
     along = max(x * launch[0] + y * launch[1], 0.0)
     lat = abs(x * fr[0] + y * fr[1])
+    path_len = math.hypot(x, y)
     return {
         "along_px": along,
         "lat_px": lat,
+        "path_px": path_len,
+        "t": t,
+        "air_time": air_time,
         "guard_trips": guard_trips,
         "min_along_v": min_along_v,
         "max_lat_frac": max_lat_frac,
         "reversed": min_along_v < -1.0,
+        "first_exit": first_exit,
+        "t_alone": first_exit == "t",
+        "hung": first_exit == "HANG",
     }
 
 
@@ -772,6 +810,106 @@ def verify_live_constants_reflected() -> None:
         print("  CP3: guard never tripped and no reverse without it — safe to delete.")
     else:
         print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
+
+    # Phase 5 CP5: which exit predicate fires first (report before deleting t/along).
+    print("FLIGHT EXIT SWEEP (which predicate lands first)")
+    print("-" * 74)
+    exit_cases: list[tuple] = []
+    for name, m, lm in BAG:
+        exit_cases.append((f"{name[:10]} stk", m, lm, STOCK_POWER, "full", "Fairway", 0.0))
+    exit_cases.extend(
+        [
+            ("LW pit -0.22", 80.0, 1.55, 0.20, "pitch", "Fairway", -0.22),
+            ("LW pit -0.55", 80.0, 1.55, 0.20, "pitch", "Fairway", -0.55),
+            ("LW pit +1.0", 80.0, 1.55, 0.20, "pitch", "Fairway", 1.0),
+            ("punch 7i", 160.0, 1.05, 0.80, "punch", "Fairway", 0.0),
+            ("punch path", 160.0, 1.05, 0.80, "punch", "Fairway", -0.5),
+            ("flop SW", 80.0, 1.55, 0.30, "flop", "Fairway", 0.0),
+            ("flop path", 80.0, 1.55, 0.30, "flop", "Fairway", -0.55),
+            ("sand Dr", 260.0, 0.62, STOCK_POWER, "full", "Sand", 0.0),
+            ("sand 7i", 160.0, 1.05, STOCK_POWER, "full", "Sand", 0.0),
+        ]
+    )
+    exit_winds = {
+        "calm": (0.0, 0.0),
+        "head60": (0.0, 60.0),
+        "cross60": (60.0, 0.0),
+        "tail60": (0.0, -60.0),
+    }
+    counts: dict[str, int] = {}
+    t_alone = 0
+    hangs = 0
+    path_only_hangs = 0
+    print(f"{'case':14}{'wind':10}{'exit':>10}{'t/T':>7}{'path%':>7}{'pathOnly':>10}")
+    for cname, m, lm, power, stype, lie, path in exit_cases:
+        r = launch(m, lm, power, stype, lie, "GOOD", 0.0)
+        air_px = r["carry_yd"] * PX_PER_YARD
+        grip = (
+            0.78
+            if m >= 245
+            else 0.88
+            if m >= 180
+            else 1.0
+            if m >= 150
+            else 1.10
+            if m >= 120
+            else 1.15
+            if m >= 95
+            else 1.18
+            if m >= 75
+            else 1.22
+        )
+        spin = path * 0.95 * grip
+        if stype == "punch":
+            spin *= 0.55  # rough stand-in; punch scales spin in launch_velocity
+        for wname, wind in exit_winds.items():
+            cur = sim_flight_land(
+                air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True
+            )
+            only = sim_flight_land(
+                air_px,
+                r["air_time"],
+                spin,
+                mode="new",
+                wind=wind,
+                reverse_guard=True,
+                exit_mode="path",
+            )
+            fe = cur["first_exit"]
+            counts[fe] = counts.get(fe, 0) + 1
+            if cur["t_alone"]:
+                t_alone += 1
+            if cur["hung"]:
+                hangs += 1
+            if only["hung"]:
+                path_only_hangs += 1
+            interesting = (
+                cur["t_alone"]
+                or only["hung"]
+                or fe not in ("path_len", "path+along", "t+dist")
+                or wname != "calm"
+                and abs(path) > 0.01
+            )
+            if interesting or wname == "calm" and path == 0.0 and "stk" in cname and m in (
+                260.0,
+                160.0,
+                80.0,
+            ):
+                print(
+                    f"{cname:14}{wname:10}{fe:>10}"
+                    f"{cur['t']/max(r['air_time'],1e-9):7.2f}"
+                    f"{100*cur['path_px']/max(air_px,1e-9):7.1f}"
+                    f"{'HANG' if only['hung'] else only['first_exit']:>10}"
+                )
+    print(f"  exit histogram: {counts}")
+    print(
+        f"  t_alone={t_alone}  hung_current={hangs}  "
+        f"hung_path_only={path_only_hangs}"
+    )
+    if t_alone > 0 or path_only_hangs > 0 or hangs > 0:
+        print("  CP5: STOP — keep t>=1.0 / along; timer-alone or hang detected.")
+    else:
+        print("  CP5: timer never alone; path_len-only never hangs — safe to collapse.")
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
