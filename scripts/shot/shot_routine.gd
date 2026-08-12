@@ -379,7 +379,7 @@ func force_result(perfect: bool) -> void:
 	var path := 0.0 if perfect else 0.65
 	var stab := 1.0 if perfect else 0.35
 	var power_amt := committed_power if perfect else committed_power * 0.55
-	var forced := ShotResult.make(power_amt, stab, path, contact, suggested_shape)
+	var forced := ShotResult.make(power_amt, stab, path, contact, 0.0)
 	forced.true_power = true_power_pct
 	_emit_result(forced)
 
@@ -518,7 +518,8 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		power = clampf(committed_power * power_mul, 0.05, 1.0)
 
 	# Direction: putt/chip = PuttStroke path; full family = swipe (+ gated pull) as one signal.
-	var shape := suggested_shape
+	# Hole suggested_shape is advisory only (aim cone bend) — never feeds physics.
+	var shape := 0.0
 	var swing_shape := 0.0
 	var path: float
 	if shot_type == "putt" or shot_type == "chip":
@@ -526,6 +527,8 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		# Putts: slight line emphasis — physics already scales contact/stance.
 		if current_lie == "Green":
 			path = clampf(path * 1.1, -1.0, 1.0)
+		# Chip flight keys lateral off intended_shape; keep it equal to stroke path.
+		shape = path
 		# Single metrics object for F1 Path + Shape (Phase 3) — no blank shape on putt/chip.
 		verdict["path_error"] = path
 		verdict["swing_shape"] = path
@@ -543,7 +546,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		verdict["transition_pull"] = 0.0
 		GameState.last_tempo_metrics = verdict
 	elif GameState.force_perfect:
-		shape = suggested_shape
+		shape = 0.0
 		swing_shape = 0.0
 		path = shape
 		verdict["swing_shape"] = 0.0
@@ -566,7 +569,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 			)
 		var modulated := clampf(swing_shape + pull + dispersion, -1.0, 1.0)
 		var auth := _shape_authority(contact)
-		shape = clampf(suggested_shape * 0.45 + modulated * 0.75 * auth, -1.0, 1.0)
+		shape = clampf(modulated * 0.75 * auth, -1.0, 1.0)
 		if punch_mode:
 			shape *= 0.55  # punch already softens spin in physics
 		path = shape  # path_error == intended_shape for full/pitch/punch
