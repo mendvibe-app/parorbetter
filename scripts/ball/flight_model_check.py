@@ -41,7 +41,6 @@ _require(PHYS, "static func launch_speed_for")
 _require(PHYS, "static func roll_friction_for")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
-_require(PHYS, "static func short_shot_hang_scale")  # dead but kept until Phase 6
 _require(PHYS, "static func apex_for")
 _require(PHYS, "static func hang_time")
 _require(PHYS, "const REAL_APEX_FT")
@@ -68,8 +67,6 @@ PUNCH_LOFT_SCALE = _f(PHYS, r"const PUNCH_LOFT_SCALE\s*:=\s*([0-9.]+)")
 PUNCH_AIR_FRAC_SCALE = _f(PHYS, r"const PUNCH_AIR_FRAC_SCALE\s*:=\s*([0-9.]+)")
 MASH_POWER_LERP = _f(PHYS, r"power_mul \*= lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
 DIST_MUL_LO = _f(PHYS, r"var dist_mul := lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
-HANG_LO = _f(PHYS, r"return clampf\(lerpf\(([0-9.]+),\s*1\.0,\s*total_yards / 40\.0\)")
-HANG_FULL_YD = _f(PHYS, r"if total_yards >= ([0-9.]+):\s*\n\s*return 1\.0")
 assert abs(MASH_POWER_LERP - 0.94) < 1e-9, MASH_POWER_LERP
 assert abs(DIST_MUL_LO - 0.88) < 1e-9, DIST_MUL_LO
 
@@ -196,17 +193,6 @@ def air_distance_fraction(m: float, shot_type: str = "full") -> float:
     if shot_type == "punch":
         return clamp(full * PUNCH_AIR_FRAC_SCALE, PUNCH_CLAMP_LO, PUNCH_CLAMP_HI)
     return full
-
-
-def short_shot_hang_scale(total_yards: float) -> float:
-    """Mirror of dead GD func (still in source for Phase 6)."""
-    if total_yards >= HANG_FULL_YD:
-        return 1.0
-    return clamp(lerp(HANG_LO, 1.0, total_yards / 40.0), HANG_LO, 1.0)
-
-
-def short_shot_line_scale(total_yards: float) -> float:
-    return clamp(total_yards / 55.0, 0.10, 1.0)
 
 
 def sim_roll_out(
@@ -683,8 +669,6 @@ def verify_live_constants_reflected() -> None:
     assert abs(air_distance_fraction(80.0, "pitch") - 0.90) < 1e-9
     assert force_factor(STOCK_POWER, "full") == 0.0
     assert force_factor(1.0, "full") > 0.99
-    assert short_shot_hang_scale(13.0) < 0.75  # dead func still present
-    assert short_shot_hang_scale(50.0) == 1.0
     r = launch(80.0, 1.55, 0.3, "flop")
     assert r["total_yd"] <= FLOP_MAX_YD + 1e-6
     # Phase 1: apex primary — chip << driver; mono bag; linear power
@@ -840,7 +824,7 @@ def verify_live_constants_reflected() -> None:
         )
         for wname, wind in winds.items():
             for path in paths:
-                # CP4: no short_shot_line_scale on launch spin.
+                # Launch spin at full path authority (no distance damp).
                 spin = path * 0.95 * grip
                 on = sim_flight_land(
                     air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True

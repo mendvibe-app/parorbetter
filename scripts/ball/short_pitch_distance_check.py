@@ -8,23 +8,12 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-PHYS = (ROOT / "scripts" / "ball" / "ball_physics.gd").read_text(encoding="utf-8")
 BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
 
 PX = 2.25
 _m = re.search(r"const SPIN_CURVE_COEFF\s*:=\s*([0-9.]+)\s*/\s*([0-9.]+)", BALL)
 assert _m, "SPIN_CURVE_COEFF missing"
 SPIN_CURVE_COEFF = float(_m.group(1)) / float(_m.group(2))
-
-
-def short_shot_line_scale(total_yards: float) -> float:
-    return max(0.10, min(1.0, total_yards / 55.0))
-
-
-def short_shot_hang_scale(total_yards: float) -> float:
-    if total_yards >= 40.0:
-        return 1.0
-    return max(0.42, min(1.0, 0.42 + (1.0 - 0.42) * (total_yards / 40.0)))
 
 
 def sim_flight(
@@ -39,12 +28,11 @@ def sim_flight(
     total_px = total_yd * PX
     loft = 0.9 * loft_mul
     air_time = (0.55 + (1.15 - 0.55) * power) * loft
-    air_time *= short_shot_hang_scale(total_yd)
     air_frac = 0.82  # pitch band
     air_px = total_px * air_frac
     base_speed = air_px / max(air_time, 0.05)
     stab = 0.94
-    # CP4: no short_shot_line_scale — launch/flight spin at full path authority.
+    # Launch/flight spin at full path authority (no distance damp on spin).
     spin = shape * 0.95 * stab * 0.35 * 1.22  # PERFECT × LW grip
 
     vx, vy = 0.0, -base_speed
@@ -94,15 +82,10 @@ def sim_flight_along_yd(
 
 
 def main() -> int:
-    assert "short_shot_hang_scale" in PHYS
     assert "normalized() * spd" in BALL
     assert "SPIN_CURVE_COEFF" in BALL
     assert "path_len" in BALL
     assert "var spin_scale" not in BALL
-
-    # Hang scale cuts soft LW hang (playtest apex was ~41 on 13 yd).
-    assert short_shot_hang_scale(13.0) < 0.75
-    assert short_shot_hang_scale(50.0) == 1.0
 
     # Mild path short pitch: carry along should stay near planned air share.
     planned_air = 13.0 * 0.82
@@ -113,14 +96,10 @@ def main() -> int:
     along_hard, lat_hard = sim_flight(13.0, 0.20, 1.62, -0.55, preserve_speed=True)
     assert along_hard >= planned_air * 0.70, f"shaped pitch carry too low: {along_hard:.2f}"
 
-    # Call site gone after CP4; dead func may remain until Phase 6.
-    assert "short_shot_line_scale(total_yards)" not in PHYS.split("static func launch_velocity")[1]
-
     print(
         f"short_pitch_distance_check: ok along13={along:.2f}yd lat={lat:.2f} "
         f"hard={along_hard:.2f}yd lat_hard={lat_hard:.2f} "
-        f"coeff={SPIN_CURVE_COEFF:.4f} hang13={short_shot_hang_scale(13.0):.2f} "
-        f"(line_scale call removed)"
+        f"coeff={SPIN_CURVE_COEFF:.4f}"
     )
     return 0
 
