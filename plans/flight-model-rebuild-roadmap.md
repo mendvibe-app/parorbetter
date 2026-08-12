@@ -208,6 +208,12 @@ onto real launch direction (`wind.dot(dir)` — sign corrected vs draft `-wind.d
 on world-Y wind via the default — scoped follow-up pending those functions' own signature
 work; not forgotten.
 
+**Correction shipped (`fix/remove-hole-shape-bias`):** hole shape bias fully removed from
+physics — the original early ruling (“hole shape forcing should not exist”) applied across
+all four consumers (live swipe blend, `force_result`, `force_perfect`, and a fourth found
+in implementation: putt/chip `shape` initializer that let hole bias reach chip lateral via
+an unoverwritten default). Cone bend and `hole.suggested_shape` data remain, cosmetic-only.
+
 ---
 
 ### Phase 3 — Carry and roll split
