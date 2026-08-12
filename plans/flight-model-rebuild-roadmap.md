@@ -1,6 +1,7 @@
 # Flight Model Rebuild — Roadmap
 
-**Status:** planning. No code written yet.
+**Status:** Phase 6 shipped. Dead helpers gone; reverse-guard / multi-exit kept as safety nets
+(Phase 5). Remaining track work per phases below / open follow-ups.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Supersedes:** short-game-roadmap.md Phases 2–6 (see *Relationship to existing work*)
 
@@ -266,17 +267,22 @@ wind mag is a different effective headwind per hole bearing — plan power and f
 on orientation. Separate small correction (project wind onto aim/launch before the yards
 bias); do not bundle with reverse-guard floor work.
 
-Phase 6 is nearly empty after this — remaining work is deleting dead function bodies and
-closing the ledger, not re-litigating reverse-guard / multi-exit.
+Phase 6 remaining after Phase 5: delete dead function bodies and close the ledger — not
+re-litigate reverse-guard / multi-exit.
 
 ---
 
 ### Phase 6 — Retire the band-aids
-Remove `short_shot_line_scale()`, the flight reverse-guard, the `remain < 40` braking hack,
-and the `spin_scale` speed clamp — one at a time, confirming with the harness that each was
-only ever compensating for a root cause now fixed.
+**Shipped** (`feature/flight-phase6-cleanup` → main). Deleted `short_shot_line_scale` and
+`short_shot_hang_scale` from `ball_physics.gd`; zero references remain under `scripts/`.
+Check mirrors/existence locks stripped; short_pitch crude sim dropped the leftover hang
+multiply (along 10.76 → 10.73, not a regression). Flight goldens 15/15 unchanged. No
+playtest needed — no live path change.
 
-**Acceptance:** each removal is a separate commit with a harness diff showing no regression.
+Earlier Phase 5 already removed the live call sites / roll clamp / etc.; reverse-guard and
+multi-exit termination **kept** as wind-stall safety nets (not re-opened here).
+
+**Acceptance (met):** dead bodies gone; harness green; goldens unchanged.
 If one *can't* come out, that is a real finding and gets documented rather than reverted
 silently.
 
