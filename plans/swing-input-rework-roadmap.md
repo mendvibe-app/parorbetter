@@ -1,6 +1,6 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 1 on `feature/amplitude-power-full` — full swing amplitude-driven; mixed window until Phase 2.
+**Status:** Phase 1 shipped on main (mixed window open). Phase 2 in progress — close the window.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -95,20 +95,16 @@ flop / punch) shows BS len/frac vs commit/true/rolled; PuttStroke (putt / chip) 
 `scripts/shot/amplitude_power_check.py`.
 
 ### Phase 1 — Core mapping, full swing only
-*The load-bearing phase.* **Built on `feature/amplitude-power-full` — merge alone with mixed window.**
+*The load-bearing phase.* **Shipped** (`feature/amplitude-power-full` → main).
 
-Define `power = f(backswing_len)` for full swings — pad-H linear from `bs_floor("full")` to
-lane top (`full_lane_pad_len()` = 0.62), floored at `POWER_POCKET_LO`. Wire `ShotResult` for
-full (`flight_shot_type()=="full"`) to read power from amplitude; `true_power` from amplitude
-so `force_factor` mash tax fires on overswing. Aim keeps setting direction + advisory marker.
+Full swing now reads power from backswing amplitude (pad-height, `LEN_FULL=0.62` derived from
+existing lane hints); pitch/chip/flop/punch/putt remain aim-solved (chip/putt already
+amplitude-primary via `PuttStroke`). **Known mixed state, accepted deliberately** — UI
+hints signal the difference (full = pull length; others = aim distance). Closing this
+window is the priority for Phase 2.
 
-On-pad target + pocket (`POWER_POCKET_HI`) marks. Hint copy states full = pull length, other
-types = aim distance (mixed-window signal). **Phase 2 next** to end the mixed window.
-
-**Acceptance:** a full swing's distance comes from the player's pull length, not from where
-they aimed. Overswinging past the marked pocket is a choice the player can see themselves
-making, and it costs distance via the existing `force_factor` tax — now finally reachable.
-**This phase does not yet touch pitch/chip/flop/punch** — see *Interim state* below.
+On-pad target + pocket (`POWER_POCKET_HI`) marks; `true_power` from amplitude so
+`force_factor` mash tax fires on overswing (device-confirmed: 239.2 → 215.1 yd at full mash).
 
 ### Phase 2 — Extend to pitch, chip, flop
 Each already has its own lane geometry and carry-fraction model. Give each its own
