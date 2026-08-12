@@ -37,6 +37,7 @@ _require(PHYS, "const BAG:")
 _require(PHYS, "static func launch_velocity")
 _require(PHYS, "static func resolve_distance")
 _require(PHYS, "static func estimate_carry_yards")
+_require(PHYS, "static func launch_speed_for")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
 _require(PHYS, "static func short_shot_hang_scale")  # dead but kept until Phase 6
@@ -47,6 +48,11 @@ _require(PHYS, "const APEX_SCALE")
 _require(PHYS, "const GRAVITY_PX")
 _require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
+_require(BALL, "const SPIN_CURVE_COEFF")
+_require(BALL, "normalized() * spd")
+_m_spin = re.search(r"const SPIN_CURVE_COEFF\s*:=\s*([0-9.]+)\s*/\s*([0-9.]+)", BALL)
+assert _m_spin, "SPIN_CURVE_COEFF parse failed"
+SPIN_CURVE_COEFF = float(_m_spin.group(1)) / float(_m_spin.group(2))
 # Distance owner must keep literal 0.88 for club_bag_check + honesty of mash tax.
 _require(PHYS, "lerpf(1.0, 0.88, force)")
 _require(PHYS, "lerpf(1.0, 0.94, force)")
@@ -198,6 +204,49 @@ def short_shot_hang_scale(total_yards: float) -> float:
     return clamp(lerp(HANG_LO, 1.0, total_yards / 40.0), HANG_LO, 1.0)
 
 
+def short_shot_line_scale(total_yards: float) -> float:
+    return clamp(total_yards / 55.0, 0.10, 1.0)
+
+
+def sim_roll_out(
+    planned_px: float,
+    start_along_px: float,
+    landing_speed: float,
+    friction: float,
+    *,
+    clamp_remain: bool,
+) -> dict:
+    """Mirror non-putt _process_roll (no slope/spin/collision)."""
+    along = start_along_px
+    speed = max(landing_speed, 0.0)
+    dt = 1.0 / 60.0
+    reason = "timeout"
+    for _ in range(60 * 30):
+        # decel toward zero
+        decel = friction * 60.0 * dt
+        speed = max(0.0, speed - decel)
+        if clamp_remain:
+            remain = planned_px - along
+            if remain < 40.0:
+                limit = max(remain * 3.5, 8.0)
+                if speed > limit:
+                    speed = limit
+        if along >= planned_px - 1e-9:
+            reason = "plan"
+            along = planned_px
+            break
+        if speed < 10.0:
+            reason = "speed"
+            break
+        along += speed * dt
+    return {
+        "end_yd": along / PX_PER_YARD,
+        "end_px": along,
+        "reason": reason,
+        "speed": speed,
+    }
+
+
 _REAL_APEX_KEYS = sorted(REAL_APEX_FT.keys())
 
 
@@ -279,6 +328,118 @@ def estimate_carry_yards(
     return resolve_distance(club_max, clamp(power, 0.0, 1.0), lie, "GOOD", shot_type, 0.0)
 
 
+def launch_speed_for(air_px: float, air_time: float) -> float:
+    """Mirror BallPhysics.launch_speed_for — thin pass-through, not resolve_distance."""
+    return air_px / max(air_time, 0.05)
+
+
+def sim_flight_land(
+    air_px: float,
+    air_time: float,
+    spin: float,
+    *,
+    mode: str = "new",
+    wind: tuple[float, float] = (0.0, 0.0),
+    reverse_guard: bool = True,
+    exit_mode: str = "all",
+) -> dict:
+    """Integrate _process_flight (wind * 6, spin, optional reverse-guard).
+
+    exit_mode:
+      all — current: t>=1 or along or path_len
+      path — CP5 candidate: path_len only (hang detect via time cap)
+    """
+    base_speed = launch_speed_for(air_px, air_time)
+    vx, vy = 0.0, -base_speed
+    launch = (0.0, -1.0)
+    fr = (1.0, 0.0)
+    dt = 1.0 / 60.0
+    t = 0.0
+    x = y = 0.0
+    guard_trips = 0
+    min_along_v = base_speed
+    max_lat_frac = 0.0  # |lat| / spd after spin+wind, before guard
+    time_cap = air_time * 3.0 + 0.5  # hang detector for path-only mode
+    first_exit = ""
+    while t < time_cap:
+        # ball.gd: velocity += wind * delta * 6.0
+        vx += wind[0] * dt * 6.0
+        vy += wind[1] * dt * 6.0
+        spd = math.hypot(vx, vy)
+        along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
+        if spd > 0.01 and abs(spin) > 1e-6:
+            if mode == "new":
+                kick = spin * SPIN_CURVE_COEFF * along_spd * dt
+            else:
+                ss = max(0.08, min(1.0, along_spd / 180.0))
+                kick = spin * 28.0 * dt * ss
+            vx += fr[0] * kick
+            vy += fr[1] * kick
+            n = math.hypot(vx, vy)
+            if n > 1e-6:
+                vx = vx / n * spd
+                vy = vy / n * spd
+        along_after = vx * launch[0] + vy * launch[1]
+        lat_v = vx * fr[0] + vy * fr[1]
+        spd2 = math.hypot(vx, vy)
+        if spd2 > 1e-6:
+            max_lat_frac = max(max_lat_frac, abs(lat_v) / spd2)
+        min_along_v = min(min_along_v, along_after)
+        if along_after < along_spd * 0.15:
+            guard_trips += 1
+            if reverse_guard:
+                along_spd2 = max(along_spd * 0.35, 12.0)
+                vx = launch[0] * along_spd2 + fr[0] * lat_v * 0.55
+                vy = launch[1] * along_spd2 + fr[1] * lat_v * 0.55
+        x += vx * dt
+        y += vy * dt
+        t += dt
+        along = max(x * launch[0] + y * launch[1], 0.0)
+        path_len = math.hypot(x, y)
+        t_done = t + 1e-12 >= air_time
+        along_done = along >= air_px
+        path_done = path_len >= air_px
+        if exit_mode == "path":
+            if path_done:
+                first_exit = "path_len"
+                break
+        else:
+            # Mirror OR order: t, along, path_len (collision N/A offline).
+            if t_done or along_done or path_done:
+                if t_done and not along_done and not path_done:
+                    first_exit = "t"
+                elif along_done and not path_done and not t_done:
+                    first_exit = "along"
+                elif path_done and not along_done and not t_done:
+                    first_exit = "path_len"
+                elif path_done and along_done and not t_done:
+                    first_exit = "path+along"
+                elif t_done and (along_done or path_done):
+                    first_exit = "t+dist"  # simultaneous — timer not alone
+                else:
+                    first_exit = "t"
+                break
+    else:
+        first_exit = "HANG"
+    along = max(x * launch[0] + y * launch[1], 0.0)
+    lat = abs(x * fr[0] + y * fr[1])
+    path_len = math.hypot(x, y)
+    return {
+        "along_px": along,
+        "lat_px": lat,
+        "path_px": path_len,
+        "t": t,
+        "air_time": air_time,
+        "guard_trips": guard_trips,
+        "min_along_v": min_along_v,
+        "max_lat_frac": max_lat_frac,
+        "reversed": min_along_v < -1.0,
+        "first_exit": first_exit,
+        "t_alone": first_exit == "t",
+        "hung": first_exit == "HANG",
+    }
+
+
 def recommended_power(remaining_yd: float, club_max: float, lie: str = "Fairway") -> float:
     if lie == "Green":
         effective = club_max * LIE_MUL.get(lie, 1.0)
@@ -326,7 +487,7 @@ def launch(
         air_frac = air_fraction_full(club_max) * SAND_AIR_TAX
 
     air_px = total_px * air_frac
-    base_speed = air_px / max(air_time, 0.05)
+    base_speed = launch_speed_for(air_px, air_time)
     roll_px = total_px * (1.0 - air_frac)
     landing_speed = math.sqrt(2.0 * 144.0 * roll_px) if roll_px > 1.0 else 0.0
     return {
@@ -578,6 +739,18 @@ def verify_live_constants_reflected() -> None:
             assert abs(est - launched) < 1e-9, (name, p, est, launched)
             cells.append(f"{est:10.1f}")
         print(f"{name:16}" + "".join(cells))
+    # Phase 5 CP1: launch_speed_for == air_px/air_time identity across bag × powers.
+    print("LAUNCH_SPEED_FOR == air_px/air_time")
+    print("-" * 74)
+    for name, m, lm in BAG:
+        for p in powers:
+            r = launch(m, lm, p, "full", "Fairway", "GOOD", 0.0)
+            air_px = r["carry_yd"] * PX_PER_YARD
+            inline = air_px / max(r["air_time"], 0.05)
+            owned = launch_speed_for(air_px, r["air_time"])
+            assert abs(owned - inline) < 1e-12, (name, p, owned, inline)
+            assert abs(r["speed_px_s"] - owned) < 1e-12, (name, p, r["speed_px_s"], owned)
+    assert "launch_speed_for(air_px, air_time)" in PHYS
     # recommended_power never recommends above the distance-maximising pocket hi.
     for rem in (200.0, 230.0, 250.0, 300.0):
         rp = recommended_power(rem, 260.0, "Fairway")
@@ -592,6 +765,233 @@ def verify_live_constants_reflected() -> None:
     assert "resolve_distance(" in (
         Path(__file__).resolve().parents[1] / "systems" / "shot_report.gd"
     ).read_text(encoding="utf-8")
+
+    # Phase 5 CP2: shaped-shot along/lateral — old spin_scale vs new coeff (report only).
+    print("SHAPED FLIGHT old-vs-new (path=±0.5, GOOD, preserve spd + reverse-guard)")
+    print("-" * 74)
+    print(f"{'club':16}{'path':>6}{'along_old':>10}{'along_new':>10}{'lat_old':>9}{'lat_new':>9}{'lat×':>7}")
+    for name, m, lm in (("Driver", 260.0, 0.62), ("7-Iron", 160.0, 1.05)):
+        r = launch(m, lm, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
+        air_px = r["carry_yd"] * PX_PER_YARD
+        # Mirror launch_velocity spin for intended_shape ≈ path (stab~1, force=0, GOOD).
+        grip = 0.78 if m >= 245 else 0.88 if m >= 180 else 1.0 if m >= 150 else 1.10
+        spin0 = 0.5 * 0.95 * grip
+        for path, spin in ((0.5, spin0), (-0.5, -spin0)):
+            old = sim_flight_land(air_px, r["air_time"], spin, mode="old")
+            new = sim_flight_land(air_px, r["air_time"], spin, mode="new")
+            ao, lo = old["along_px"], old["lat_px"]
+            an, ln = new["along_px"], new["lat_px"]
+            ratio = (ln / lo) if lo > 1e-6 else float("inf")
+            print(
+                f"{name:16}{path:+6.1f}{ao/PX_PER_YARD:10.1f}{an/PX_PER_YARD:10.1f}"
+                f"{lo/PX_PER_YARD:9.1f}{ln/PX_PER_YARD:9.1f}{ratio:7.2f}"
+            )
+
+    # Phase 5 CP3: reverse-guard trip / reverse sweep (report-first; do not delete here).
+    print("REVERSE-GUARD SWEEP (new coeff, guard ON vs OFF)")
+    print("-" * 74)
+    winds = {
+        "calm": (0.0, 0.0),
+        "head60": (0.0, 60.0),  # against launch -Y
+        "tail60": (0.0, -60.0),
+        "cross60": (60.0, 0.0),
+        "head+cross": (40.0, 40.0),
+    }
+    cases = [
+        ("LW pitch", 80.0, 1.55, 0.20, "pitch", [0.0, -0.22, -0.55, -1.0, 1.0]),
+        ("Driver", 260.0, 0.62, STOCK_POWER, "full", [0.0, 0.5, -0.5, 1.0, -1.0]),
+        ("7i soft", 160.0, 1.05, 0.50, "full", [0.0, 0.5, -1.0]),
+    ]
+    trips_any = 0
+    reverse_off_any = 0
+    print(
+        f"{'case':10}{'wind':12}{'path':>5}{'trips':>6}"
+        f"{'along_on':>9}{'along_off':>10}{'minV_off':>9}{'rev?':>5}"
+    )
+    for cname, m, lm, power, stype, paths in cases:
+        r = launch(m, lm, power, stype, "Fairway", "GOOD", 0.0)
+        air_px = r["carry_yd"] * PX_PER_YARD
+        grip = (
+            0.78
+            if m >= 245
+            else 0.88
+            if m >= 180
+            else 1.0
+            if m >= 150
+            else 1.10
+            if m >= 120
+            else 1.22
+        )
+        for wname, wind in winds.items():
+            for path in paths:
+                # CP4: no short_shot_line_scale on launch spin.
+                spin = path * 0.95 * grip
+                on = sim_flight_land(
+                    air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True
+                )
+                off = sim_flight_land(
+                    air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=False
+                )
+                trips_any += on["guard_trips"]
+                if off["reversed"]:
+                    reverse_off_any += 1
+                if on["guard_trips"] or off["reversed"] or abs(path) >= 0.55:
+                    print(
+                        f"{cname:10}{wname:12}{path:+5.2f}{on['guard_trips']:6d}"
+                        f"{on['along_px']/PX_PER_YARD:9.1f}{off['along_px']/PX_PER_YARD:10.1f}"
+                        f"{off['min_along_v']:9.1f}{'YES' if off['reversed'] else 'no':>5}"
+                    )
+    print(
+        f"  summary: guard_trips_total={trips_any}  "
+        f"reversed_without_guard={reverse_off_any}"
+    )
+    if trips_any == 0 and reverse_off_any == 0:
+        print("  CP3: guard never tripped and no reverse without it — safe to delete.")
+    else:
+        print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
+
+    # Phase 5 CP5: which exit predicate fires first (report before deleting t/along).
+    print("FLIGHT EXIT SWEEP (which predicate lands first)")
+    print("-" * 74)
+    exit_cases: list[tuple] = []
+    for name, m, lm in BAG:
+        exit_cases.append((f"{name[:10]} stk", m, lm, STOCK_POWER, "full", "Fairway", 0.0))
+    exit_cases.extend(
+        [
+            ("LW pit -0.22", 80.0, 1.55, 0.20, "pitch", "Fairway", -0.22),
+            ("LW pit -0.55", 80.0, 1.55, 0.20, "pitch", "Fairway", -0.55),
+            ("LW pit +1.0", 80.0, 1.55, 0.20, "pitch", "Fairway", 1.0),
+            ("punch 7i", 160.0, 1.05, 0.80, "punch", "Fairway", 0.0),
+            ("punch path", 160.0, 1.05, 0.80, "punch", "Fairway", -0.5),
+            ("flop SW", 80.0, 1.55, 0.30, "flop", "Fairway", 0.0),
+            ("flop path", 80.0, 1.55, 0.30, "flop", "Fairway", -0.55),
+            ("sand Dr", 260.0, 0.62, STOCK_POWER, "full", "Sand", 0.0),
+            ("sand 7i", 160.0, 1.05, STOCK_POWER, "full", "Sand", 0.0),
+        ]
+    )
+    exit_winds = {
+        "calm": (0.0, 0.0),
+        "head60": (0.0, 60.0),
+        "cross60": (60.0, 0.0),
+        "tail60": (0.0, -60.0),
+    }
+    counts: dict[str, int] = {}
+    t_alone = 0
+    hangs = 0
+    path_only_hangs = 0
+    print(f"{'case':14}{'wind':10}{'exit':>10}{'t/T':>7}{'path%':>7}{'pathOnly':>10}")
+    for cname, m, lm, power, stype, lie, path in exit_cases:
+        r = launch(m, lm, power, stype, lie, "GOOD", 0.0)
+        air_px = r["carry_yd"] * PX_PER_YARD
+        grip = (
+            0.78
+            if m >= 245
+            else 0.88
+            if m >= 180
+            else 1.0
+            if m >= 150
+            else 1.10
+            if m >= 120
+            else 1.15
+            if m >= 95
+            else 1.18
+            if m >= 75
+            else 1.22
+        )
+        spin = path * 0.95 * grip
+        if stype == "punch":
+            spin *= 0.55  # rough stand-in; punch scales spin in launch_velocity
+        for wname, wind in exit_winds.items():
+            cur = sim_flight_land(
+                air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True
+            )
+            only = sim_flight_land(
+                air_px,
+                r["air_time"],
+                spin,
+                mode="new",
+                wind=wind,
+                reverse_guard=True,
+                exit_mode="path",
+            )
+            fe = cur["first_exit"]
+            counts[fe] = counts.get(fe, 0) + 1
+            if cur["t_alone"]:
+                t_alone += 1
+            if cur["hung"]:
+                hangs += 1
+            if only["hung"]:
+                path_only_hangs += 1
+            interesting = (
+                cur["t_alone"]
+                or only["hung"]
+                or fe not in ("path_len", "path+along", "t+dist")
+                or wname != "calm"
+                and abs(path) > 0.01
+            )
+            if interesting or wname == "calm" and path == 0.0 and "stk" in cname and m in (
+                260.0,
+                160.0,
+                80.0,
+            ):
+                print(
+                    f"{cname:14}{wname:10}{fe:>10}"
+                    f"{cur['t']/max(r['air_time'],1e-9):7.2f}"
+                    f"{100*cur['path_px']/max(air_px,1e-9):7.1f}"
+                    f"{'HANG' if only['hung'] else only['first_exit']:>10}"
+                )
+    print(f"  exit histogram: {counts}")
+    print(
+        f"  t_alone={t_alone}  hung_current={hangs}  "
+        f"hung_path_only={path_only_hangs}"
+    )
+    if t_alone > 0 or path_only_hangs > 0 or hangs > 0:
+        print("  CP5: STOP — keep t>=1.0 / along; timer-alone or hang detected.")
+    else:
+        print("  CP5: timer never alone; path_len-only never hangs — safe to collapse.")
+
+    # Phase 5 CP6: remain<40 roll clamp — with vs without (hard settle-at-plan kept).
+    print("ROLL CLAMP SWEEP (settle along vs plan; clamp ON vs OFF)")
+    print("-" * 74)
+    fric = {"Fairway": 2.4, "Rough": 4.5, "Sand": 7.0, "Tee": 2.4, "Green": 1.8}
+    print(
+        f"{'club':12}{'lie':8}{'plan':>7}{'roll':>6}"
+        f"{'end_on':>8}{'end_off':>8}{'err_on':>8}{'err_off':>8}{'reason':>8}"
+    )
+    worst_off = 0.0
+    for name, m, lm in BAG:
+        r = launch(m, lm, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
+        for lie, f in fric.items():
+            if lie == "Green" and m > 160:
+                continue  # greenside approach only
+            on = sim_roll_out(
+                r["total_yd"] * PX_PER_YARD,
+                r["carry_yd"] * PX_PER_YARD,
+                r["landing_speed"],
+                f,
+                clamp_remain=True,
+            )
+            off = sim_roll_out(
+                r["total_yd"] * PX_PER_YARD,
+                r["carry_yd"] * PX_PER_YARD,
+                r["landing_speed"],
+                f,
+                clamp_remain=False,
+            )
+            err_off = abs(off["end_yd"] - r["total_yd"])
+            worst_off = max(worst_off, err_off)
+            if lie in ("Fairway", "Rough", "Sand") or err_off > 1.0:
+                print(
+                    f"{name[:12]:12}{lie:8}{r['total_yd']:7.1f}{r['roll_yd']:6.1f}"
+                    f"{on['end_yd']:8.1f}{off['end_yd']:8.1f}"
+                    f"{on['end_yd']-r['total_yd']:8.1f}{off['end_yd']-r['total_yd']:8.1f}"
+                    f"{off['reason']:>8}"
+                )
+    print(f"  worst |err| without clamp = {worst_off:.2f} yd")
+    print(
+        "  note: along>=plan hard settle still active — overshoot cannot exceed plan; "
+        "undershoot = friction vs landing_speed (tuned for a=144 = Fairway 2.4*60)."
+    )
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "

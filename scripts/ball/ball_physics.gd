@@ -682,9 +682,8 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 			return 1.0
 
 
-## Dampen path/spin on very short shots so sidespin can't outrun forward speed.
-## Playtest: full authority by ~55 yd (was 40) — soft 10–20 yd pitches keep mild shape
-## without half-distance outcomes under path ~0.2.
+## DEAD after Phase 5 CP4 — launch no longer calls this. Speed-proportional spin
+## + airspeed preserve own short-shot curve. Left for checks; Phase 6 deletes body.
 static func short_shot_line_scale(total_yards: float) -> float:
 	return clampf(total_yards / 55.0, 0.10, 1.0)
 
@@ -696,6 +695,12 @@ static func short_shot_hang_scale(total_yards: float) -> float:
 		return 1.0
 	# At ~13 yd ≈ 0.55; full hang restored by 40 yd.
 	return clampf(lerpf(0.42, 1.0, total_yards / 40.0), 0.42, 1.0)
+
+
+## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
+## re-derive resolve_distance / air_frac. Callers supply air_px and air_time.
+static func launch_speed_for(air_px: float, air_time: float) -> float:
+	return air_px / maxf(air_time, 0.05)
 
 
 static func launch_velocity(
@@ -786,7 +791,7 @@ static func launch_velocity(
 		air_frac = _air_fraction_full(club_max_yards) * (0.55 / 0.68)
 
 	var air_px := total_px * air_frac
-	var base_speed := air_px / maxf(air_time, 0.05)
+	var base_speed := launch_speed_for(air_px, air_time)
 
 	var stab_term := 1.35 - result.stance_stability * 0.5
 	# Forcing a club (wrong bag choice, then mash/baby) taxes line the way it does IRL.
@@ -811,11 +816,8 @@ static func launch_velocity(
 		# Punch trades shape control for a low flight — less sidespin authority.
 		spin *= PUNCH_SPIN_SCALE
 		lateral *= 0.85
-	# Short greenside pitches: full-swing path/spin scale on ~3–15 yd total speed makes
-	# the ball go sideways/back (playtest: plan 3 yd, path +1, actual flies offline).
-	var line_scale := short_shot_line_scale(total_yards)
-	lateral *= line_scale
-	spin *= line_scale
+	# Phase 5 CP4: short_shot_line_scale call removed — curvature ∝ along_spd owns
+	# low-speed shape; launch lateral is no longer distance-damped here.
 
 	var right := Vector2(-dir.y, dir.x)
 	# Cap offline aim: keep launch mostly toward target (was 0.2 → nearly 80° offline OK).
@@ -828,6 +830,10 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
+		# FOLLOW-UP (not Phase 5): landing_speed formula uses fairway's constant
+		# unconditionally (144 = 2.4 * 60); should key off the landing lie's
+		# friction the same way roll deceleration already does. Sand/rough
+		# systematically short after CP6 clamp removal — Phase 5 harness.
 		landing_speed = sqrt(2.0 * 144.0 * roll_px)
 
 	return {
