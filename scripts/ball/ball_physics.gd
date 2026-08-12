@@ -82,11 +82,40 @@ static func segment_hits_disk(from: Vector2, to: Vector2, c: Vector2, r: float) 
 ## Sensible swing pocket — outside this, force_factor > 0 (accuracy tax).
 const POWER_POCKET_LO := 0.60
 const POWER_POCKET_HI := 0.92
+## Full-swing lane as pad-height fraction — must match tempo_gesture address/top
+## defaults for full (y 0.30 → 0.92). Derived, not a parallel pocket constant.
+const FULL_ADDRESS_Y := 0.30
+const FULL_TOP_Y := 0.92
 ## Fixed putter range — never derive from remaining (that canceled to a constant %).
 ## 25 yd = 75 ft: covers long lags with headroom past the hole (was 40 yd / 120 ft,
 ## calibrated to a corner-to-corner putt on the largest generated green — putts
 ## longer than 75 ft clamp to full pad, which is acceptable and realistic).
 const PUTTER_MAX_YD := 25.0
+
+
+## Pad-H length of the full-swing lane (address → top). Playtest / Phase 1 map ceiling.
+static func full_lane_pad_len() -> float:
+	return absf(FULL_TOP_Y - FULL_ADDRESS_Y)
+
+
+## Full-swing power from backswing_len (pad-height fraction). Floor = TempoGrade.bs_floor("full").
+## PLAYTEST TARGET — linear; Phase 6 may ease. Overswing past lane top clamps at 1.0
+## (force_factor already maxes there); pocket line is POWER_POCKET_HI between floor and top.
+static func power_from_amplitude(backswing_len: float) -> float:
+	var floor_len := TempoGrade.bs_floor("full")
+	var full_len := full_lane_pad_len()
+	var span := maxf(full_len - floor_len, 0.001)
+	var t := clampf((backswing_len - floor_len) / span, 0.0, 1.0)
+	return lerpf(POWER_POCKET_LO, 1.0, t)
+
+
+## Inverse of power_from_amplitude — advisory / pocket marker pad-H length.
+static func amplitude_for_power(power: float) -> float:
+	var floor_len := TempoGrade.bs_floor("full")
+	var full_len := full_lane_pad_len()
+	var p := clampf(power, POWER_POCKET_LO, 1.0)
+	var t := (p - POWER_POCKET_LO) / maxf(1.0 - POWER_POCKET_LO, 0.001)
+	return floor_len + t * (full_len - floor_len)
 
 
 static func is_wedge_family(club_name: String) -> bool:

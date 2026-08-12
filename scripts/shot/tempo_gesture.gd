@@ -118,6 +118,10 @@ var shot_type: String = "full"
 var putt_target_frac: float = 0.5
 ## Practice only — scored strokes stay blind on length (no PACE tick / band).
 var putt_show_marker: bool = false
+## Full swing (Phase 1): lane-fraction marks — advisory aim target + pocket mash line.
+var full_target_frac: float = 0.5
+var full_pocket_frac: float = 0.8
+var full_show_markers: bool = false
 ## Chip's actual club max carry (set by ShotRoutine) — the soft-scale ruler grades
 ## its yard ticks against this, not the putter constant putt's ruler defaults to.
 var club_max_yards: float = 40.0
@@ -841,7 +845,23 @@ func _draw() -> void:
 		_draw_trail()
 		if dragging:
 			_draw_drag_club_head()
+	if full_show_markers and shot_type == "full":
+		_draw_full_amplitude_markers()
 	_draw_golfer()
+
+
+func _draw_full_amplitude_markers() -> void:
+	## Target (advisory, aim-implied) + pocket line (POWER_POCKET_HI mash threshold).
+	var start := address_hint()
+	var top := top_hint()
+	var pocket := clampf(full_pocket_frac, 0.0, 1.2)
+	var tgt := clampf(full_target_frac, 0.0, 1.2)
+	var pocket_pt: Vector2 = start.lerp(top, minf(pocket, 1.0))
+	var tgt_pt: Vector2 = start.lerp(top, minf(tgt, 1.0))
+	# Pocket — amber, shorter tick (mash threshold).
+	draw_line(pocket_pt + Vector2(-16, 0), pocket_pt + Vector2(16, 0), Color(1.0, 0.72, 0.2, 0.9), 3.0, true)
+	# Target — cool tick (suggested pull for this aim).
+	draw_line(tgt_pt + Vector2(-22, 0), tgt_pt + Vector2(22, 0), Color(0.55, 0.95, 1.0, 0.95), 3.5, true)
 
 
 func _draw_golfer() -> void:

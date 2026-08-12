@@ -1,6 +1,6 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 0 shipped. Phase 1 not started.
+**Status:** Phase 1 on `feature/amplitude-power-full` — full swing amplitude-driven; mixed window until Phase 2.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -95,17 +95,15 @@ flop / punch) shows BS len/frac vs commit/true/rolled; PuttStroke (putt / chip) 
 `scripts/shot/amplitude_power_check.py`.
 
 ### Phase 1 — Core mapping, full swing only
-*The load-bearing phase.*
+*The load-bearing phase.* **Built on `feature/amplitude-power-full` — merge alone with mixed window.**
 
-Define `power = f(backswing_len)` for full swings — likely near-linear off the pad, floored
-and ceilinged per club the way lane length already varies per shot type. Wire `ShotResult`
-for full swings to read power from amplitude. Aim keeps setting direction only (this already
-happens for direction via `retarget_bearing`); its distance-locking role is removed for full
-swings specifically.
+Define `power = f(backswing_len)` for full swings — pad-H linear from `bs_floor("full")` to
+lane top (`full_lane_pad_len()` = 0.62), floored at `POWER_POCKET_LO`. Wire `ShotResult` for
+full (`flight_shot_type()=="full"`) to read power from amplitude; `true_power` from amplitude
+so `force_factor` mash tax fires on overswing. Aim keeps setting direction + advisory marker.
 
-Add a visible target-amplitude marker on the pad, sibling to the existing tempo ghost guide.
-`POWER_POCKET_HI` becomes a visible line on the pad rather than an invisible aim-solve
-threshold — this is what makes decision 1 (visible, deliberate overswing) real.
+On-pad target + pocket (`POWER_POCKET_HI`) marks. Hint copy states full = pull length, other
+types = aim distance (mixed-window signal). **Phase 2 next** to end the mixed window.
 
 **Acceptance:** a full swing's distance comes from the player's pull length, not from where
 they aimed. Overswinging past the marked pocket is a choice the player can see themselves
