@@ -186,6 +186,13 @@ Does not start Phase 4.
 cross the 180-yard dispersion bucket, and the carry ramp endpoints `(65, 260)` would stop
 matching the bag ends. Does not start Phase 4.
 
+### Landing speed lie — shipped (`fix/landing-speed-lie`, bb54d0a)
+
+`landing_speed` now keyed to landing lie via `BallPhysics.roll_friction_for()`, single
+owner shared with `_process_roll`. Sand/rough settle error reduced from ~10–15 yd to under
+1 yd (Driver Sand −14.6 → −0.8, Rough −10.5 → −0.7). No gameplay change on Fairway/Tee
+(decel still 144). Found by Phase 5 CP6; see `plans/correction-landing-speed-lie.md`.
+
 ---
 
 ### Phase 3 — Carry and roll split
