@@ -40,8 +40,8 @@ def main() -> int:
         GRADE,
     ), "tempo_grade power_mul block drifted"
 
-    # Phase 1: full uses amplitude; non-full keeps committed * power_mul.
-    _require(ROUTINE, 'flight_shot_type() == "full"', "shot_routine.gd")
+    # Phase 1–2: full/pitch/flop use amplitude; punch stays aim-solved.
+    _require(ROUTINE, "BallPhysics.uses_amplitude_power", "shot_routine.gd")
     _require(ROUTINE, "BallPhysics.power_from_amplitude", "shot_routine.gd")
     _require(
         ROUTINE,
@@ -49,10 +49,9 @@ def main() -> int:
         "shot_routine.gd",
     )
     _require(ROUTINE, "solve_committed_power", "shot_routine.gd")
-    # Punch must not take the amplitude branch (gate is flight_shot_type).
-    assert 'flight_shot_type() == "full"' in ROUTINE
-    _require(ROUTINE, "pull length = power", "shot_routine.gd")  # mixed-window UI
-
+    _require(ROUTINE, "pull length = power", "shot_routine.gd")
+    _require(PHYS, "static func uses_amplitude_power", "ball_physics.gd")
+    _require(PHYS, "static func lane_pad_len", "ball_physics.gd")
     _require(ROUTINE, 'verdict["backswing_len"]', "shot_routine.gd")
     _require(ROUTINE, 'verdict["rolled_power"]', "shot_routine.gd")
     stamp_idx = ROUTINE.find('verdict["backswing_len"]')
@@ -70,8 +69,8 @@ def main() -> int:
 
     print("amplitude_power_check: OK")
     print("  TempoGrade power_mul: contact only (no amplitude)")
-    print("  Full: power_from_amplitude; non-full: committed * power_mul")
-    print("  Mixed-window hint present; F1 Amp plumbing intact")
+    print("  full/pitch/flop: power_from_amplitude; punch/else: committed * power_mul")
+    print("  Chip/putt: PuttStroke; F1 Amp plumbing intact")
     return 0
 
 

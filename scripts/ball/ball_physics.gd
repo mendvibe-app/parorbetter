@@ -82,10 +82,13 @@ static func segment_hits_disk(from: Vector2, to: Vector2, c: Vector2, r: float) 
 ## Sensible swing pocket — outside this, force_factor > 0 (accuracy tax).
 const POWER_POCKET_LO := 0.60
 const POWER_POCKET_HI := 0.92
-## Full-swing lane as pad-height fraction — must match tempo_gesture address/top
-## defaults for full (y 0.30 → 0.92). Derived, not a parallel pocket constant.
+## Lane pad-Y fractions — must match tempo_gesture address_hint/top_hint branches.
 const FULL_ADDRESS_Y := 0.30
 const FULL_TOP_Y := 0.92
+const SHORT_ADDRESS_Y := 0.30  ## pitch / flop / punch mid-lane
+const SHORT_TOP_Y := 0.80
+const CHIP_ADDRESS_Y := 0.20
+const CHIP_TOP_Y := 0.85
 ## Fixed putter range — never derive from remaining (that canceled to a constant %).
 ## 25 yd = 75 ft: covers long lags with headroom past the hole (was 40 yd / 120 ft,
 ## calibrated to a corner-to-corner putt on the largest generated green — putts
@@ -93,29 +96,44 @@ const FULL_TOP_Y := 0.92
 const PUTTER_MAX_YD := 25.0
 
 
-## Pad-H length of the full-swing lane (address → top). Playtest / Phase 1 map ceiling.
+## Pad-H length of the lane for this shot type (address → top).
+static func lane_pad_len(shot_type: String = "full") -> float:
+	match shot_type:
+		"pitch", "flop", "punch":
+			return absf(SHORT_TOP_Y - SHORT_ADDRESS_Y)
+		"chip":
+			return absf(CHIP_TOP_Y - CHIP_ADDRESS_Y)
+		_:
+			return absf(FULL_TOP_Y - FULL_ADDRESS_Y)
+
+
+## Alias — Phase 1 harness / call sites.
 static func full_lane_pad_len() -> float:
-	return absf(FULL_TOP_Y - FULL_ADDRESS_Y)
+	return lane_pad_len("full")
 
 
-## Full-swing power from backswing_len (pad-height fraction). Floor = TempoGrade.bs_floor("full").
-## PLAYTEST TARGET — linear; Phase 6 may ease. Overswing past lane top clamps at 1.0
-## (force_factor already maxes there); pocket line is POWER_POCKET_HI between floor and top.
-static func power_from_amplitude(backswing_len: float) -> float:
-	var floor_len := TempoGrade.bs_floor("full")
-	var full_len := full_lane_pad_len()
+## Power from backswing_len (pad-height). Floor = TempoGrade.bs_floor(shot_type).
+## PLAYTEST TARGET — linear. Chip/putt use PuttStroke.power_from_frac instead.
+static func power_from_amplitude(backswing_len: float, shot_type: String = "full") -> float:
+	var floor_len := TempoGrade.bs_floor(shot_type)
+	var full_len := lane_pad_len(shot_type)
 	var span := maxf(full_len - floor_len, 0.001)
 	var t := clampf((backswing_len - floor_len) / span, 0.0, 1.0)
 	return lerpf(POWER_POCKET_LO, 1.0, t)
 
 
 ## Inverse of power_from_amplitude — advisory / pocket marker pad-H length.
-static func amplitude_for_power(power: float) -> float:
-	var floor_len := TempoGrade.bs_floor("full")
-	var full_len := full_lane_pad_len()
+static func amplitude_for_power(power: float, shot_type: String = "full") -> float:
+	var floor_len := TempoGrade.bs_floor(shot_type)
+	var full_len := lane_pad_len(shot_type)
 	var p := clampf(power, POWER_POCKET_LO, 1.0)
 	var t := (p - POWER_POCKET_LO) / maxf(1.0 - POWER_POCKET_LO, 0.001)
 	return floor_len + t * (full_len - floor_len)
+
+
+## TempoGrade-pad types that read power from amplitude (not aim). Punch = Phase 3.
+static func uses_amplitude_power(shot_type: String) -> bool:
+	return shot_type == "full" or shot_type == "pitch" or shot_type == "flop"
 
 
 static func is_wedge_family(club_name: String) -> bool:

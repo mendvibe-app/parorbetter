@@ -244,18 +244,20 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	tempo_gesture.club_max_yards = club_max_yards
 	if shot_type == "putt" or shot_type == "chip":
 		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
-		tempo_gesture.putt_show_marker = practice_mode
+		# Chip already amplitude-primary (PuttStroke) — show pace tick on scored too.
+		tempo_gesture.putt_show_marker = true if shot_type == "chip" else practice_mode
 		tempo_gesture.full_show_markers = false
 	else:
 		tempo_gesture.putt_show_marker = false
-		# Phase 1: full only (not punch) — advisory target + pocket mash line on pad.
-		if pad_type == "full":
-			var lane_pad := BallPhysics.full_lane_pad_len()
+		# Phase 1–2: full / pitch / flop — advisory target + pocket mash line.
+		if BallPhysics.uses_amplitude_power(pad_type):
+			var lane_pad := BallPhysics.lane_pad_len(pad_type)
 			tempo_gesture.full_target_frac = (
-				BallPhysics.amplitude_for_power(committed_power) / maxf(lane_pad, 0.001)
+				BallPhysics.amplitude_for_power(committed_power, pad_type) / maxf(lane_pad, 0.001)
 			)
 			tempo_gesture.full_pocket_frac = (
-				BallPhysics.amplitude_for_power(BallPhysics.POWER_POCKET_HI) / maxf(lane_pad, 0.001)
+				BallPhysics.amplitude_for_power(BallPhysics.POWER_POCKET_HI, pad_type)
+				/ maxf(lane_pad, 0.001)
 			)
 			tempo_gesture.full_show_markers = true
 		else:
@@ -266,27 +268,31 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		if shot_type == "putt" or shot_type == "chip":
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	_layout_shot_chrome()
-	# One live instruction — golf moments, not engine marks.
-	# Mixed window (Phase 1): full = pull length for power; other types still aim distance.
+	# Pull length = power for amplitude types; punch still aim (Phase 3); putt own copy.
 	if practice_mode:
-		if shot_type == "putt" or shot_type == "chip":
+		if shot_type == "putt":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
+		elif shot_type == "chip":
+			hint_label.text = "PRACTICE CHIP — pull length = power · to the pace tick · through."
 		elif punch_mode:
 			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · keep it under · aim sets distance."
-		elif pad_type == "full":
-			hint_label.text = "PRACTICE ~3:1 — pull length = power · past pocket mark costs yards."
+		elif BallPhysics.uses_amplitude_power(pad_type):
+			hint_label.text = (
+				"PRACTICE ~%.0f:1 — pull length = power · past pocket mark costs yards."
+				% TempoGrade.target_ratio(pad_type)
+			)
 		else:
-			hint_label.text = "PRACTICE ~%.0f:1 — aim sets distance · to the top · through." % TempoGrade.target_ratio(pad_type)
+			hint_label.text = "PRACTICE ~%.0f:1 — to the top · through the ball." % TempoGrade.target_ratio(pad_type)
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
-		hint_label.text = "CHIP — aim sets distance · small stroke · through the ball."
+		hint_label.text = "CHIP — pull length = power · small stroke · through the ball."
 	elif punch_mode:
 		hint_label.text = "PUNCH ~2:1 — aim sets distance · low · through · more roll."
 	elif shot_type == "pitch":
-		hint_label.text = "PITCH ~2:1 — aim sets distance · to the top · through the ball."
+		hint_label.text = "PITCH ~2:1 — pull length = power · pocket mark = mash · through."
 	elif shot_type == "flop":
-		hint_label.text = "FLOP ~2:1 — aim sets distance · high · little roll. Mistakes hurt."
+		hint_label.text = "FLOP ~2:1 — pull length = power · soft · little roll. Mistakes hurt."
 	else:
 		hint_label.text = "SWING ~3:1 — pull length = power · pocket mark = mash · through."
 	phase_changed.emit("active")
@@ -499,11 +505,14 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	var contact: ShotResult.ContactQuality = verdict["contact"]
 	var bal: float = float(verdict["balance"])
 	var power_mul := float(verdict["power_mul"])
-	# Phase 1: full swing power from amplitude; every other type stays aim-solved.
+	# Phase 1–2: full/pitch/flop from amplitude; punch/putt/chip stay on their paths.
 	var amp_power := -1.0
 	var power: float
-	if flight_shot_type() == "full":
-		amp_power = BallPhysics.power_from_amplitude(float(sample.get("backswing_len", 0.0)))
+	var grade_type := flight_shot_type()
+	if BallPhysics.uses_amplitude_power(grade_type):
+		amp_power = BallPhysics.power_from_amplitude(
+			float(sample.get("backswing_len", 0.0)), grade_type
+		)
 		power = clampf(amp_power * power_mul, 0.05, 1.0)
 	else:
 		power = clampf(committed_power * power_mul, 0.05, 1.0)

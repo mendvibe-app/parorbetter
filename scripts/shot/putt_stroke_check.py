@@ -104,7 +104,10 @@ def main() -> int:
     assert "tap_in_yd" in HOLE or "GameState.tap_in_yd" in HOLE
 
     assert "putt_show_marker" in GESTURE
-    assert "putt_show_marker = practice_mode" in ROUTINE
+    assert "putt_show_marker" in ROUTINE
+    assert "practice_mode" in ROUTINE
+    # Chip scored strokes show pace tick (Phase 2); putt stays practice-blind on length.
+    assert "shot_type == \"chip\"" in ROUTINE or "putt_show_marker = practice_mode" in ROUTINE
     assert "_draw_putt_practice_marker" in GESTURE
     assert "if putt_show_marker:" in GESTURE
     assert "func _draw_putt_follow_cue" in GESTURE
