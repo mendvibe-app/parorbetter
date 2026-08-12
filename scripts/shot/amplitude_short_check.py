@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 2 — pitch/flop amplitude map + chip already on PuttStroke; punch still aim.
+"""Phase 2–3 — pitch/flop/punch amplitude map; chip on PuttStroke.
 
 Usage:
   python scripts/shot/amplitude_short_check.py
@@ -85,20 +85,27 @@ def force_factor(power: float) -> float:
 def main() -> int:
     assert "static func lane_pad_len" in PHYS
     assert "static func uses_amplitude_power" in PHYS
-    assert 'shot_type == "full" or shot_type == "pitch" or shot_type == "flop"' in PHYS
+    # Phase 3: punch joins full/pitch/flop.
+    gate = PHYS.split("static func uses_amplitude_power")[1].split("static func")[0]
+    assert 'shot_type == "full"' in gate
+    assert 'shot_type == "pitch"' in gate
+    assert 'shot_type == "flop"' in gate
+    assert 'shot_type == "punch"' in gate
     assert "BallPhysics.uses_amplitude_power" in ROUTINE
-    assert 'power_from_amplitude(' in ROUTINE
-    # Punch still aim-solved.
-    assert "aim sets distance" in ROUTINE  # punch hints
-    assert "PUNCH" in ROUTINE
+    assert "power_from_amplitude(" in ROUTINE
+    # Punch hints are amplitude-driven (no aim-sets-distance).
+    assert "aim sets distance" not in ROUTINE
+    assert "PUNCH ~2:1 — pull length = power" in ROUTINE
+    assert "PRACTICE PUNCH" in ROUTINE and "pull length = power" in ROUTINE
 
     # Geometry sync with gesture.
     assert abs(lane_pad_len("full") - 0.62) < 1e-9
     assert abs(lane_pad_len("pitch") - 0.50) < 1e-9
     assert abs(lane_pad_len("flop") - 0.50) < 1e-9
+    assert abs(lane_pad_len("punch") - 0.50) < 1e-9
     assert abs(lane_pad_len("chip") - 0.65) < 1e-9
 
-    for st in ("full", "pitch", "flop"):
+    for st in ("full", "pitch", "flop", "punch"):
         fl = lane_pad_len(st)
         assert abs(power_from_amplitude(bs_floor(st), st) - POWER_POCKET_LO) < 1e-9
         assert abs(power_from_amplitude(fl, st) - 1.0) < 1e-9
@@ -110,18 +117,22 @@ def main() -> int:
     assert "static func power_from_frac" in PUTT
     assert 'shot_type == "putt" or shot_type == "chip"' in ROUTINE
     assert "PuttStroke.grade" in ROUTINE or "PuttStroke.marker_frac" in ROUTINE
-    # Chip hints say pull length.
     assert "CHIP — pull length = power" in ROUTINE
 
-    # Markers draw for pitch/flop too.
-    assert 'shot_type == "pitch" or shot_type == "flop"' in GESTURE
+    # Markers: one source of truth — full_show_markers (set by uses_amplitude_power).
+    draw_fn = GESTURE.split("func _draw(")[1].split("func ")[0]
+    assert "if full_show_markers:" in draw_fn
+    assert "_draw_full_amplitude_markers" in draw_fn
+    # No second type allowlist that can drift from the gate.
+    assert 'shot_type == "pitch" or shot_type == "flop"' not in draw_fn
+    assert "full_show_markers = true" in ROUTINE
 
     print("amplitude_short_check: OK")
     print(
-        f"  pitch/flop LEN={lane_pad_len('pitch'):.2f} floor={bs_floor('pitch'):.2f} "
+        f"  pitch/flop/punch LEN={lane_pad_len('pitch'):.2f} floor={bs_floor('pitch'):.2f} "
         f"pocket={amplitude_for_power(POWER_POCKET_HI, 'pitch'):.3f}"
     )
-    print("  chip: PuttStroke amplitude-primary; punch: still aim-solved")
+    print("  chip: PuttStroke; punch: amplitude-primary (Phase 3)")
     return 0
 
 

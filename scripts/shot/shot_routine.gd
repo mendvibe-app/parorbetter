@@ -249,7 +249,7 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		tempo_gesture.full_show_markers = false
 	else:
 		tempo_gesture.putt_show_marker = false
-		# Phase 1–2: full / pitch / flop — advisory target + pocket mash line.
+		# Amplitude types: advisory target + pocket mash line (gate → full_show_markers).
 		if BallPhysics.uses_amplitude_power(pad_type):
 			var lane_pad := BallPhysics.lane_pad_len(pad_type)
 			tempo_gesture.full_target_frac = (
@@ -268,14 +268,14 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		if shot_type == "putt" or shot_type == "chip":
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	_layout_shot_chrome()
-	# Pull length = power for amplitude types; punch still aim (Phase 3); putt own copy.
+	# Pull length = power for amplitude types (full/pitch/flop/punch); putt/chip own copy.
 	if practice_mode:
 		if shot_type == "putt":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		elif shot_type == "chip":
 			hint_label.text = "PRACTICE CHIP — pull length = power · to the pace tick · through."
 		elif punch_mode:
-			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · keep it under · aim sets distance."
+			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · pull length = power · under canopy."
 		elif BallPhysics.uses_amplitude_power(pad_type):
 			hint_label.text = (
 				"PRACTICE ~%.0f:1 — pull length = power · past pocket mark costs yards."
@@ -288,7 +288,7 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	elif shot_type == "chip":
 		hint_label.text = "CHIP — pull length = power · small stroke · through the ball."
 	elif punch_mode:
-		hint_label.text = "PUNCH ~2:1 — aim sets distance · low · through · more roll."
+		hint_label.text = "PUNCH ~2:1 — pull length = power · pocket mark = mash · under canopy."
 	elif shot_type == "pitch":
 		hint_label.text = "PITCH ~2:1 — pull length = power · pocket mark = mash · through."
 	elif shot_type == "flop":
@@ -505,7 +505,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	var contact: ShotResult.ContactQuality = verdict["contact"]
 	var bal: float = float(verdict["balance"])
 	var power_mul := float(verdict["power_mul"])
-	# Phase 1–2: full/pitch/flop from amplitude; punch/putt/chip stay on their paths.
+	# Phase 1–3: full/pitch/flop/punch from amplitude; putt/chip stay on PuttStroke.
 	var amp_power := -1.0
 	var power: float
 	var grade_type := flight_shot_type()
