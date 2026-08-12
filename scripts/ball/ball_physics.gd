@@ -697,6 +697,23 @@ static func short_shot_hang_scale(total_yards: float) -> float:
 	return clampf(lerpf(0.42, 1.0, total_yards / 40.0), 0.42, 1.0)
 
 
+## Roll friction by lie (unitless coeff; decel = this * 60 px/s²). Single owner —
+## landing_speed and GolfBall._process_roll both read here. Keep in sync or the
+## flight→roll handoff jumps.
+static func roll_friction_for(lie: String) -> float:
+	match lie:
+		"Green":
+			return 1.8
+		"Fairway", "Tee":
+			return 2.4
+		"Rough":
+			return 4.5
+		"Sand":
+			return 7.0
+		_:
+			return 3.0
+
+
 ## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
 ## re-derive resolve_distance / air_frac. Callers supply air_px and air_time.
 static func launch_speed_for(air_px: float, air_time: float) -> float:
@@ -830,11 +847,7 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
-		# FOLLOW-UP (not Phase 5): landing_speed formula uses fairway's constant
-		# unconditionally (144 = 2.4 * 60); should key off the landing lie's
-		# friction the same way roll deceleration already does. Sand/rough
-		# systematically short after CP6 clamp removal — Phase 5 harness.
-		landing_speed = sqrt(2.0 * 144.0 * roll_px)
+		landing_speed = sqrt(2.0 * roll_friction_for(lie) * 60.0 * roll_px)
 
 	return {
 		"velocity": velocity,
