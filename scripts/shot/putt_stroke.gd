@@ -174,6 +174,11 @@ static func grade(
 	var contact_mul := (
 		1.0 if lie == "Green" else BallPhysics.contact_multiplier(contact)
 	)
+	# Chip overpull: THIN label stays, but don't distance-tax with 0.82 — that cliff
+	# made a bigger pull land shorter than a milder GOOD overpull (Phase 4).
+	# FAT underpull keeps the tax (monotonic + matches decelerated chip).
+	if lie != "Green" and frac_err > 0.0 and contact_mul < 1.0:
+		contact_mul = 1.0
 	var result_power := clampf(committed_power * power_mul, 0.05, 1.0)
 	var target_yd := committed_power * club_max_yd * lie_mul  ## commit at GOOD contact
 	var rolled_yd := result_power * club_max_yd * lie_mul * contact_mul
