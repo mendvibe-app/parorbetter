@@ -131,9 +131,14 @@ static func amplitude_for_power(power: float, shot_type: String = "full") -> flo
 	return floor_len + t * (full_len - floor_len)
 
 
-## TempoGrade-pad types that read power from amplitude (not aim). Punch = Phase 3.
+## TempoGrade-pad types that read power from amplitude (not aim). Chip/putt = PuttStroke.
 static func uses_amplitude_power(shot_type: String) -> bool:
-	return shot_type == "full" or shot_type == "pitch" or shot_type == "flop"
+	return (
+		shot_type == "full"
+		or shot_type == "pitch"
+		or shot_type == "flop"
+		or shot_type == "punch"
+	)
 
 
 static func is_wedge_family(club_name: String) -> bool:

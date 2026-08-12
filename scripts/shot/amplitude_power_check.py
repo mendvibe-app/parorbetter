@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Phase 0/1 swing instrumentation — F1 plumbing + TempoGrade contact-only power_mul.
+"""Phase 0–3 swing instrumentation — F1 plumbing + TempoGrade contact-only power_mul.
 
-Phase 1: full swings read power from amplitude in shot_routine; pitch/flop/punch
-stay aim-solved. TempoGrade.power_mul remains contact-tier only (no amplitude).
+Full/pitch/flop/punch read power from amplitude; chip/putt stay on PuttStroke.
+TempoGrade.power_mul remains contact-tier only (no amplitude).
 
 Usage:
   python scripts/shot/amplitude_power_check.py
@@ -40,7 +40,7 @@ def main() -> int:
         GRADE,
     ), "tempo_grade power_mul block drifted"
 
-    # Phase 1–2: full/pitch/flop use amplitude; punch stays aim-solved.
+    # Phase 1–3: full/pitch/flop/punch use amplitude; chip/putt keep committed path.
     _require(ROUTINE, "BallPhysics.uses_amplitude_power", "shot_routine.gd")
     _require(ROUTINE, "BallPhysics.power_from_amplitude", "shot_routine.gd")
     _require(
@@ -50,7 +50,10 @@ def main() -> int:
     )
     _require(ROUTINE, "solve_committed_power", "shot_routine.gd")
     _require(ROUTINE, "pull length = power", "shot_routine.gd")
+    assert "aim sets distance" not in ROUTINE
     _require(PHYS, "static func uses_amplitude_power", "ball_physics.gd")
+    gate = PHYS.split("static func uses_amplitude_power")[1].split("static func")[0]
+    assert 'shot_type == "punch"' in gate
     _require(PHYS, "static func lane_pad_len", "ball_physics.gd")
     _require(ROUTINE, 'verdict["backswing_len"]', "shot_routine.gd")
     _require(ROUTINE, 'verdict["rolled_power"]', "shot_routine.gd")
@@ -69,8 +72,8 @@ def main() -> int:
 
     print("amplitude_power_check: OK")
     print("  TempoGrade power_mul: contact only (no amplitude)")
-    print("  full/pitch/flop: power_from_amplitude; punch/else: committed * power_mul")
-    print("  Chip/putt: PuttStroke; F1 Amp plumbing intact")
+    print("  full/pitch/flop/punch: power_from_amplitude; chip/putt: PuttStroke")
+    print("  F1 Amp plumbing intact")
     return 0
 
 

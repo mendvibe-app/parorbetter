@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Phase 1 — full-swing amplitude→power curve, inverse, mash tax, punch isolation.
+"""Phase 1 — full-swing amplitude→power curve, inverse, mash tax; non-amp path retained.
 
 Usage:
   python scripts/shot/amplitude_full_check.py
@@ -115,16 +115,15 @@ def main() -> int:
     assert "force_p = result.true_power" in PHYS
     assert "amp_power if amp_power >= 0.0 else true_power_pct" in ROUTINE
 
-    # --- Safety: punch stays aim-solved (bit-identical path) ---
-    # Amplitude branch gated; punch excluded via uses_amplitude_power.
-    assert "uses_amplitude_power" in ROUTINE or 'flight_shot_type() == "full"' in ROUTINE
+    # --- Safety: non-amp types keep committed*power_mul; markers from gate ---
+    assert "uses_amplitude_power" in ROUTINE
     assert "power = clampf(amp_power * power_mul, 0.05, 1.0)" in ROUTINE
     assert "power = clampf(committed_power * power_mul, 0.05, 1.0)" in ROUTINE
     assert 'return "punch"' in ROUTINE or "punch_mode" in ROUTINE
-    # Markers only when uses_amplitude_power types.
-    assert "uses_amplitude_power" in ROUTINE or 'pad_type == "full"' in ROUTINE
     assert "full_show_markers = true" in ROUTINE
     assert "_draw_full_amplitude_markers" in GESTURE
+    draw_fn = GESTURE.split("func _draw(")[1].split("func ")[0]
+    assert "if full_show_markers:" in draw_fn
 
     # Tempo ratio still independent: grade has no power_from_amplitude.
     assert "power_from_amplitude" not in GRADE
@@ -133,7 +132,7 @@ def main() -> int:
     print(f"  LEN_FULL={len_full:.2f} floor={BS_FLOOR_FULL:.2f} pocket_len={pocket_len:.3f}")
     print(f"  power@floor={power_from_amplitude(BS_FLOOR_FULL):.2f} @top={full_pull:.2f}")
     print(f"  force_factor(@top)={mash:.2f} (mash tax fires)")
-    print("  punch/non-amp: committed*power_mul path retained")
+    print("  non-amp (chip/putt): committed*power_mul path retained")
     return 0
 
 
