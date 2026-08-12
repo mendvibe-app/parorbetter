@@ -38,6 +38,7 @@ _require(PHYS, "static func launch_velocity")
 _require(PHYS, "static func resolve_distance")
 _require(PHYS, "static func estimate_carry_yards")
 _require(PHYS, "static func launch_speed_for")
+_require(PHYS, "static func roll_friction_for")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
 _require(PHYS, "static func short_shot_hang_scale")  # dead but kept until Phase 6
@@ -333,6 +334,19 @@ def launch_speed_for(air_px: float, air_time: float) -> float:
     return air_px / max(air_time, 0.05)
 
 
+def roll_friction_for(lie: str) -> float:
+    """Mirror BallPhysics.roll_friction_for — single owner for landing_speed + roll."""
+    if lie == "Green":
+        return 1.8
+    if lie in ("Fairway", "Tee"):
+        return 2.4
+    if lie == "Rough":
+        return 4.5
+    if lie == "Sand":
+        return 7.0
+    return 3.0
+
+
 def sim_flight_land(
     air_px: float,
     air_time: float,
@@ -489,7 +503,8 @@ def launch(
     air_px = total_px * air_frac
     base_speed = launch_speed_for(air_px, air_time)
     roll_px = total_px * (1.0 - air_frac)
-    landing_speed = math.sqrt(2.0 * 144.0 * roll_px) if roll_px > 1.0 else 0.0
+    decel = roll_friction_for(lie) * 60.0
+    landing_speed = math.sqrt(2.0 * decel * roll_px) if roll_px > 1.0 else 0.0
     return {
         "total_yd": total_yards,
         "carry_yd": air_px / PX_PER_YARD,
@@ -950,48 +965,72 @@ def verify_live_constants_reflected() -> None:
     else:
         print("  CP5: timer never alone; path_len-only never hangs — safe to collapse.")
 
-    # Phase 5 CP6: remain<40 roll clamp — with vs without (hard settle-at-plan kept).
-    print("ROLL CLAMP SWEEP (settle along vs plan; clamp ON vs OFF)")
+    # Landing-speed lie owner: friction identity + Fairway/Sand/Rough settle.
+    print("LANDING SPEED BY LIE (Driver stock; Fairway kinematics for roll_px)")
     print("-" * 74)
-    fric = {"Fairway": 2.4, "Rough": 4.5, "Sand": 7.0, "Tee": 2.4, "Green": 1.8}
-    print(
-        f"{'club':12}{'lie':8}{'plan':>7}{'roll':>6}"
-        f"{'end_on':>8}{'end_off':>8}{'err_on':>8}{'err_off':>8}{'reason':>8}"
+    expected_fric = {
+        "Green": 1.8,
+        "Fairway": 2.4,
+        "Tee": 2.4,
+        "Rough": 4.5,
+        "Sand": 7.0,
+        "Unknown": 3.0,
+    }
+    for lie, want in expected_fric.items():
+        assert abs(roll_friction_for(lie) - want) < 1e-12, (lie, roll_friction_for(lie), want)
+    # ball.gd must not keep a parallel table — only roll_friction_for.
+    roll_body = BALL.split("func _process_roll")[1].split("func ")[0]
+    assert "roll_friction_for" in roll_body
+    assert "friction = 1.8" not in roll_body
+    assert "friction = 4.5" not in roll_body
+    assert "friction = 7.0" not in roll_body
+    assert "roll_friction_for(lie)" in PHYS or 'roll_friction_for(lie)' in PHYS
+    assert "roll_friction_for(lie) * 60.0" in PHYS
+
+    r_fw = launch(260.0, 0.62, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
+    roll_px = r_fw["roll_yd"] * PX_PER_YARD
+    old_fairway_spd = math.sqrt(2.0 * 144.0 * roll_px)
+    assert abs(r_fw["landing_speed"] - old_fairway_spd) < 1e-9, (
+        r_fw["landing_speed"],
+        old_fairway_spd,
     )
-    worst_off = 0.0
-    for name, m, lm in BAG:
-        r = launch(m, lm, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
-        for lie, f in fric.items():
-            if lie == "Green" and m > 160:
-                continue  # greenside approach only
-            on = sim_roll_out(
-                r["total_yd"] * PX_PER_YARD,
-                r["carry_yd"] * PX_PER_YARD,
-                r["landing_speed"],
-                f,
-                clamp_remain=True,
-            )
-            off = sim_roll_out(
-                r["total_yd"] * PX_PER_YARD,
-                r["carry_yd"] * PX_PER_YARD,
-                r["landing_speed"],
-                f,
-                clamp_remain=False,
-            )
-            err_off = abs(off["end_yd"] - r["total_yd"])
-            worst_off = max(worst_off, err_off)
-            if lie in ("Fairway", "Rough", "Sand") or err_off > 1.0:
-                print(
-                    f"{name[:12]:12}{lie:8}{r['total_yd']:7.1f}{r['roll_yd']:6.1f}"
-                    f"{on['end_yd']:8.1f}{off['end_yd']:8.1f}"
-                    f"{on['end_yd']-r['total_yd']:8.1f}{off['end_yd']-r['total_yd']:8.1f}"
-                    f"{off['reason']:>8}"
-                )
-    print(f"  worst |err| without clamp = {worst_off:.2f} yd")
-    print(
-        "  note: along>=plan hard settle still active — overshoot cannot exceed plan; "
-        "undershoot = friction vs landing_speed (tuned for a=144 = Fairway 2.4*60)."
+    r_tee = launch(260.0, 0.62, STOCK_POWER, "full", "Tee", "GOOD", 0.0)
+    # Tee uses Fairway kinematics for air_frac (no sand tax) + same friction 2.4.
+    assert abs(r_tee["landing_speed"] - old_fairway_spd) < 1e-9, (
+        r_tee["landing_speed"],
+        old_fairway_spd,
     )
+    print(
+        f"{'lie':10}{'fric':>6}{'decel':>8}{'land_spd':>10}{'settle_err':>11}"
+    )
+    for lie in ("Fairway", "Tee", "Rough", "Sand", "Green"):
+        f = roll_friction_for(lie)
+        spd = math.sqrt(2.0 * f * 60.0 * roll_px)
+        # Old bug: always Fairway landing energy into this lie's friction.
+        old_spd = old_fairway_spd
+        settled_old = sim_roll_out(
+            r_fw["total_yd"] * PX_PER_YARD,
+            r_fw["carry_yd"] * PX_PER_YARD,
+            old_spd,
+            f,
+            clamp_remain=False,
+        )
+        settled_new = sim_roll_out(
+            r_fw["total_yd"] * PX_PER_YARD,
+            r_fw["carry_yd"] * PX_PER_YARD,
+            spd,
+            f,
+            clamp_remain=False,
+        )
+        err_old = settled_old["end_yd"] - r_fw["total_yd"]
+        err_new = settled_new["end_yd"] - r_fw["total_yd"]
+        print(
+            f"{lie:10}{f:6.1f}{f*60.0:8.1f}{spd:10.1f}"
+            f"{err_new:+11.1f}  (was {err_old:+.1f})"
+        )
+        if lie == "Sand":
+            assert abs(err_new) < 2.0, f"Driver→Sand settle still bad: {err_new:.1f} yd"
+            assert err_old < -8.0, "precondition: old Sand shortfall missing"
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "

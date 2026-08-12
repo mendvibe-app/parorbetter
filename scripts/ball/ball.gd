@@ -584,20 +584,7 @@ func _slope_at_ball() -> Vector2:
 func _process_roll(delta: float) -> void:
 	_sync_ground_lie()
 	_height = move_toward(_height, 0.0, delta * 80.0)
-	var friction := 2.4
-	match _lie:
-		"Green":
-			friction = 1.8
-		"Fairway":
-			friction = 2.4
-		"Rough":
-			friction = 4.5
-		"Sand":
-			friction = 7.0
-		"Tee":
-			friction = 2.4
-		_:
-			friction = 3.0
+	var friction := BallPhysics.roll_friction_for(_lie)
 
 	var slope := _slope_at_ball()
 	if _is_putt:
@@ -628,9 +615,7 @@ func _process_roll(delta: float) -> void:
 			velocity += _pin_dir * (-toward - 80.0) * 0.2
 
 	var along := _traveled_along()
-	# Phase 5 CP6: remain<40 speed clamp removed — friction + landing_speed own
-	# roll-out. Hard settle at plan kept. Fairway settle was closer to plan
-	# without the clamp (harness); rough/sand undershoot is friction vs a=144 tune.
+	# Phase 5 CP6: remain<40 speed clamp removed. Hard settle at plan kept.
 	if along >= _planned_distance_px and not _is_putt:
 		_finish_settle()
 		return
