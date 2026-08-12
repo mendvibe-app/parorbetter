@@ -201,9 +201,12 @@ Reverse-guard floor now scales with planned speed (`air_px` / `air_time`) instea
 headwind; a real headwind still costs real distance, which is correct. Trip onset
 unchanged — only the floor once fired. CP3 pitch-under-headwind still load-bearing.
 
-**Open follow-up (not fixed here):** `recommended_power` biases on world-space `wind.y`
-while flight applies world wind against launch-dir — same mag is a different effective
-headwind per hole bearing. Project wind onto aim/launch before the yards bias.
+**Correction shipped (`fix/recommended-power-wind`):** `recommended_power` projects wind
+onto real launch direction (`wind.dot(dir)` — sign corrected vs draft `-wind.dot`; default
+`Vector2.UP` byte-identical to legacy `-wind.y`). Range-swing call site passes bearing.
+**Still deferred:** aim/commit path (`solve_committed_power`, `club_percent_today`) remains
+on world-Y wind via the default — scoped follow-up pending those functions' own signature
+work; not forgotten.
 
 ---
 
@@ -260,12 +263,10 @@ device-verified merges):** CP4 (short-shot launch lateral / spread after droppin
 line_scale) and CP6 (roll settle without clamp). Flag if short-game offline or roll-out
 feel wrong later.
 
-**Known follow-up (logged, not fixed):** `recommended_power` wind bias uses world-space
-`wind.y` (`-wind.y * 0.35 + abs(wind.x) * 0.08` in `ball_physics.gd`), while flight applies
-wind as a raw world-space velocity add and the reverse-guard measures along-launch. Same
-wind mag is a different effective headwind per hole bearing — plan power and flight disagree
-on orientation. Separate small correction (project wind onto aim/launch before the yards
-bias); do not bundle with reverse-guard floor work.
+**Partial correction shipped (`fix/recommended-power-wind`):** `recommended_power` now
+projects wind onto launch dir; range swing passes bearing. Aim/commit still on world-Y via
+`solve_committed_power` / `club_percent_today` defaults — explicit deferred follow-up (needs
+those signatures + callers), not bundled here.
 
 Phase 6 remaining after Phase 5: delete dead function bodies and close the ledger — not
 re-litigate reverse-guard / multi-exit.
