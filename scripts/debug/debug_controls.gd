@@ -260,16 +260,24 @@ func _process(_delta: float) -> void:
 				str(t.get("note", "")),
 			]
 	# Phase 0 swing instrumentation: amplitude vs aim-solved vs rolled (no unit pick yet).
+	# Putt/chip: PuttStroke.actual_frac is what power_from_frac used — not gesture BS keys.
 	var amp_line := ""
-	if t.has("backswing_len") or t.has("backswing_frac") or m.has("committed_power"):
-		var bs_len := float(t.get("backswing_len", 0.0))
-		var bs_frac := float(t.get("backswing_frac", 0.0))
-		var commit_p := float(t.get("committed_power", m.get("committed_power", 0.0)))
-		var true_p := float(t.get("true_power", m.get("true_power", 0.0)))
-		var rolled_p := float(t.get("rolled_power", m.get("power", 0.0)))
+	var commit_p := float(t.get("committed_power", m.get("committed_power", 0.0)))
+	var true_p := float(t.get("true_power", m.get("true_power", 0.0)))
+	var rolled_p := float(t.get("rolled_power", m.get("power", 0.0)))
+	var putt_family := shot_type == "putt" or shot_type == "chip" or t.has("actual_frac")
+	if putt_family and t.has("actual_frac"):
+		amp_line = "\nAmp frac %.2f (tgt %.2f) · commit %d%% · true %d%% · rolled %d%%" % [
+			float(t.get("actual_frac", 0.0)),
+			float(t.get("target_frac", t.get("target", 0.0))),
+			int(commit_p * 100.0),
+			int(true_p * 100.0),
+			int(rolled_p * 100.0),
+		]
+	elif t.has("backswing_len") or t.has("backswing_frac") or m.has("committed_power"):
 		amp_line = "\nAmp BS len %.2f frac %.2f · commit %d%% · true %d%% · rolled %d%%" % [
-			bs_len,
-			bs_frac,
+			float(t.get("backswing_len", 0.0)),
+			float(t.get("backswing_frac", 0.0)),
 			int(commit_p * 100.0),
 			int(true_p * 100.0),
 			int(rolled_p * 100.0),

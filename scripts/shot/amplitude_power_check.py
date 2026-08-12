@@ -68,6 +68,8 @@ def main() -> int:
     _require(HOLE, '"committed_power": shot_routine.committed_power', "hole_controller.gd")
 
     _require(DEBUG, "Amp BS len", "debug_controls.gd")
+    _require(DEBUG, "Amp frac", "debug_controls.gd")  # putt/chip: actual_frac, not gesture BS
+    _require(DEBUG, "actual_frac", "debug_controls.gd")
     _require(DEBUG, "backswing_len", "debug_controls.gd")
     _require(DEBUG, "backswing_frac", "debug_controls.gd")
     _require(DEBUG, "rolled_power", "debug_controls.gd")
@@ -81,6 +83,7 @@ def main() -> int:
     _require(PUTT, "static func power_from_frac", "putt_stroke.gd")
     _require(PUTT, "static func marker_frac", "putt_stroke.gd")
     _require(PUTT, "var rolled := power_from_frac(actual)", "putt_stroke.gd")
+    _require(PUTT, '"actual_frac": actual', "putt_stroke.gd")
     _require(
         PUTT,
         'sample.get("backswing_frac"',
@@ -93,7 +96,7 @@ def main() -> int:
     print("amplitude_power_check: Phase 0 OK")
     print("  TempoGrade family: amplitude does not feed rolled power")
     print("  PuttStroke.power_from_frac: present (reference shape)")
-    print("  F1 plumbing: backswing_len + backswing_frac + commit/true/rolled")
+    print("  F1 plumbing: full BS len/frac; putt/chip actual_frac; commit/true/rolled")
     print("  Phase 1: implement amplitude_to_power in this harness (not in .gd yet)")
     return 0
 
