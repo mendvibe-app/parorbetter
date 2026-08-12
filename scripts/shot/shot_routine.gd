@@ -245,8 +245,21 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	if shot_type == "putt" or shot_type == "chip":
 		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
 		tempo_gesture.putt_show_marker = practice_mode
+		tempo_gesture.full_show_markers = false
 	else:
 		tempo_gesture.putt_show_marker = false
+		# Phase 1: full only (not punch) — advisory target + pocket mash line on pad.
+		if pad_type == "full":
+			var lane_pad := BallPhysics.full_lane_pad_len()
+			tempo_gesture.full_target_frac = (
+				BallPhysics.amplitude_for_power(committed_power) / maxf(lane_pad, 0.001)
+			)
+			tempo_gesture.full_pocket_frac = (
+				BallPhysics.amplitude_for_power(BallPhysics.POWER_POCKET_HI) / maxf(lane_pad, 0.001)
+			)
+			tempo_gesture.full_show_markers = true
+		else:
+			tempo_gesture.full_show_markers = false
 	tempo_gesture.set_enabled(true)
 	if meter_display:
 		meter_display.set_shot_context(pad_type, timing_scale, practice_mode)
@@ -254,25 +267,28 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	_layout_shot_chrome()
 	# One live instruction — golf moments, not engine marks.
+	# Mixed window (Phase 1): full = pull length for power; other types still aim distance.
 	if practice_mode:
 		if shot_type == "putt" or shot_type == "chip":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		elif punch_mode:
-			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · keep it under."
+			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · keep it under · aim sets distance."
+		elif pad_type == "full":
+			hint_label.text = "PRACTICE ~3:1 — pull length = power · past pocket mark costs yards."
 		else:
-			hint_label.text = "PRACTICE ~%.0f:1 — address · to the top · through the ball." % TempoGrade.target_ratio(pad_type)
+			hint_label.text = "PRACTICE ~%.0f:1 — aim sets distance · to the top · through." % TempoGrade.target_ratio(pad_type)
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
-		hint_label.text = "CHIP — feel the distance · small stroke · through the ball."
+		hint_label.text = "CHIP — aim sets distance · small stroke · through the ball."
 	elif punch_mode:
-		hint_label.text = "PUNCH ~2:1 — low · abbreviated · through the ball · more roll."
+		hint_label.text = "PUNCH ~2:1 — aim sets distance · low · through · more roll."
 	elif shot_type == "pitch":
-		hint_label.text = "PITCH ~2:1 — address · to the top · through the ball."
+		hint_label.text = "PITCH ~2:1 — aim sets distance · to the top · through the ball."
 	elif shot_type == "flop":
-		hint_label.text = "FLOP ~2:1 — soft open face · high · little roll. Mistakes hurt."
+		hint_label.text = "FLOP ~2:1 — aim sets distance · high · little roll. Mistakes hurt."
 	else:
-		hint_label.text = "SWING ~3:1 — address · to the top · through the ball."
+		hint_label.text = "SWING ~3:1 — pull length = power · pocket mark = mash · through."
 	phase_changed.emit("active")
 	set_active(true)
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -482,7 +498,15 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 
 	var contact: ShotResult.ContactQuality = verdict["contact"]
 	var bal: float = float(verdict["balance"])
-	var power := clampf(committed_power * float(verdict["power_mul"]), 0.05, 1.0)
+	var power_mul := float(verdict["power_mul"])
+	# Phase 1: full swing power from amplitude; every other type stays aim-solved.
+	var amp_power := -1.0
+	var power: float
+	if flight_shot_type() == "full":
+		amp_power = BallPhysics.power_from_amplitude(float(sample.get("backswing_len", 0.0)))
+		power = clampf(amp_power * power_mul, 0.05, 1.0)
+	else:
+		power = clampf(committed_power * power_mul, 0.05, 1.0)
 
 	# Direction: putt/chip = PuttStroke path; full family = swipe (+ gated pull) as one signal.
 	var shape := suggested_shape
@@ -548,7 +572,8 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	verdict["backswing_len"] = float(sample.get("backswing_len", 0.0))
 	verdict["backswing_frac"] = float(sample.get("backswing_frac", 0.0))
 	verdict["committed_power"] = committed_power
-	verdict["true_power"] = true_power_pct
+	# Full: mash tax reads amplitude effort; else aim true_pct (unchanged).
+	verdict["true_power"] = amp_power if amp_power >= 0.0 else true_power_pct
 	verdict["rolled_power"] = power
 	GameState.last_tempo_metrics = verdict
 
@@ -565,7 +590,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		return
 
 	var out := ShotResult.make(power, bal, path, contact, shape)
-	out.true_power = true_power_pct
+	out.true_power = amp_power if amp_power >= 0.0 else true_power_pct
 	_emit_result(out)
 
 

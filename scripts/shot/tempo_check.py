@@ -604,7 +604,9 @@ def main() -> int:
     assert "TempoGesture.GUIDE_BACK_FULL" in METER
     assert "0.75 / maxf(target" not in METER
     assert "through the ball" in ROUTINE
-    assert "address · to the top · through the ball" in ROUTINE
+    assert "pull length = power" in ROUTINE
+    assert "aim sets distance" in ROUTINE
+    assert "address · to the top · through the ball" not in ROUTINE or "aim sets distance" in ROUTINE
     assert "address on gold" not in ROUTINE
     assert "blue ghost is pace" not in ROUTINE
     assert "match the ratio, not the clock" not in ROUTINE
