@@ -248,14 +248,15 @@ device-verified merges):** CP4 (short-shot launch lateral / spread after droppin
 line_scale) and CP6 (roll settle without clamp). Flag if short-game offline or roll-out
 feel wrong later.
 
-**Known follow-up (logged, not fixed):** `landing_speed` hardcodes fairway's friction
-constant (`144 = 2.4 × 60`) unconditionally, so sand/rough get fairway landing energy then
-decelerate at lie friction — ~10–15 yd short settle on non-fairway. Should key off landing
-lie friction the same way roll deceleration already does. Separate small correction.
+**Known follow-up (logged, not fixed):** `recommended_power` wind bias uses world-space
+`wind.y` (`-wind.y * 0.35 + abs(wind.x) * 0.08` in `ball_physics.gd`), while flight applies
+wind as a raw world-space velocity add and the reverse-guard measures along-launch. Same
+wind mag is a different effective headwind per hole bearing — plan power and flight disagree
+on orientation. Separate small correction (project wind onto aim/launch before the yards
+bias); do not bundle with reverse-guard floor work.
 
 Phase 6 is nearly empty after this — remaining work is deleting dead function bodies and
-closing the ledger, not re-litigating reverse-guard / multi-exit. Do not start until the
-landing_speed follow-up is scoped.
+closing the ledger, not re-litigating reverse-guard / multi-exit.
 
 ---
 
@@ -269,8 +270,8 @@ If one *can't* come out, that is a real finding and gets documented rather than 
 silently.
 
 **Status after Phase 5:** call sites / clamp / `spin_scale` already gone or explicitly kept
-(see Phase 5 shipped). Near-empty — close out properly after landing_speed follow-up; do not
-start from this merge.
+(see Phase 5 shipped). `landing_speed` lie friction shipped separately. Near-empty — close
+out properly; do not start from this merge.
 
 ---
 

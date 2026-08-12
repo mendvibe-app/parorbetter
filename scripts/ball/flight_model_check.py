@@ -402,7 +402,8 @@ def sim_flight_land(
         if along_after < along_spd * 0.15:
             guard_trips += 1
             if reverse_guard:
-                along_spd2 = max(along_spd * 0.35, 12.0)
+                # Mirror ball.gd: 0.35 × planned air/hang, not along_spd / flat 12.
+                along_spd2 = base_speed * 0.35
                 vx = launch[0] * along_spd2 + fr[0] * lat_v * 0.55
                 vy = launch[1] * along_spd2 + fr[1] * lat_v * 0.55
         x += vx * dt
@@ -860,10 +861,26 @@ def verify_live_constants_reflected() -> None:
         f"  summary: guard_trips_total={trips_any}  "
         f"reversed_without_guard={reverse_off_any}"
     )
-    if trips_any == 0 and reverse_off_any == 0:
-        print("  CP3: guard never tripped and no reverse without it — safe to delete.")
-    else:
-        print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
+    assert trips_any > 0 and reverse_off_any > 0, (
+        "CP3: guard must stay load-bearing under headwind "
+        f"(trips={trips_any}, reversed_without={reverse_off_any})"
+    )
+    print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
+    # Floor must be planned air/hang, not flat 12 / along_spd (LW sky-ball playtest).
+    assert "planned_spd" in BALL and "planned_spd * 0.35" in BALL
+    assert "along_spd * 0.35, 12.0" not in BALL
+    lw_repro = launch(65.0, 1.62, 0.84, "full", "Rough", "PERFECT", 0.0)
+    lw_air = lw_repro["carry_yd"] * PX_PER_YARD
+    lw_head = sim_flight_land(
+        lw_air, lw_repro["air_time"], 0.0, wind=(0.0, 33.5), reverse_guard=True
+    )
+    lw_carry = lw_head["along_px"] / PX_PER_YARD
+    print(
+        f"  LW84 Rough PERFECT @ head33.5: carry={lw_carry:.1f}yd "
+        f"trips={lw_head['guard_trips']} (old flat-12 floor was ~16.1)"
+    )
+    assert lw_carry >= 18.0, f"LW sky-ball floor still too low: {lw_carry:.1f}yd"
+    assert lw_head["guard_trips"] >= 1, "repro wind should still engage guard"
 
     # Phase 5 CP5: which exit predicate fires first (report before deleting t/along).
     print("FLIGHT EXIT SWEEP (which predicate lands first)")
