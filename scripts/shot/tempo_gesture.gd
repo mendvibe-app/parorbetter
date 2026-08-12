@@ -1001,6 +1001,7 @@ func _draw_putt() -> void:
 
 	if putt_show_marker:
 		_draw_putt_practice_marker(start, top)
+	_draw_mishit_risk_marks(start, top)
 
 	_draw_landmark_tex(
 		TEX_PUTT_TOP,
@@ -1210,6 +1211,18 @@ func _draw_putt_practice_marker(
 	draw_line(mark + Vector2(-20, 0), mark + Vector2(20, 0), tick_c, 3.5, true)
 
 
+func _draw_mishit_risk_marks(start: Vector2, top: Vector2, tol_scale: float = 1.0) -> void:
+	## abs_n = 1.15 boundary — past here contact becomes THIN/FAT (not a mash-tax pocket).
+	var tgt := clampf(putt_target_frac, PuttStroke.MARKER_MIN_FRAC, PuttStroke.MARKER_MAX_FRAC)
+	var risk := PuttStroke.BAND_HALF * maxf(tol_scale, 0.15) * PuttStroke.BAND_GOOD
+	var lo: Vector2 = start.lerp(top, clampf(tgt - risk, 0.0, 1.0))
+	var hi: Vector2 = start.lerp(top, clampf(tgt + risk, 0.0, 1.0))
+	# Cool-rose ticks — distinct from full-swing amber pocket / mash mark.
+	var c := Color(0.92, 0.45, 0.55, 0.88)
+	draw_line(lo + Vector2(-14, 0), lo + Vector2(14, 0), c, 2.5, true)
+	draw_line(hi + Vector2(-14, 0), hi + Vector2(14, 0), c, 2.5, true)
+
+
 func _draw_chip() -> void:
 	## Warm sand/wedge palette, shorter lane than putt — shares putt's amplitude-pad
 	## drawing helpers (lane, arc edges, follow cue, address ball, practice marker)
@@ -1236,6 +1249,7 @@ func _draw_chip() -> void:
 
 	if putt_show_marker:
 		_draw_putt_practice_marker(start, top, CHIP_MARKER_BAND, CHIP_MARKER_TICK)
+	_draw_mishit_risk_marks(start, top, PuttStroke.CHIP_TOL_SCALE)
 
 	_draw_landmark_tex(
 		TEX_CHIP_TOP,

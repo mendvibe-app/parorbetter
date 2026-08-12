@@ -273,7 +273,7 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		if shot_type == "putt":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		elif shot_type == "chip":
-			hint_label.text = "PRACTICE CHIP — pull length = power · to the pace tick · through."
+			hint_label.text = "PRACTICE CHIP — pull length = power · past rose ticks = mishit risk."
 		elif punch_mode:
 			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · pull length = power · under canopy."
 		elif BallPhysics.uses_amplitude_power(pad_type):
@@ -286,7 +286,7 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	elif shot_type == "putt":
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
-		hint_label.text = "CHIP — pull length = power · small stroke · through the ball."
+		hint_label.text = "CHIP — pull length = power · past rose ticks = mishit risk · through."
 	elif punch_mode:
 		hint_label.text = "PUNCH ~2:1 — pull length = power · pocket mark = mash · under canopy."
 	elif shot_type == "pitch":

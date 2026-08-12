@@ -196,6 +196,42 @@ def main() -> int:
     assert grade_body.count("ContactQuality.MISS") == 1  # incomplete only
     assert "BAND_SHORT_LONG" not in PUTT
     assert "power_from_frac(actual)" in grade_body
+    # Phase 4: chip overpull keeps THIN label but drops distance tax (no GOOD→THIN cliff).
+    assert "frac_err > 0.0 and contact_mul < 1.0" in grade_body
+    assert "_draw_mishit_risk_marks" in GESTURE
+    assert "BAND_GOOD" in GESTURE.split("func _draw_mishit_risk_marks")[1].split("func ")[0]
+    assert "mishit risk" in ROUTINE
+
+    # Chip Fairway: overpull past BAND_GOOD must not land shorter than GOOD edge.
+    CM = {"PERFECT": 1.06, "GOOD": 1.0, "THIN": 0.82, "FAT": 0.68}
+
+    def chip_rolled_yd(actual: float, commit: float, club: float = 80.0) -> tuple[str, float]:
+        target = marker_frac(commit)
+        frac_err = actual - target
+        abs_n = abs(frac_err) / BAND_HALF
+        contact = contact_tier(abs_n, frac_err)
+        rolled = power_from_frac(actual)
+        c_mul = CM[contact]
+        # Mirror Phase 4: no distance tax on overpull THIN.
+        if frac_err > 0.0 and c_mul < 1.0:
+            c_mul = 1.0
+        yd = max(0.05, min(1.0, rolled)) * club * c_mul
+        return contact, yd
+
+    for rem in (8.0, 12.0, 18.0):
+        commit = rem / 80.0
+        tgt = marker_frac(commit)
+        edge = tgt + BAND_GOOD * BAND_HALF
+        _c_g, yd_good = chip_rolled_yd(edge, commit)
+        c_t, yd_thin = chip_rolled_yd(edge + 1e-5, commit)
+        assert c_t == "THIN", (rem, c_t)
+        assert yd_thin + 1e-6 >= yd_good, (
+            f"chip {rem:.0f}yd cliff: GOOD-edge {yd_good:.3f} → THIN {yd_thin:.3f}"
+        )
+        # Still smash-long for big overpull vs on-target.
+        _c_big, yd_big = chip_rolled_yd(min(tgt + 0.20, MARKER_MAX), commit)
+        _c_on, yd_on = chip_rolled_yd(tgt, commit)
+        assert yd_big > yd_on
 
     print("putt_stroke_check: ok")
     return 0
