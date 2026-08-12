@@ -830,6 +830,10 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
+		# FOLLOW-UP (not Phase 5): landing_speed formula uses fairway's constant
+		# unconditionally (144 = 2.4 * 60); should key off the landing lie's
+		# friction the same way roll deceleration already does. Sand/rough
+		# systematically short after CP6 clamp removal — Phase 5 harness.
 		landing_speed = sqrt(2.0 * 144.0 * roll_px)
 
 	return {
