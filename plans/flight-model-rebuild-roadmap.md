@@ -193,6 +193,17 @@ owner shared with `_process_roll`. Sand/rough settle error reduced from ~10–15
 1 yd (Driver Sand −14.6 → −0.8, Rough −10.5 → −0.7). No gameplay change on Fairway/Tee
 (decel still 144). Found by Phase 5 CP6; see `plans/correction-landing-speed-lie.md`.
 
+### Reverse-guard planned floor — shipped (`cursor/reverse-guard-planned-floor-5ed0`, #47)
+
+Reverse-guard floor now scales with planned speed (`air_px` / `air_time`) instead of a flat
+12 px/s or a fraction of the shot's own along-speed. Fixes lob-wedge sky-balling under
+headwind; a real headwind still costs real distance, which is correct. Trip onset
+unchanged — only the floor once fired. CP3 pitch-under-headwind still load-bearing.
+
+**Open follow-up (not fixed here):** `recommended_power` biases on world-space `wind.y`
+while flight applies world wind against launch-dir — same mag is a different effective
+headwind per hole bearing. Project wind onto aim/launch before the yards bias.
+
 ---
 
 ### Phase 3 — Carry and roll split
