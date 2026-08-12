@@ -2602,6 +2602,8 @@ func _on_shot_ready(result: ShotResult) -> void:
 	)
 	GameState.last_shot_metrics = {
 		"power": result.power,
+		"true_power": result.true_power,
+		"committed_power": shot_routine.committed_power,
 		"stability": result.stance_stability,
 		"path_error": result.path_error,
 		"contact": result.contact_label(),

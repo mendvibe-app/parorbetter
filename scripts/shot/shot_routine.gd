@@ -543,6 +543,15 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		verdict["transition_pull"] = pull
 		GameState.last_tempo_metrics = verdict
 
+	# Phase 0 swing instrumentation — amplitude vs aim-solved power (display only).
+	# Stamp after force overrides so QA forced shots still show the real pull.
+	verdict["backswing_len"] = float(sample.get("backswing_len", 0.0))
+	verdict["backswing_frac"] = float(sample.get("backswing_frac", 0.0))
+	verdict["committed_power"] = committed_power
+	verdict["true_power"] = true_power_pct
+	verdict["rolled_power"] = power
+	GameState.last_tempo_metrics = verdict
+
 	_haptic_impact(contact)
 
 	if practice_mode:
