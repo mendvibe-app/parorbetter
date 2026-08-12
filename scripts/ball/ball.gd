@@ -534,7 +534,10 @@ func _process_flight(delta: float) -> void:
 	var path_len := (global_position - _shot_origin).length()
 	var air_limit := _planned_distance_px * _air_fraction
 
-	# Land on along OR path length (curved flight) so timer alone can't truncate carry.
+	# All four exits are deliberate (Phase 5 CP5 — not unfinished band-aid removal):
+	# collision — tree/obstacle; t>=1 — hang clock, required under headwind stall
+	#   (path_len-only hangs); along — straight carry; path_len — curved carry
+	#   (path >= along, so curves land on path before along).
 	if collision or t >= 1.0 or along >= air_limit or path_len >= air_limit:
 		_begin_roll()
 
@@ -625,11 +628,9 @@ func _process_roll(delta: float) -> void:
 			velocity += _pin_dir * (-toward - 80.0) * 0.2
 
 	var along := _traveled_along()
-	var remain := _planned_distance_px - along
-	if remain < 40.0 and not _is_putt:
-		var limit := maxf(remain * 3.5, 8.0)
-		if velocity.length() > limit:
-			velocity = velocity.normalized() * limit
+	# Phase 5 CP6: remain<40 speed clamp removed — friction + landing_speed own
+	# roll-out. Hard settle at plan kept. Fairway settle was closer to plan
+	# without the clamp (harness); rough/sand undershoot is friction vs a=144 tune.
 	if along >= _planned_distance_px and not _is_putt:
 		_finish_settle()
 		return

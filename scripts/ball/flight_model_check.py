@@ -208,6 +208,45 @@ def short_shot_line_scale(total_yards: float) -> float:
     return clamp(total_yards / 55.0, 0.10, 1.0)
 
 
+def sim_roll_out(
+    planned_px: float,
+    start_along_px: float,
+    landing_speed: float,
+    friction: float,
+    *,
+    clamp_remain: bool,
+) -> dict:
+    """Mirror non-putt _process_roll (no slope/spin/collision)."""
+    along = start_along_px
+    speed = max(landing_speed, 0.0)
+    dt = 1.0 / 60.0
+    reason = "timeout"
+    for _ in range(60 * 30):
+        # decel toward zero
+        decel = friction * 60.0 * dt
+        speed = max(0.0, speed - decel)
+        if clamp_remain:
+            remain = planned_px - along
+            if remain < 40.0:
+                limit = max(remain * 3.5, 8.0)
+                if speed > limit:
+                    speed = limit
+        if along >= planned_px - 1e-9:
+            reason = "plan"
+            along = planned_px
+            break
+        if speed < 10.0:
+            reason = "speed"
+            break
+        along += speed * dt
+    return {
+        "end_yd": along / PX_PER_YARD,
+        "end_px": along,
+        "reason": reason,
+        "speed": speed,
+    }
+
+
 _REAL_APEX_KEYS = sorted(REAL_APEX_FT.keys())
 
 
@@ -910,6 +949,49 @@ def verify_live_constants_reflected() -> None:
         print("  CP5: STOP — keep t>=1.0 / along; timer-alone or hang detected.")
     else:
         print("  CP5: timer never alone; path_len-only never hangs — safe to collapse.")
+
+    # Phase 5 CP6: remain<40 roll clamp — with vs without (hard settle-at-plan kept).
+    print("ROLL CLAMP SWEEP (settle along vs plan; clamp ON vs OFF)")
+    print("-" * 74)
+    fric = {"Fairway": 2.4, "Rough": 4.5, "Sand": 7.0, "Tee": 2.4, "Green": 1.8}
+    print(
+        f"{'club':12}{'lie':8}{'plan':>7}{'roll':>6}"
+        f"{'end_on':>8}{'end_off':>8}{'err_on':>8}{'err_off':>8}{'reason':>8}"
+    )
+    worst_off = 0.0
+    for name, m, lm in BAG:
+        r = launch(m, lm, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
+        for lie, f in fric.items():
+            if lie == "Green" and m > 160:
+                continue  # greenside approach only
+            on = sim_roll_out(
+                r["total_yd"] * PX_PER_YARD,
+                r["carry_yd"] * PX_PER_YARD,
+                r["landing_speed"],
+                f,
+                clamp_remain=True,
+            )
+            off = sim_roll_out(
+                r["total_yd"] * PX_PER_YARD,
+                r["carry_yd"] * PX_PER_YARD,
+                r["landing_speed"],
+                f,
+                clamp_remain=False,
+            )
+            err_off = abs(off["end_yd"] - r["total_yd"])
+            worst_off = max(worst_off, err_off)
+            if lie in ("Fairway", "Rough", "Sand") or err_off > 1.0:
+                print(
+                    f"{name[:12]:12}{lie:8}{r['total_yd']:7.1f}{r['roll_yd']:6.1f}"
+                    f"{on['end_yd']:8.1f}{off['end_yd']:8.1f}"
+                    f"{on['end_yd']-r['total_yd']:8.1f}{off['end_yd']-r['total_yd']:8.1f}"
+                    f"{off['reason']:>8}"
+                )
+    print(f"  worst |err| without clamp = {worst_off:.2f} yd")
+    print(
+        "  note: along>=plan hard settle still active — overshoot cannot exceed plan; "
+        "undershoot = friction vs landing_speed (tuned for a=144 = Fairway 2.4*60)."
+    )
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
