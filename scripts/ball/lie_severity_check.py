@@ -40,7 +40,32 @@ def main() -> None:
     assert "func lie_multiplier(lie: String, severity: String = \"\")" in PHYS
     assert "func lie_timing_scale(lie: String, severity: String = \"\")" in PHYS
     assert "func recommended_power(" in PHYS
-    assert "severity: String = \"\"" in PHYS.split("func recommended_power")[1][:400]
+    rp = PHYS.split("func recommended_power")[1][:800]
+    assert "severity: String = \"\"" in rp
+    assert "launch_dir: Vector2 = Vector2.UP" in rp
+    assert "wind.dot(dir)" in rp
+    assert "dir.orthogonal()" in rp
+    # Range swing passes real bearing; club_percent_today / solve_committed stay on default.
+    hole = (ROOT / "scripts" / "course" / "hole_controller.gd").read_text(encoding="utf-8")
+    assert "bearing.normalized()" in hole
+    assert "recommended_power(" in hole
+
+    # Wind yards: dir=UP must match legacy -wy*0.35 + abs(wx)*0.08 exactly.
+    def wind_yards(wx: float, wy: float, dx: float, dy: float) -> float:
+        ln = (dx * dx + dy * dy) ** 0.5
+        dx, dy = dx / ln, dy / ln
+        # Godot Vector2.orthogonal() → (-y, x)
+        ox, oy = -dy, dx
+        head = wx * dx + wy * dy
+        cross = abs(wx * ox + wy * oy)
+        return head * 0.35 + cross * 0.08
+
+    for wx, wy in ((0.0, -1.0), (1.0, 0.0), (0.6, -0.8), (-0.4, 0.5)):
+        legacy = -wy * 0.35 + abs(wx) * 0.08
+        assert abs(wind_yards(wx, wy, 0.0, -1.0) - legacy) < 1e-12, (wx, wy, legacy)
+    # dir=RIGHT + world -Y wind → pure cross (0.08), zero head (0.35) contribution.
+    assert abs(wind_yards(0.0, -1.0, 1.0, 0.0) - 0.08) < 1e-12
+    assert abs(wind_yards(0.0, -1.0, 1.0, 0.0) - 0.0 * 0.35 - 1.0 * 0.08) < 1e-12
 
     # Buried needs more club than average for same remaining (shot_need bump).
     assert "ROUGH_MUL_AVERAGE / ROUGH_MUL_BURIED" in PHYS

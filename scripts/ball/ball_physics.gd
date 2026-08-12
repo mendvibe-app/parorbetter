@@ -633,11 +633,16 @@ static func recommended_power(
 	club_max_yards: float,
 	lie: String,
 	wind: Vector2 = Vector2.ZERO,
-	severity: String = ""
+	severity: String = "",
+	launch_dir: Vector2 = Vector2.UP
 ) -> float:
 	var wind_yards := 0.0
 	if lie != "Green":
-		wind_yards = -wind.y * 0.35 + absf(wind.x) * 0.08
+		# Project onto launch: default UP keeps legacy -wind.y / abs(wind.x).
+		var dir := launch_dir.normalized() if launch_dir.length_squared() > 0.001 else Vector2.UP
+		var head := wind.dot(dir)  # UP → -wind.y (legacy sign)
+		var cross := absf(wind.dot(dir.orthogonal()))
+		wind_yards = head * 0.35 + cross * 0.08
 	# Putts get their own floor — 2 ft (a real tap-in), not the full-shot 2 yd / 0.05
 	# floor. lie_multiplier("Green") == 1.0, so effective_max == club_max_yards here.
 	if lie == "Green":

@@ -1516,11 +1516,13 @@ func _begin_range_swing() -> void:
 		var gate := minf(TempoGrade.PITCH_YD, club_max * TempoGrade.PITCH_POWER_CAP)
 		if gate > TempoGrade.CHIP_YD + 2.0:
 			target_yd = clampf(club_max * 0.35, TempoGrade.CHIP_YD + 2.0, gate - 1.0)
-	var recommend := BallPhysics.recommended_power(target_yd, club_max, lie, wind)
-	var est := BallPhysics.estimate_carry_yards(recommend, club_max, lie)
 	var bearing := _cup_pos - _tee_pos
 	if bearing.length_squared() < 1.0:
 		bearing = Vector2(0, -1)
+	var recommend := BallPhysics.recommended_power(
+		target_yd, club_max, lie, wind, "", bearing.normalized()
+	)
+	var est := BallPhysics.estimate_carry_yards(recommend, club_max, lie)
 	_aim_target = AimControl.point_along_bearing(_tee_pos, bearing, est)
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(false, club_max)
 	_aim_radius_yd = _aim_radius_base_yd
