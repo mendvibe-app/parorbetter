@@ -1,6 +1,7 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 2 shipped. Remaining mixed: punch (Phase 3) + putt alignment (Phase 4).
+**Status:** Phase 3 shipped. Full-swing-family mixed window closed (full/pitch/flop/punch
+share one amplitude model). Remaining: chip/putt (Phase 4) + Phases 5–6.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -109,12 +110,16 @@ On-pad target + pocket (`POWER_POCKET_HI`) marks; `true_power` from amplitude so
 ### Phase 2 — Extend to pitch, chip, flop
 **Shipped** (`feature/amplitude-power-short` → main). Pitch/flop use the same pad-H linear map as
 full (`lane_pad_len` 0.50, `bs_floor` 0.10). Chip stays on `PuttStroke.power_from_frac` (already
-amplitude-primary) with pull-length hints + scored pace marker. Punch remains aim-solved
-until Phase 3. Mixed window now: **punch only** (plus putt Phase 4 alignment).
+amplitude-primary) with pull-length hints + scored pace marker. Punch remained aim-solved
+until Phase 3.
 
 ### Phase 3 — Extend to punch
-Punch's lane was just fixed to match pitch's geometry. Same amplitude→power treatment,
-building on that work rather than redoing it.
+**Shipped** (`feature/amplitude-power-punch` → main). Punch joins `uses_amplitude_power`;
+markers draw from `full_show_markers` only (single source of truth); hints say pull length =
+power. Overswing tax measured at −14.8 yd on 7i (147.2 → 132.4). Full/pitch/flop/punch now
+share one amplitude-driven power model with real overswing cost and correct on-screen
+signaling — **full-swing-family mixed window closed**. Remaining deliberate split: chip/putt
+on PuttStroke (Phase 4).
 
 ### Phase 4 — Putting alignment
 Audit `PuttStroke` against the now-unified model. Likely small: putting is already
