@@ -1,7 +1,7 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 3 shipped. Full-swing-family mixed window closed (full/pitch/flop/punch
-share one amplitude model). Remaining: chip/putt (Phase 4) + Phases 5–6.
+**Status:** Phase 4 shipped. Amplitude power across all shot types; chip/putt keep
+PuttStroke with mishit-risk signaling (not mash tax). Remaining: Phases 5–6.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -121,18 +121,15 @@ share one amplitude-driven power model with real overswing cost and correct on-s
 signaling — **full-swing-family mixed window closed**. Remaining deliberate split: chip/putt
 on PuttStroke (Phase 4).
 
-### Phase 4 — Putting alignment
-Audit `PuttStroke` against the now-unified model. Likely small: putting is already
-amplitude-primary. Confirm the target-amplitude visualization and overswing-cost language
-match the rest of the game rather than rebuilding the mechanic.
-
-**Open decision (do not assume “make chip/putt work like full”):** chip’s overswing
-consequence is structurally opposite to full/pitch/flop. On those three, pulling past the
-pocket line *loses* distance via `force_factor` mash tax; on chip, pulling past the pace
-tick *gains* distance via `rolled/committed > 1.0` (PuttStroke smash-long). That may be
-correct — mishits differ in real golf — but Phase 4 must **explicitly decide** whether to
-keep the asymmetry, unify toward mash-cost, or unify toward smash-long, and signal it in UI.
-Inherited PuttStroke behavior is not an automatic alignment answer.
+### Phase 4 — Chip/putt alignment
+**Shipped** (`feature/chip-putt-alignment` → main). Investigation overturned the original
+framing twice (neither “smash-long as-is” nor “import mash tax” was correct) and found a
+genuine non-monotonic distance bug at the chip GOOD→THIN boundary instead — fixed by
+keeping the THIN label but dropping its distance tax for overpull specifically, since real
+chip mishits go long from bad contact, not short from an energy penalty. FAT underpull tax
+and putt’s Green `contact_mul = 1.0` exclusion kept. Mishit-risk pad marks (rose ticks at
+`abs_n = 1.15`) added for chip/putt, distinct from full-family’s pocket/mash marker.
+**Logged, not fixed:** pre-existing PERFECT chip +6% contact bonus.
 
 ### Phase 5 — Retire the aim-solve path
 Once every shot type reads power from amplitude, `recommended_power()` and
@@ -175,6 +172,5 @@ it changes how "acceptance" reads for phases 1–3 individually.
   (Phase 5 question, not decided yet).
 - Exact shape of the amplitude→power curve per club — linear is the starting assumption,
   Phase 1's harness should confirm or correct it against how the pad actually feels.
-- **Phase 4:** chip/putt overswing sign — mash-cost (lose yards past pocket) vs smash-long
-  (gain yards past pace tick). Asymmetry with full/pitch/flop is real today; decide and
-  signal, don't silently inherit PuttStroke.
+- **Logged (Phase 4):** PERFECT chip still gets +6% via `contact_multiplier` — not fixed;
+  revisit if short-game pure strikes feel long.
