@@ -105,11 +105,6 @@ def main() -> None:
     assert "flop" in PHYS
     assert "FLOP_MAX_YD" in PHYS
     assert "Lob Wedge" in PHYS
-    # short_shot_line_scale body kept dead until Phase 6; call site removed in CP4.
-    assert "static func short_shot_line_scale" in PHYS
-    assert "short_shot_line_scale(total_yards)" not in PHYS.split("static func launch_velocity")[1]
-    assert "short_shot_hang_scale" in PHYS
-    assert "total_yards / 55.0" in PHYS or "/ 55.0" in PHYS
     BALL = (ROOT / "scripts" / "ball" / "ball.gd").read_text(encoding="utf-8")
     assert "SPIN_CURVE_COEFF" in BALL and "along_spd" in BALL
     assert "var spin_scale" not in BALL  # flight clamp gone; roll_spin_scale may remain

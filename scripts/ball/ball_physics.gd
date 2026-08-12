@@ -734,21 +734,6 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 			return 1.0
 
 
-## DEAD after Phase 5 CP4 — launch no longer calls this. Speed-proportional spin
-## + airspeed preserve own short-shot curve. Left for checks; Phase 6 deletes body.
-static func short_shot_line_scale(total_yards: float) -> float:
-	return clampf(total_yards / 55.0, 0.10, 1.0)
-
-
-## DEAD after Phase 1 — hang is derived from apex_for (∝ power → hang ∝ sqrt(power)).
-## Left for club_identity / short_pitch checks; Phase 6 removes after harness confirms.
-static func short_shot_hang_scale(total_yards: float) -> float:
-	if total_yards >= 40.0:
-		return 1.0
-	# At ~13 yd ≈ 0.55; full hang restored by 40 yd.
-	return clampf(lerpf(0.42, 1.0, total_yards / 40.0), 0.42, 1.0)
-
-
 ## Roll friction by lie (unitless coeff; decel = this * 60 px/s²). Single owner —
 ## landing_speed and GolfBall._process_roll both read here. Keep in sync or the
 ## flight→roll handoff jumps.
@@ -847,7 +832,7 @@ static func launch_velocity(
 	elif shot_type == "flop":
 		loft *= 1.35  ## open-face pop — playtest loft scale
 
-	# Phase 1: hang from apex_for (incl. contact scale); no loft lerp / short_shot_hang_scale.
+	# Hang from apex_for (incl. contact scale); no loft-lerp hang tax.
 	var contact := contact_apex_label(result.contact_quality)
 	var air_time := hang_time(club_max_yards, result.power, shot_type, contact)
 	var apex := apex_for(club_max_yards, result.power, shot_type, contact)
@@ -885,8 +870,7 @@ static func launch_velocity(
 		# Punch trades shape control for a low flight — less sidespin authority.
 		spin *= PUNCH_SPIN_SCALE
 		lateral *= 0.85
-	# Phase 5 CP4: short_shot_line_scale call removed — curvature ∝ along_spd owns
-	# low-speed shape; launch lateral is no longer distance-damped here.
+	# Curvature ∝ along_spd owns low-speed shape; launch lateral is not distance-damped.
 
 	var right := Vector2(-dir.y, dir.x)
 	# Cap offline aim: keep launch mostly toward target (was 0.2 → nearly 80° offline OK).
