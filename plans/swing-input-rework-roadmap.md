@@ -121,6 +121,14 @@ Audit `PuttStroke` against the now-unified model. Likely small: putting is alrea
 amplitude-primary. Confirm the target-amplitude visualization and overswing-cost language
 match the rest of the game rather than rebuilding the mechanic.
 
+**Open decision (do not assume “make chip/putt work like full”):** chip’s overswing
+consequence is structurally opposite to full/pitch/flop. On those three, pulling past the
+pocket line *loses* distance via `force_factor` mash tax; on chip, pulling past the pace
+tick *gains* distance via `rolled/committed > 1.0` (PuttStroke smash-long). That may be
+correct — mishits differ in real golf — but Phase 4 must **explicitly decide** whether to
+keep the asymmetry, unify toward mash-cost, or unify toward smash-long, and signal it in UI.
+Inherited PuttStroke behavior is not an automatic alignment answer.
+
 ### Phase 5 — Retire the aim-solve path
 Once every shot type reads power from amplitude, `recommended_power()` and
 `solve_committed_power()` stop being authoritative. They likely still have a role — a
@@ -162,3 +170,6 @@ it changes how "acceptance" reads for phases 1–3 individually.
   (Phase 5 question, not decided yet).
 - Exact shape of the amplitude→power curve per club — linear is the starting assumption,
   Phase 1's harness should confirm or correct it against how the pad actually feels.
+- **Phase 4:** chip/putt overswing sign — mash-cost (lose yards past pocket) vs smash-long
+  (gain yards past pace tick). Asymmetry with full/pitch/flop is real today; decide and
+  signal, don't silently inherit PuttStroke.
