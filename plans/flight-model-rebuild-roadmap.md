@@ -229,6 +229,27 @@ spin that bends the ball costs distance honestly rather than being compensated f
 low-speed sidespin shortfall in short pitches resolves without a special case.
 **Playtest focus:** the "plan says 3 yards, ball went sideways" class of bug should be gone.
 
+**Shipped (`feature/speed-as-input`, merge `6622a8f`):** spin curvature made
+speed-proportional (`SPIN_CURVE_COEFF = 28/180`, device-confirmed on straight PERFECT and
+bent path +0.46). `short_shot_line_scale` call and the `remain < 40` roll clamp removed.
+Reverse-guard and multi-exit termination (`collision` / `t>=1` / `along` / `path_len`)
+**kept** as confirmed wind-stall / wind+spin safety nets — not sidespin band-aids (CP3/CP5
+sweeps). `launch_speed_for(air_px, air_time)` extracted as thin owner.
+
+**Merged without device confirmation (Matt explicit call — not equivalent to earlier
+device-verified merges):** CP4 (short-shot launch lateral / spread after dropping
+line_scale) and CP6 (roll settle without clamp). Flag if short-game offline or roll-out
+feel wrong later.
+
+**Known follow-up (logged, not fixed):** `landing_speed` hardcodes fairway's friction
+constant (`144 = 2.4 × 60`) unconditionally, so sand/rough get fairway landing energy then
+decelerate at lie friction — ~10–15 yd short settle on non-fairway. Should key off landing
+lie friction the same way roll deceleration already does. Separate small correction.
+
+Phase 6 is nearly empty after this — remaining work is deleting dead function bodies and
+closing the ledger, not re-litigating reverse-guard / multi-exit. Do not start until the
+landing_speed follow-up is scoped.
+
 ---
 
 ### Phase 6 — Retire the band-aids
@@ -239,6 +260,10 @@ only ever compensating for a root cause now fixed.
 **Acceptance:** each removal is a separate commit with a harness diff showing no regression.
 If one *can't* come out, that is a real finding and gets documented rather than reverted
 silently.
+
+**Status after Phase 5:** call sites / clamp / `spin_scale` already gone or explicitly kept
+(see Phase 5 shipped). Near-empty — close out properly after landing_speed follow-up; do not
+start from this merge.
 
 ---
 
