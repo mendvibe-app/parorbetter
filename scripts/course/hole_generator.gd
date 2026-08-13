@@ -1105,6 +1105,15 @@ static func _fairway_bend(
 			return rng.randf_range(-12.0, 12.0) * t
 
 
+# Playtest: suggested shape must track real hole geometry (dogleg bend /
+# corridor curve). Hazard side is independent of layout — never invent DRAW/FADE
+# on a straight corridor just because bunkers sit left or right.
+# Non-dogleg layouts: no fairway curvature to play around. A hazard existing
+# somewhere on the hole is not, by itself, a reason to shape a shot — real golf
+# only suggests shaping around a hazard that's actually in the shot's direct
+# line, which this generator does not currently model. PLAYTEST TARGET: if hazard
+# placement is later made line-aware, this can key off that instead of returning
+# STRAIGHT unconditionally.
 static func _suggested_shape(
 	layout: HoleData.LayoutStyle,
 	bias: HoleData.HazardBias,
@@ -1116,10 +1125,6 @@ static func _suggested_shape(
 		HoleData.LayoutStyle.DOGLEG_LEFT:
 			return HoleData.SuggestedShape.DRAW
 		_:
-			if bias == HoleData.HazardBias.RIGHT:
-				return HoleData.SuggestedShape.FADE if rng.randf() < 0.65 else HoleData.SuggestedShape.STRAIGHT
-			if bias == HoleData.HazardBias.LEFT:
-				return HoleData.SuggestedShape.DRAW if rng.randf() < 0.65 else HoleData.SuggestedShape.STRAIGHT
 			return HoleData.SuggestedShape.STRAIGHT
 
 
