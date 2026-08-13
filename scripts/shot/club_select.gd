@@ -192,9 +192,7 @@ func _on_scroll_gui_input(event: InputEvent) -> void:
 
 
 func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
-	## Swing % = recommended_power for this pin (how hard you'd hit it).
-	## Omit when it's a full swing — "100% today" read as a mystery score.
-	## Club-fit: grossly oversized clubs get a run-through cue instead of a baby %.
+	## Effort copy for this pin. Full (≥95%) is unlabeled; oversized clubs run through.
 	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
 	var star := "★ " if is_suggested else ""
 	var badge := _tendency_badge(name)
@@ -206,7 +204,13 @@ func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
 		return "%s%s  —  %d yd · runs through%s" % [star, name, int(max_yd), badge]
 	if pct >= 0.95:
 		return "%s%s  —  %d yd%s" % [star, name, int(max_yd), badge]
-	return "%s%s  —  %d yd · %d%% swing%s" % [star, name, int(max_yd), int(pct * 100.0), badge]
+	# PLAYTEST TARGET: band edges. Real golf effort language, not a raw %.
+	var descriptor := "tight — one more club plays smoother"
+	if pct >= 0.85:
+		descriptor = "smooth"
+	elif pct >= 0.70:
+		descriptor = "3/4"
+	return "%s%s  —  %d yd · %s%s" % [star, name, int(max_yd), descriptor, badge]
 
 
 func _tendency_badge(name: String) -> String:
