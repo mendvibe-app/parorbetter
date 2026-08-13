@@ -63,7 +63,7 @@ def main() -> int:
                 shape = suggested_shape(layout, bias, rng)
                 if layout in NON_DOGLEG:
                     assert shape == STRAIGHT, (
-                        f"seed={seed} layout={layout} bias={bias} → {shape}, want STRAIGHT"
+                        f"seed={seed} layout={layout} bias={bias} -> {shape}, want STRAIGHT"
                     )
                     if bias in (LEFT, RIGHT):
                         n_straight_with_side_hazard += 1
@@ -75,7 +75,7 @@ def main() -> int:
     assert n_straight_with_side_hazard == 400 * len(NON_DOGLEG) * 2
     print(
         f"ok: suggested_shape geometry — "
-        f"{400 * 6 * 3} cases; {n_straight_with_side_hazard} non-dogleg+side-hazard → STRAIGHT"
+        f"{400 * 6 * 3} cases; {n_straight_with_side_hazard} non-dogleg+side-hazard -> STRAIGHT"
     )
     return 0
 
