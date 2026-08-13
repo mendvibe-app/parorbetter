@@ -31,13 +31,16 @@ var _drag_origin_scroll: int = 0
 var _drag_scrolling: bool = false
 const DRAG_DEADZONE := 12
 
-const TENDENCY_BADGE_TEXT := {
-	"rushed_transition": "Rushing",
-	"lingering_top": "Lingering",
-	"slice_tendency": "Slice",
-	"hook_tendency": "Hook",
-	"contact_issue": "Inconsistent",
-}
+## Warning tags that currently earned a text badge — on_track / insufficient_data stay off-row.
+const TENDENCY_ROW_TAGS := [
+	"rushed_transition",
+	"lingering_top",
+	"slice_tendency",
+	"hook_tendency",
+	"contact_issue",
+]
+const TENDENCY_ICON_PX := 48.0
+const TENDENCY_GUTTER := 56.0
 
 
 func _ready() -> void:
@@ -195,36 +198,57 @@ func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
 	## Effort copy for this pin. Full (≥95%) is unlabeled; oversized clubs run through.
 	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
 	var star := "★ " if is_suggested else ""
-	var badge := _tendency_badge(name)
 	if (
 		_lie != "Green"
 		and not BallPhysics.is_shortest_available(max_yd, _lie)
 		and pct < BallPhysics.POWER_POCKET_LO
 	):
-		return "%s%s  —  %d yd · runs through%s" % [star, name, int(max_yd), badge]
+		return "%s%s  —  %d yd · runs through" % [star, name, int(max_yd)]
 	if pct >= 0.95:
-		return "%s%s  —  %d yd%s" % [star, name, int(max_yd), badge]
+		return "%s%s  —  %d yd" % [star, name, int(max_yd)]
 	# PLAYTEST TARGET: band edges. Real golf effort language, not a raw %.
 	var descriptor := "tight — one more club plays smoother"
 	if pct >= 0.85:
 		descriptor = "smooth"
 	elif pct >= 0.70:
 		descriptor = "3/4"
-	return "%s%s  —  %d yd · %s%s" % [star, name, int(max_yd), descriptor, badge]
+	return "%s%s  —  %d yd · %s" % [star, name, int(max_yd), descriptor]
 
 
-func _tendency_badge(name: String) -> String:
-	## Text stub for the tendency icon (Phase 3) — swap for an icon lookup in hud_icons.gd
-	## once tendency art exists; resolve_tip().tag is already the icon key to use then.
+func _tendency_tag(name: String) -> String:
 	if not GameState.club_coach_ui_enabled:
 		return ""
 	var stats: Dictionary = GameState.club_coach.clubs.get(name, {})
 	if int(stats.get("shots_logged", 0)) < ClubCoachLog.MIN_SAMPLES_FOR_TIP:
 		return ""
 	var tag := str(ClubCoachLog.resolve_tip(stats).get("tag", ""))
-	if not TENDENCY_BADGE_TEXT.has(tag):
-		return ""
-	return " · %s" % TENDENCY_BADGE_TEXT[tag]
+	return tag if tag in TENDENCY_ROW_TAGS else ""
+
+
+func _attach_tendency_icon(btn: Button, club_name: String) -> void:
+	var tex := HudIcons.tendency_texture(_tendency_tag(club_name))
+	if tex == null:
+		return
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.custom_minimum_size = Vector2(TENDENCY_ICON_PX, TENDENCY_ICON_PX)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	tr.offset_left = -TENDENCY_GUTTER
+	tr.offset_right = -8.0
+	tr.offset_top = -TENDENCY_ICON_PX * 0.5
+	tr.offset_bottom = TENDENCY_ICON_PX * 0.5
+	btn.add_child(tr)
+	for sn in ["normal", "pressed", "hover", "focus"]:
+		var src := btn.get_theme_stylebox(sn)
+		if src == null:
+			continue
+		var d := src.duplicate()
+		d.content_margin_right = maxf(d.content_margin_right, TENDENCY_GUTTER)
+		btn.add_theme_stylebox_override(sn, d)
 
 
 func _rebuild_list(prefer_name: String = "") -> void:
@@ -273,6 +297,7 @@ func _rebuild_list(prefer_name: String = "") -> void:
 		btn.icon = HudIcons.club_texture(name)
 		btn.expand_icon = true
 		btn.text = _club_row_text(name, max_yd, is_suggested)
+		_attach_tendency_icon(btn, name)
 		btn.custom_minimum_size = Vector2(0, UiScale.TOUCH_MIN)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		btn.add_theme_font_size_override("font_size", UiScale.BODY)

@@ -18,6 +18,16 @@ const CLUB_IRON := preload("res://assets/ui/club_iron.png")
 const CLUB_WEDGE := preload("res://assets/ui/club_wedge.png")
 const CLUB_PUTTER := preload("res://assets/ui/club_putter.png")
 
+const TENDENCY := {
+	"rushed_transition": preload("res://assets/ui/tendency_rushed.png"),
+	"lingering_top": preload("res://assets/ui/tendency_lingering.png"),
+	"slice_tendency": preload("res://assets/ui/tendency_slice.png"),
+	"hook_tendency": preload("res://assets/ui/tendency_hook.png"),
+	"contact_issue": preload("res://assets/ui/tendency_contact.png"),
+	"on_track": preload("res://assets/ui/tendency_on_track.png"),
+	"insufficient_data": preload("res://assets/ui/tendency_unknown.png"),
+}
+
 
 static func lie_texture(lie: String) -> Texture2D:
 	if lie == "Trees":
@@ -37,3 +47,7 @@ static func club_texture(club_name: String) -> Texture2D:
 	if BallPhysics.is_wedge_family(club_name):
 		return CLUB_WEDGE
 	return CLUB_IRON
+
+
+static func tendency_texture(tag: String) -> Texture2D:
+	return TENDENCY.get(tag, null)
