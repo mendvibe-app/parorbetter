@@ -116,6 +116,66 @@ def main() -> int:
     assert "edge_l.append(pts[n - 1])" in HOLE
     assert "edge_r.append(pts[3])" in HOLE
 
+    # Pitch/flop preview snap: amplitude floors at POWER_POCKET_LO; circle must
+    # match a tick-hit, not the unfloored pin solve. Full/punch/chip/putt unchanged.
+    planned = HOLE.split("func _aim_planned_total_yd")[1].split("func ")[0]
+    apply_prev = HOLE.split("func _apply_committed_preview")[1].split("func ")[0]
+    tree = HOLE.split("func _aim_tree_clearance")[1].split("func ")[0]
+    assert 'shot_type == "pitch" or shot_type == "flop"' in planned
+    assert "maxf(power, BallPhysics.POWER_POCKET_LO)" in planned
+    assert 'st == "pitch" or st == "flop"' in apply_prev
+    assert "maxf(power, BallPhysics.POWER_POCKET_LO)" in apply_prev
+    # Confirm Aim flop cap: 5-arg estimate only on the pitch/flop branch.
+    assert "ball.get_lie_severity(), st" in apply_prev
+    assert "estimate_carry_yards(power, club_max, lie, ball.get_lie_severity())" in apply_prev
+    # Tree tint / pin-lock / force-preview stay on unfloored solve.
+    assert "POWER_POCKET_LO" not in tree
+    force_prev = HOLE.split("func _aim_force_preview")[1].split("func ")[0]
+    assert "POWER_POCKET_LO" not in force_prev
+    refit = HOLE.split("func _refit_aim_along_bearing")[1].split("func ")[0]
+    assert "POWER_POCKET_LO" not in refit
+
+    POWER_POCKET_LO = 0.60
+    POWER_POCKET_HI = 0.92
+    FLOP_MAX_YD = 30.0
+
+    def solved_power(pin_yd: float, club_max: float) -> float:
+        need = max(pin_yd, 2.0)
+        return min(max(need / club_max, 0.05), POWER_POCKET_HI)
+
+    def preview_yd(pin_yd: float, club_max: float, shot_type: str, floor: bool) -> float:
+        power = solved_power(pin_yd, club_max)
+        if floor and shot_type in ("pitch", "flop"):
+            power = max(power, POWER_POCKET_LO)
+        if shot_type == "flop":
+            power = min(power, FLOP_MAX_YD / max(club_max, 1.0))
+        total = club_max * power
+        if shot_type == "flop":
+            total = min(total, FLOP_MAX_YD)
+        return total
+
+    cases = (
+        ("pitch", 110.0, 46.0),
+        ("pitch", 80.0, 33.0),
+        ("pitch", 65.0, 27.0),
+    )
+    after = (66.0, 48.0, 39.0)
+    for (st, club, pin), want in zip(cases, after):
+        assert abs(preview_yd(pin, club, st, False) - pin) < 1e-9
+        assert abs(preview_yd(pin, club, st, True) - want) < 1e-9
+        assert abs(want - club * POWER_POCKET_LO) < 1e-9  # tick-hit
+    # Flop at a sub-30 pin: floor would overshoot, FLOP_MAX_YD still wins.
+    assert abs(preview_yd(20.0, 65.0, "flop", False) - 20.0) < 1e-9
+    assert abs(preview_yd(20.0, 65.0, "flop", True) - FLOP_MAX_YD) < 1e-9
+    # Other types: floor flag must not change the number.
+    for st, club, pin in (
+        ("full", 160.0, 140.0),
+        ("punch", 160.0, 140.0),
+        ("chip", 65.0, 15.0),
+        ("putt", 25.0, 10.0),
+    ):
+        assert abs(preview_yd(pin, club, st, False) - preview_yd(pin, club, st, True)) < 1e-9
+
     print("aim_control_check: ok")
     return 0
 

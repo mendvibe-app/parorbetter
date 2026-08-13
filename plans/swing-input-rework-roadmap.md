@@ -1,7 +1,7 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 4 shipped. Amplitude power across all shot types; chip/putt keep
-PuttStroke with mishit-risk signaling (not mash tax). Remaining: Phases 5–6.
+**Status:** Phase 5 shipped. Amplitude power across all shot types; aim-solve kept as
+advisory/preview (not retired). Remaining: Phase 6.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -132,12 +132,19 @@ and putt’s Green `contact_mul = 1.0` exclusion kept. Mishit-risk pad marks (ro
 **Logged, not fixed:** pre-existing PERFECT chip +6% contact bonus.
 
 ### Phase 5 — Retire the aim-solve path
-Once every shot type reads power from amplitude, `recommended_power()` and
-`solve_committed_power()` stop being authoritative. They likely still have a role — a
-"recommended club and swing size for this distance" advisory, shown as a coaching hint rather
-than a hard input — but that is a repurposing, not a deletion. Confirm Club Coach, dispersion
-data, and the debug panel all reflect amplitude-sourced power rather than stale aim-solved
-numbers.
+*Shipped as investigation + a targeted fix, not a retirement*
+(`feature/aim-solve-reconciliation` → main).
+
+All seven aim-solve call sites classified — advisory target and legitimate preview, both
+confirmed correct and kept. One real bug found: pitch/flop preview locked to the pin while
+the amplitude floor (`POWER_POCKET_LO`) meant a correctly-executed pull always overshot it —
+fixed by flooring the preview to match, verified against a tick-hit outcome at three club/pin
+combinations. Club Coach confirmed already reading only actual outcomes, no changes needed.
+
+Original framing (kept for history): once every shot type reads power from amplitude,
+`recommended_power()` and `solve_committed_power()` stop being authoritative. They still
+have a role — a "recommended club and swing size for this distance" advisory — but that is
+a repurposing, not a deletion.
 
 ### Phase 6 — Feel pass
 Only after every shot type is on the new model. Tune amplitude sensitivity per club, the
@@ -168,8 +175,8 @@ it changes how "acceptance" reads for phases 1–3 individually.
 
 ## Open items carried from the design doc
 
-- Whether `recommended_power`'s post-rework role is advisory-only or removed entirely
-  (Phase 5 question, not decided yet).
+- **Phase 5:** `recommended_power` / `solve_committed_power` kept as advisory target +
+  aim preview. Not removed.
 - Exact shape of the amplitude→power curve per club — linear is the starting assumption,
   Phase 1's harness should confirm or correct it against how the pad actually feels.
 - **Logged (Phase 4):** PERFECT chip still gets +6% via `contact_multiplier` — not fixed;
