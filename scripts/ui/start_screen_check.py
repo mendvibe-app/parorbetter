@@ -72,7 +72,8 @@ def main() -> int:
     assert "green_pressed.connect(_on_practice_green)" in MAIN
     assert "stroke_play_pressed" in MAIN
     assert "load_practice_green()" in MAIN
-    assert "GameState.in_practice()" in MAIN
+    assert "GameState.abandon_run()" in MAIN
+    assert "func abandon_run" in GS
     assert "reset_run(stroke_play)" in MAIN or "reset_run(p_stroke_play" in GS
 
     assert "ROUND COMPLETE" in GO

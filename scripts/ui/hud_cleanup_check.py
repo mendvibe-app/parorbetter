@@ -22,6 +22,18 @@ def main() -> int:
     assert "get_aim_radius_yards" not in HUD, "○radius text retired from AdaptLabel"
     assert "Strokes %d" in HUD
 
+    # Menu exits any mode (Survival / stroke / practice) — not practice-only.
+    assert "menu_btn.visible = true" in HUD
+    refresh_fn = HUD.split("func refresh(")[1].split("func ")[0]
+    assert "menu_btn.visible = false" not in refresh_fn
+    assert "menu_pressed" in HUD
+    main = (ROOT / "scripts/main.gd").read_text(encoding="utf-8")
+    assert "menu_pressed.connect(_return_to_start)" in main
+    assert "GameState.abandon_run()" in main
+    gs = (ROOT / "scripts/autoload/game_state.gd").read_text(encoding="utf-8")
+    assert "func abandon_run" in gs
+    assert "run_active = false" in gs.split("func abandon_run")[1].split("func ")[0]
+
     assert "form_label()" not in CTRL, "aim feedback must not cram form label"
     assert "○%d yd" not in CTRL and "○%d" not in CTRL, "dispersion radius stays on the circle"
     assert "_show_wind_flag" in CTRL

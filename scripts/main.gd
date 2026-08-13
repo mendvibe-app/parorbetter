@@ -39,9 +39,7 @@ func _ready() -> void:
 func _return_to_start() -> void:
 	AudioBus.stop_music()
 	game_over.hide_panel()
-	if GameState.in_practice():
-		GameState.exit_range_mode()
-		GameState.exit_green_mode()
+	GameState.abandon_run()
 	start_screen.show_screen()
 
 
