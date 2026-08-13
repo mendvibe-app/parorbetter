@@ -27,5 +27,6 @@ _pixellab_init/
 _pixellab_out/
 *.b64
 android/build/
+debug/
 debug/*.png
 debug/*.png.import
