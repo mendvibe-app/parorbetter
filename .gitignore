@@ -15,6 +15,7 @@ Thumbs.db
 *.swp
 .vscode/
 .idea/
+.cursor/mcp.json
 
 # Python (contract-check scripts)
 __pycache__/
