@@ -195,24 +195,32 @@ func _on_scroll_gui_input(event: InputEvent) -> void:
 
 
 func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
-	## Effort copy for this pin. Full (≥95%) is unlabeled; oversized clubs run through.
-	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
+	## Effort copy for this pin. Recommended-full is unlabeled; oversized clubs run through.
 	var star := "★ " if is_suggested else ""
+	var label := BallPhysics.club_short_name(name)
+	var effort := _row_effort_label(name, max_yd)
+	if effort.is_empty():
+		return "%s%s  —  %d yd" % [star, label, int(max_yd)]
+	return "%s%s  —  %d yd · %s" % [star, label, int(max_yd), effort]
+
+
+func _row_effort_label(name: String, max_yd: float) -> String:
+	## PLAYTEST TARGET: band edges. Real golf effort language, not a raw %.
+	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
 	if (
 		_lie != "Green"
 		and not BallPhysics.is_shortest_available(max_yd, _lie)
 		and pct < BallPhysics.POWER_POCKET_LO
 	):
-		return "%s%s  —  %d yd · runs through" % [star, name, int(max_yd)]
-	if pct >= 0.95:
-		return "%s%s  —  %d yd" % [star, name, int(max_yd)]
-	# PLAYTEST TARGET: band edges. Real golf effort language, not a raw %.
-	var descriptor := "tight — one more club plays smoother"
+		return "it runs"
+	# POWER_POCKET_HI (0.92) is the max recommended_power ever returns — 0.95 was dead.
+	if pct >= BallPhysics.POWER_POCKET_HI:
+		return ""
 	if pct >= 0.85:
-		descriptor = "smooth"
-	elif pct >= 0.70:
-		descriptor = "3/4"
-	return "%s%s  —  %d yd · %s" % [star, name, int(max_yd), descriptor]
+		return "smooth"
+	if pct >= 0.70:
+		return "3/4"
+	return "ease up"
 
 
 func _tendency_tag(name: String) -> String:
@@ -300,7 +308,9 @@ func _rebuild_list(prefer_name: String = "") -> void:
 		_attach_tendency_icon(btn, name)
 		btn.custom_minimum_size = Vector2(0, UiScale.TOUCH_MIN)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.add_theme_font_size_override("font_size", UiScale.BODY)
+		# Tight "ease up" is +3px over BODY 48; CAPTION 40 fits. Other bands stay BODY.
+		var type_px := UiScale.CAPTION if btn.text.ends_with("ease up") else UiScale.BODY
+		btn.add_theme_font_size_override("font_size", type_px)
 		btn.set_meta("club_name", name)
 		if is_suggested:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1))

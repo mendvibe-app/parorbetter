@@ -18,6 +18,11 @@ def main() -> int:
     assert "_on_row_pressed" in SRC, "ignore select after scroll drag"
     assert "view_h - 48.0" in SRC or "view_h - 48" in SRC, "panel capped to viewport"
     assert "move_child(_club_select, -1)" in CTRL, "club select modal on top of UI layer"
+    assert '"ease up"' in SRC, "tight band copy"
+    assert '"it runs"' in SRC, "through-club copy"
+    assert '"smooth"' in SRC and '"3/4"' in SRC, "effort bands"
+    assert "POWER_POCKET_HI" in SRC, "unlabeled = recommended full, not a dead 0.95 gate"
+    assert 'ends_with("ease up")' in SRC, "CAPTION override only on tight rows"
     print("club_select_check: ok")
     return 0
 
