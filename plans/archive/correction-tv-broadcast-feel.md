@@ -1,12 +1,20 @@
 # Correction — TV Broadcast Feel: Putt Zoom, Hole-Out, Global Pacing
 
-**Track:** correction, found live during playtest
-**Branch:** three separate branches recommended — different systems, different risk levels
-**Size:** small / small / potentially large. Written up for tomorrow, not implemented tonight.
+## Status: CLOSED (partial ship; remainder deferred)
 
-Three distinct findings from the same playtest note. Kept in one doc because they share a
-theme (matching real broadcast golf feel) but they touch different code and should ship as
-separate, independently-attributable changes.
+**Closed 2026-08-14** — board clean. Reopen items below after free play if needed.
+
+| Item | Status |
+|------|--------|
+| 1b Hole-out zoom punch → banner | **Shipped** (`fix/tv-hole-out-feel`) |
+| 2 Ball cup drop visual | **Shipped** (same) |
+| 1a Putt aim curve (non-linear last feet) | Deferred — reopen if address putts feel flat |
+| 3 Global pacing (`GRAVITY_PX` / roll friction) | Deferred — reopen only with explicit GO |
+
+**Track:** correction, found live during playtest  
+Original three findings share a broadcast-feel theme; ship independently.
+
+---
 
 ---
 

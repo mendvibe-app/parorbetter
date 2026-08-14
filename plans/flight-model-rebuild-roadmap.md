@@ -1,7 +1,7 @@
 # Flight Model Rebuild — Roadmap
 
-**Status:** Phase 7 code/history shipped. Flight rebuild phases 0–7 closed on the code side;
-device feel checklist remains playtest-only. Reverse-guard / multi-exit kept as safety nets.
+**Status:** COMPLETE (code). Phases 0–7 shipped. Device feel checklist closed as deferred —
+reopen if free play finds issues. Reverse-guard / multi-exit kept as safety nets.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Supersedes:** short-game-roadmap.md Phases 2–6 (see *Relationship to existing work*)
 

@@ -1,37 +1,35 @@
-﻿# Plans — active backlog
+# Plans — board
 
-Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps and
-**open** work stay here.
+**Status: clean.** All active implementation and open playtest tickets are closed or deferred.
+Reopen a plan (or add a new correction) after free play if something needs work.
 
----
-
-## Numbered tracks (code closed)
-
-| Track | Status | Spec |
-|-------|--------|------|
-| Flight model rebuild | Phases 0–7 code shipped; device feel checklist | `flight-model-rebuild-roadmap.md` |
-| Swing input rework | Phases 0–6 code shipped; device feel checklist | `swing-input-rework-roadmap.md` |
-| Design companion | Settled mechanic for swing track (not an epic) | `design-effort-based-swing.md` |
+Shipped epic/correction specs live in [`archive/`](archive/).
 
 ---
 
-## Open corrections / QA
+## Living roadmaps (reference only)
 
-| Plan | Status |
-|------|--------|
-| `correction-tv-broadcast-feel.md` | Hole-out (1b+2) shipped; optional putt aim curve (1a); global pacing needs GO |
-| `correction-swipe-sign-convention.md` | **OPEN QA** — playtest swipe sign vs real draw/fade |
-| `epic-contact-quality-haptics.md` | Code shipped; **Android/iOS device smoke** still open |
-
----
-
-## Deferred / unplanned
-
-- **Bag calibration Part B** — unapproved bag rescale
-- **Unplayable lie / drop** — no epic written
+| Doc | Status |
+|-----|--------|
+| `flight-model-rebuild-roadmap.md` | COMPLETE (code) — Phases 0–7 |
+| `swing-input-rework-roadmap.md` | COMPLETE (code) — Phases 0–6 |
+| `design-effort-based-swing.md` | Design companion (not an open epic) |
 
 ---
 
-## Recently shipped
+## Deferred (no active ticket)
 
-Short Game practice mode (12 stations), menu abandon, pin-primary zoom, aim-commit wind, tip priority, hole-out drop.
+Not on the board until you re-open:
+
+- Bag calibration **Part B** (unapproved bag rescale)
+- Unplayable lie / drop (no epic written)
+- TV broadcast leftovers (putt aim curve, global pacing) — see archive
+- Swipe-sign convention QA — see archive
+- Haptics device smoke — see archive
+
+---
+
+## Archive
+
+`plans/archive/` holds closed phase epics, shipped corrections, and deferred playtest
+docs (closed 2026-08-14 so the board stays empty until free play).

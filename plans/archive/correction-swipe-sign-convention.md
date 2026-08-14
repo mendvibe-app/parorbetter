@@ -1,9 +1,12 @@
 # Correction addendum — verify swipe sign convention before finishing
 
-## Status: OPEN (QA)
-Direction rework is shipped (`02facf3`); this is the remaining sign playtest. **Do not assume the
-current sign convention is correct — it has not been physically verified and
-may be backwards.**
+## Status: CLOSED (playtest deferred)
+
+**Closed 2026-08-14** — open device QA parked so the board is clean. Reopen this file
+(or a new correction) after free play if draw/fade sign feels wrong.
+
+Direction rework is shipped (`02facf3`). Original note: do not assume the current sign
+convention is correct — it has not been physically verified and may be backwards.
 
 ## The issue
 

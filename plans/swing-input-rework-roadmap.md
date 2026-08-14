@@ -1,7 +1,8 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 6 code closed. Amplitude power across all shot types; aim-solve kept as
-advisory/preview (not retired). Device feel checklist remains playtest-only.
+**Status:** COMPLETE (code). Phases 0–6 shipped. Amplitude power across all shot types;
+aim-solve kept as advisory/preview. Device feel checklist closed as deferred — reopen if
+free play finds issues.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
