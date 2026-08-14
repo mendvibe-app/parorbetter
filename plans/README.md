@@ -1,4 +1,4 @@
-# Plans — active backlog
+﻿# Plans — active backlog
 
 Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps and
 **open** work stay here.
@@ -13,16 +13,13 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 | Swing input rework | Phases 0–6 code shipped; device feel checklist | `swing-input-rework-roadmap.md` |
 | Design companion | Settled mechanic for swing track (not an epic) | `design-effort-based-swing.md` |
 
-No further numbered phase gates remaining — next work is **open corrections / QA**.
-
 ---
 
 ## Open corrections / QA
 
 | Plan | Status |
 |------|--------|
-| `correction-approach-zoom.md` | **Next implementable** — short approach camera too wide |
-| `correction-club-select-tip-priority.md` | Not implemented — tempo tip dominates club icons |
+| `correction-club-select-tip-priority.md` | **Next implementable** — tempo tip dominates club icons |
 | `correction-tv-broadcast-feel.md` | Not implemented — putt zoom / hole-out / pacing (3 items) |
 | `correction-swipe-sign-convention.md` | **OPEN QA** — playtest swipe sign vs real draw/fade |
 | `epic-contact-quality-haptics.md` | Code shipped; **Android/iOS device smoke** still open |
@@ -41,6 +38,6 @@ No further numbered phase gates remaining — next work is **open corrections / 
 
 ## Archive
 
-`plans/archive/` holds closed phase epics and shipped corrections (including putt-stale
-flight metrics). Prefer roadmap “Shipped” / “Corrections” sections for status; open the
-archive only when you need the original build notes.
+`plans/archive/` holds closed phase epics and shipped corrections (including approach
+zoom and putt-stale flight metrics). Prefer roadmap status notes; open the archive when
+you need original build notes.
