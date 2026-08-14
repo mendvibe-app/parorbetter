@@ -1,7 +1,7 @@
 # Flight Model Rebuild — Roadmap
 
-**Status:** Phase 6 shipped. Dead helpers gone; reverse-guard / multi-exit kept as safety nets
-(Phase 5). Remaining track work per phases below / open follow-ups.
+**Status:** Phase 7 code/history shipped. Flight rebuild phases 0–7 closed on the code side;
+device feel checklist remains playtest-only. Reverse-guard / multi-exit kept as safety nets.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Supersedes:** short-game-roadmap.md Phases 2–6 (see *Relationship to existing work*)
 
@@ -300,12 +300,15 @@ out properly; do not start from this merge.
 ---
 
 ### Phase 7 — Feel pass and history reset
-Only after the model is trustworthy. Focused playtesting for forgiveness and feel, plus a
-Club Coach history reset — per-club tendency data collected before Phase 1 describes a game
-that no longer exists.
+**Shipped (code/history)** (`feature/flight-phase7-feel-history`). Club Coach
+`user://club_coach.cfg` now carries `schema_version` (v2); mismatch wipes pre–rebuild
+tendency data. `decisions.md` logs the post-rebuild model and stock bag targets.
 
-**Acceptance:** gapping feels right across the bag; Club Coach advice matches current
-behaviour; `decisions.md` updated with the new model and its calibration targets.
+**Device feel (playtest, not a code gate):** gapping still reads OK; after a few holes,
+Club Coach tips reflect the current model only. If gapping fails, file a correction — do
+not re-open physics from this phase.
+
+**Acceptance (met for code):** history reset + decisions log. Feel = Matt device checklist.
 
 ---
 
