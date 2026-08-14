@@ -10,12 +10,15 @@ const AIM_NUDGE_PX := 14.0
 const CUP_RADIUS := 2.4
 ## Course pin height in px (readable from fairway; not survey-true ~7 ft).
 const PIN_FLAG_H_PX := 32.0
-## Full-shot "up and in" camera — fractions of pre-shot / corridor base (not absolute).
-## Aim framing got tighter (corridor); absolute 0.55 launch was zooming *out* on hit.
-const FLIGHT_LAUNCH_FRAC := 0.90  ## mild open from aim at launch
-const FLIGHT_APEX_FRAC := 0.95
+## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
+## Launch holds aim (1.0) — 0.90 open caused zoom-out-then-in once pin-primary aim got tight.
+const FLIGHT_LAUNCH_FRAC := 1.0  ## hold aim framing at strike
+const FLIGHT_APEX_FRAC := 1.05  ## mild tighten through apex (never open past aim)
 const FLIGHT_LAND_FRAC := 1.28  ## ends tighter than aim ("up and in")
 const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
+## Non-putt aim: pin-primary through APPROACH_HI, ease to corridor by LONG_HI.
+const APPROACH_ZOOM_HI := 150.0
+const APPROACH_ZOOM_LONG := 220.0
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 ## Putt roll camera: hold stroke-start frame so the ball rolls through a stable shot
@@ -1081,12 +1084,11 @@ func _corridor_zoom_level() -> float:
 
 
 func _approach_pin_zoom(pin_yd: float, view_min: float) -> float:
-	## Distance-driven zoom for short non-putt shots (higher = closer). Frames
-	## ball→pin with room for aim cone / land marks — softer than putt formula.
-	## Playtest: first pass (0.72 / 0.50 / 5.5) still felt a touch wide on wedges.
+	## Distance-driven zoom for non-putt approaches (higher = closer). Primary
+	## framing through short par-3s; softens only as pin yards grow (pin-primary).
 	var dist := BallPhysics.yards_to_pixels(maxf(pin_yd, 8.0))
-	var half_span := maxf(dist * 0.62 + 28.0, 58.0)
-	return clampf(view_min * 0.55 / half_span, 1.20, 6.5)
+	var half_span := maxf(dist * 0.52 + 18.0, 48.0)
+	return clampf(view_min * 0.62 / half_span, 1.35, 7.5)
 
 
 func _flight_z_launch() -> float:
@@ -2725,27 +2727,21 @@ func _desired_camera_zoom() -> Vector2:
 		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
 		z = clampf(view_min * 0.52 / half_span, 2.6, 42.0)
 	else:
-		# Full / approach: corridor owns long-tee framing; short approaches blend in
-		# pin-distance zoom (same idea as putts). Green book (pin<=80) used to only
-		# multiply z_cor by 0.78–0.92 — wide holes stayed under-zoomed on 30–50 yd wedges.
+		# Pin-primary: tight ball→pin framing through short par-3s (~150 yd), ease to
+		# corridor only for long tee (150→220). Old band ended at 90 → 109 yd stayed corridor.
 		var z_cor := _corridor_zoom_level()
 		var z_pin := _approach_pin_zoom(pin_yd, view_min)
-		# TempoGrade.CHIP_YD..90 yd: weight toward pin framing. Above 90: corridor-first.
-		var short_hi := 90.0
-		var blend := (
+		var t_long := clampf(
+			(pin_yd - APPROACH_ZOOM_HI) / maxf(APPROACH_ZOOM_LONG - APPROACH_ZOOM_HI, 1.0),
+			0.0,
 			1.0
-			- clampf((pin_yd - TempoGrade.CHIP_YD) / maxf(short_hi - TempoGrade.CHIP_YD, 1.0), 0.0, 1.0)
 		)
-		var z_blended := lerpf(z_cor, z_pin, blend * 0.95)
+		# t=0 pin; t=1 corridor. Long tee slightly open (0.88).
+		z = lerpf(z_pin, z_cor * 0.88, t_long)
 		if _aiming and _should_show_green_book():
-			# Slight widen so book + landing stay readable (on top of blended base).
+			# Mild widen for book readability — must not wipe pin framing.
 			var book_w := clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0)
-			z = z_blended * lerpf(0.98, 0.93, book_w)
-		elif pin_yd <= short_hi:
-			z = z_blended
-		else:
-			# Long tee: a touch wider for aim cone, still corridor-first
-			z = z_cor * 0.88
+			z *= lerpf(0.98, 0.94, book_w)
 	# Pinch-to-zoom override — aim phase only; auto-framing owns zoom everywhere else.
 	if _aiming and _user_zoom_mult != 1.0:
 		z = clampf(z * _user_zoom_mult, PINCH_ABS_ZOOM_MIN, PINCH_ABS_ZOOM_MAX)
@@ -2768,8 +2764,8 @@ func _desired_camera_look() -> Vector2:
 
 
 func _flight_camera_zoom() -> Vector2:
-	## Mild open through apex; snap tighter than aim on descent (TV "up and in").
-	## Scales from _flight_zoom_base so corridor aim never jumps to an old absolute wide shot.
+	## Hold aim at launch; mild tighten through apex; land tighter ("up and in").
+	## Monotonic closer: launch ≥ aim base, never open past aim then punch in.
 	var t := ball.air_progress()
 	var z: float
 	if ball.state == GolfBall.State.ROLL or t >= 1.0:
@@ -2803,9 +2799,10 @@ func _follow_ball() -> void:
 		tw_p.tween_property(camera, "global_position", _putt_cam_look, 0.18).set_trans(Tween.TRANS_SINE)
 		tw_p.parallel().tween_property(camera, "zoom", _putt_cam_zoom, 0.2)
 		return
-	# Capture pre-shot framing; flight fracs open slightly then land tighter than aim.
-	_flight_zoom_base = maxf(camera.zoom.x, _corridor_zoom_level() * 0.9)
-	var z := Vector2(_flight_z_launch(), _flight_z_launch())
+	# Seed from aim framing only — never max with corridor (that fought tight pin aim).
+	# Prefer max(live, desired) so a lagging lerp still picks up pin-primary aim.
+	_flight_zoom_base = maxf(camera.zoom.x, _desired_camera_zoom().x)
+	var z := Vector2(_flight_z_launch(), _flight_z_launch())  # launch frac 1.0 = hold aim
 	var tw := create_tween()
 	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
 	tw.parallel().tween_property(camera, "zoom", z, 0.2)

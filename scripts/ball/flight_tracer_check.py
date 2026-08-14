@@ -8,9 +8,9 @@ HOLE = Path(__file__).resolve().parents[1].joinpath("course/hole_controller.gd")
 
 
 def flight_zoom(t: float, state: str = "FLIGHT", base: float = 1.2) -> float:
-    """Mirror HoleController._flight_camera_zoom (relative to pre-shot base)."""
-    launch = base * 0.90
-    apex = base * 0.95
+    """Mirror HoleController._flight_camera_zoom (relative to pre-shot aim base)."""
+    launch = base * 1.0  # hold aim — never open past base
+    apex = base * 1.05
     land = base * 1.28
     start = 0.55
     if state == "ROLL" or t >= 1.0:
@@ -68,23 +68,28 @@ def main() -> None:
     assert "flight_right * spin" in BALL or "roll_right * spin" in BALL
     assert "Vector2(-_launch_dir.y, _launch_dir.x)" in BALL
 
-    assert "const FLIGHT_LAUNCH_FRAC := 0.90" in HOLE
+    assert "const FLIGHT_LAUNCH_FRAC := 1.0" in HOLE
+    assert "const FLIGHT_APEX_FRAC := 1.05" in HOLE
     assert "const FLIGHT_LAND_FRAC := 1.28" in HOLE
     assert "const FLIGHT_ZOOM_IN_START := 0.55" in HOLE
     assert "func _flight_camera_zoom()" in HOLE
     assert "_flight_zoom_base" in HOLE
+    # Follow seeds from aim zoom, not corridor floor (pin-primary must not pull out).
+    follow = HOLE.split("func _follow_ball")[1].split("func ")[0]
+    assert "_desired_camera_zoom()" in follow
+    assert "_corridor_zoom_level() * 0.9" not in follow
     # Pure strike must not yank zoom back to aim framing mid-flight.
     pure = HOLE.split("func _on_pure_strike")[1].split("func ")[0]
     assert 'tween_property(camera, "zoom"' not in pure
 
     base = 1.2
-    assert abs(flight_zoom(0.0, base=base) - base * 0.90) < 1e-6
-    assert abs(flight_zoom(0.55, base=base) - base * 0.95) < 1e-6
+    assert abs(flight_zoom(0.0, base=base) - base * 1.0) < 1e-6
+    assert abs(flight_zoom(0.55, base=base) - base * 1.05) < 1e-6
     assert abs(flight_zoom(1.0, base=base) - base * 1.28) < 1e-6
     assert abs(flight_zoom(0.5, "ROLL", base=base) - base * 1.28) < 1e-6
-    # Land tighter than launch (never zooms out through the shot).
+    # Monotonic closer: launch holds base, never opens past aim, land tightest.
+    assert flight_zoom(0.0, base=base) >= base - 1e-9
     assert flight_zoom(1.0, base=base) > flight_zoom(0.0, base=base)
-    # Descent is the tight beat — mid-descent closer than apex.
     assert flight_zoom(0.85, base=base) > flight_zoom(0.4, base=base)
     print("flight_tracer_check: ok")
 

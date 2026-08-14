@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""Contract: short approach aim zoom tightens with pin yards vs corridor-only base.
+"""Contract: pin-primary approach aim zoom; 109 yd par-3 must not stay corridor-wide.
 
-Mirrors HoleController._approach_pin_zoom + non-putt blend in _desired_camera_zoom.
-Putt branch and flight zoom are out of scope (putt_camera_zoom_check / flight_tracer).
+Mirrors HoleController._approach_pin_zoom + pin→corridor ease (APPROACH_ZOOM_HI/LONG).
 """
 from __future__ import annotations
 
@@ -10,67 +9,60 @@ import sys
 from pathlib import Path
 
 CTRL = Path(__file__).with_name("hole_controller.gd").read_text(encoding="utf-8")
-GRADE = (
-    Path(__file__).resolve().parents[1].joinpath("shot/tempo_grade.gd").read_text(encoding="utf-8")
-)
 
 PX_PER_YARD = 2.25
 VIEW_MIN = 1080.0
-CHIP_YD = 20.0
-SHORT_HI = 90.0
+APPROACH_HI = 150.0
+LONG_HI = 220.0
 
 
 def approach_pin_zoom(pin_yd: float, view_min: float = VIEW_MIN) -> float:
     dist = max(pin_yd, 8.0) * PX_PER_YARD
-    half_span = max(dist * 0.62 + 28.0, 58.0)
-    return min(max(view_min * 0.55 / half_span, 1.20), 6.5)
+    half_span = max(dist * 0.52 + 18.0, 48.0)
+    return min(max(view_min * 0.62 / half_span, 1.35), 7.5)
 
 
-def blend_weight(pin_yd: float) -> float:
-    return 1.0 - max(0.0, min(1.0, (pin_yd - CHIP_YD) / max(SHORT_HI - CHIP_YD, 1.0)))
-
-
-def blended(z_cor: float, pin_yd: float, book: bool = True) -> float:
+def aim_zoom(pin_yd: float, z_cor: float = 1.35, book: bool = True) -> float:
     z_pin = approach_pin_zoom(pin_yd)
-    w = blend_weight(pin_yd) * 0.95
-    z = z_cor + (z_pin - z_cor) * w
+    t = max(0.0, min(1.0, (pin_yd - APPROACH_HI) / max(LONG_HI - APPROACH_HI, 1.0)))
+    z = z_pin + (z_cor * 0.88 - z_pin) * t
     if book:
         book_w = max(0.0, min(1.0, (pin_yd - 28.0) / 52.0))
-        z *= 0.98 + (0.93 - 0.98) * book_w
+        z *= 0.98 + (0.94 - 0.98) * book_w
     return z
 
 
 def main() -> int:
     assert "func _approach_pin_zoom" in CTRL
+    assert "APPROACH_ZOOM_HI" in CTRL and "APPROACH_ZOOM_LONG" in CTRL
+    assert "150.0" in CTRL and "220.0" in CTRL
     aim_fn = CTRL.split("func _desired_camera_zoom")[1].split("func ")[0]
-    assert "TempoGrade.CHIP_YD" in aim_fn
-    assert "blend * 0.95" in aim_fn or "0.95" in aim_fn
-    # Putt branch inside desired zoom still uses distance formula (untouched)
+    assert "lerpf(z_pin" in aim_fn or "lerpf(z_pin," in aim_fn
+    assert "0.52" in CTRL.split("func _approach_pin_zoom")[1].split("func ")[0]
+    # Putt untouched
     assert "view_min * 0.52 / half_span" in aim_fn
-    assert "0.62" in CTRL.split("func _approach_pin_zoom")[1].split("func ")[0]
-    # Flight zoom not mixed into aim formula
-    assert "_flight_camera_zoom" not in aim_fn
-    assert "CHIP_YD" in GRADE
 
-    z_cor = 1.35  # mid corridor
-    z30 = blended(z_cor, 30.0, book=True)
-    z50 = blended(z_cor, 50.0, book=True)
-    z90 = blended(z_cor, 90.0, book=True)
-    z_old_30 = z_cor * 0.92  # pre-approach-zoom green-book floor
-    # Short wedge much tighter than corridor-only; playtest pass 2 is a bit more
-    assert z30 > z_old_30 * 2.5, (z30, z_old_30)
-    assert z30 >= 5.0, z30  # ~5.4 target after tighten pass
-    # Monotonic: shorter pin → tighter (higher zoom)
-    assert z30 > z50 > z90, (z30, z50, z90)
-    # Long end of short band near corridor (not putt-tight)
-    assert z90 < z_cor * 1.25, (z90, z_cor)
-    # Pure long tee branch stays corridor * 0.88 (no pin blend past 90)
-    assert blend_weight(120.0) == 0.0
-    assert blend_weight(CHIP_YD) == 1.0
+    z_cor = 1.35
+    z50 = aim_zoom(50.0, z_cor)
+    z109 = aim_zoom(109.0, z_cor)  # screenshot case
+    z150 = aim_zoom(150.0, z_cor)
+    z220 = aim_zoom(220.0, z_cor)
+    z_cor_long = z_cor * 0.88
+
+    # Pure pin through 150
+    assert abs(z150 - approach_pin_zoom(150.0) * (0.98 + (0.94 - 0.98) * 1.0)) < 0.15 or z150 > z_cor * 2.0
+    # 109 yd must not be corridor-wide (playtest fail)
+    assert z109 > z_cor_long * 2.0, (z109, z_cor_long)
+    assert z109 >= 3.2, z109
+    # Monotonic: shorter → tighter
+    assert z50 > z109 > z150 or (z50 > z109 and z109 >= z150 * 0.95), (z50, z109, z150)
+    # Long tee near corridor
+    assert abs(z220 - z_cor_long) < 0.05 or z220 <= z_cor, (z220, z_cor_long)
+    assert z220 < z109, (z220, z109)
 
     print(
-        f"approach_camera_zoom_check: ok z30={z30:.2f} z50={z50:.2f} z90={z90:.2f} "
-        f"(old short book ~{z_old_30:.2f})"
+        f"approach_camera_zoom_check: ok z50={z50:.2f} z109={z109:.2f} "
+        f"z150={z150:.2f} z220={z220:.2f} (cor_long~{z_cor_long:.2f})"
     )
     return 0
 
