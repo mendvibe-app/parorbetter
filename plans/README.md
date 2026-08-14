@@ -25,15 +25,14 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 
 ---
 
-## Deferred / unplanned (no active plan file)
+## Deferred / unplanned
 
 - **Bag calibration Part B** — unapproved bag rescale
-- **`feature/short-game-practice`** — branch only
-- **`feature/menu-abandon-run`** — branch only
+- **`feature/short-game-practice`** — branch only (next product candidate)
 - **Unplayable lie / drop** — no epic written
 
 ---
 
-## Archive
+## Recently shipped (not open)
 
-Includes approach zoom, putt-stale metrics, tip priority, recommended-power wind (full path).
+Menu abandon mid-session, pin-primary approach zoom, aim-commit wind, tip priority, hole-out drop.
