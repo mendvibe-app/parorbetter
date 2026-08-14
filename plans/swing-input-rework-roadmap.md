@@ -1,7 +1,7 @@
 # Swing Input Rework — Roadmap
 
-**Status:** Phase 5 shipped. Amplitude power across all shot types; aim-solve kept as
-advisory/preview (not retired). Remaining: Phase 6.
+**Status:** Phase 6 code closed. Amplitude power across all shot types; aim-solve kept as
+advisory/preview (not retired). Device feel checklist remains playtest-only.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Companion to:** `design-effort-based-swing.md` (the settled mechanic) and
 `flight-model-rebuild-roadmap.md` (a parallel, mostly-independent track — see *Sequencing*)
@@ -147,11 +147,18 @@ have a role — a "recommended club and swing size for this distance" advisory �
 a repurposing, not a deletion.
 
 ### Phase 6 — Feel pass
-Only after every shot type is on the new model. Tune amplitude sensitivity per club, the
-shape of the overswing cost curve, and whether "the fine line of keeping tempo while swinging
-harder" — the thing that started this whole rework — actually feels like that line in play.
-This is where the qualitative goal gets checked against the qualitative complaint that
-prompted it.
+**Shipped (code/docs close).** Phases 0–5 already put every shot type on amplitude power;
+no further constant retune in this close-out. Linear amplitude→power remains the starting
+map; overswing mash tax and per-club curves stay playtest knobs if feel fails.
+
+**Device feel (playtest, not a code gate):**
+- Full / pitch / flop / punch: target mark vs pocket, deliberate overswing cost readable
+- Chip / putt: pull-length still owns pace; mishit marks clear
+- Logged not fixed: PERFECT chip still +6% via `contact_multiplier` — revisit if pure chips
+  play long
+- Does “harder swing + hold tempo” feel like the intended fine line?
+
+**Acceptance (met for code):** track closed on paper; feel = Matt device checklist.
 
 ---
 
