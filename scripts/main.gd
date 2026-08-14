@@ -25,6 +25,8 @@ func _ready() -> void:
 		start_screen.stroke_play_pressed.connect(_on_stroke_play)
 	start_screen.green_pressed.connect(_on_practice_green)
 	start_screen.range_pressed.connect(_on_practice_range)
+	if start_screen.has_signal("short_game_pressed"):
+		start_screen.short_game_pressed.connect(_on_practice_short_game)
 	start_screen.coach_pressed.connect(_on_coach)
 	debug_panel.skip_hole.connect(func(): hole_controller.skip_hole())
 	debug_panel.jump_hole.connect(_on_jump)
@@ -65,6 +67,13 @@ func _on_practice_range() -> void:
 	game_over.hide_panel()
 	AudioBus.start_music()
 	hole_controller.load_range()
+
+
+func _on_practice_short_game() -> void:
+	start_screen.hide_screen()
+	game_over.hide_panel()
+	AudioBus.start_music()
+	hole_controller.load_short_game()
 
 
 func _start_run(stroke_play: bool = false) -> void:
@@ -110,5 +119,7 @@ func _on_debug_reload() -> void:
 		hole_controller.load_range()
 	elif GameState.green_mode:
 		hole_controller.load_practice_green()
+	elif GameState.short_game_mode:
+		hole_controller.load_short_game()
 	else:
 		hole_controller.load_hole(GameState.current_hole)

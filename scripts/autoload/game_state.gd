@@ -66,6 +66,8 @@ var tap_in_break: float = 0.12
 var range_mode: bool = false
 ## Practice green — infinite putt practice, no lives / hole advance.
 var green_mode: bool = false
+## Short-game practice — station lie/distance + aim/shot-type, infinite reset.
+var short_game_mode: bool = false
 ## 18 Hole Round (stroke play) — no lives, always finish 18. False = Survival.
 var stroke_play_mode: bool = false
 
@@ -141,6 +143,7 @@ func reset_run(p_stroke_play: bool = false) -> void:
 	tempo_guide_forced = false
 	range_mode = false
 	green_mode = false
+	short_game_mode = false
 	stroke_play_mode = p_stroke_play
 	course_seed = randi()
 	_regenerate_course()
@@ -298,7 +301,7 @@ func active_tee_set_for_hole(hole_index: int) -> HoleData.TeeSet:
 	## Range / green practice: White. Optional debug_tee_set override.
 	if debug_tee_set != null:
 		return debug_tee_set as HoleData.TeeSet
-	if range_mode or green_mode:
+	if range_mode or green_mode or short_game_mode:
 		return HoleData.TeeSet.WHITE
 	var t := HoleGenerator.difficulty_t(hole_index, HOLE_COUNT)
 	if t < 0.33:
@@ -564,11 +567,12 @@ func jump_to_hole(hole_index: int) -> void:
 
 
 func in_practice() -> bool:
-	return range_mode or green_mode
+	return range_mode or green_mode or short_game_mode
 
 
 func enter_range_mode() -> void:
 	green_mode = false
+	short_game_mode = false
 	range_mode = true
 	stroke_play_mode = false
 	run_active = true
@@ -580,6 +584,7 @@ func exit_range_mode() -> void:
 
 func enter_green_mode() -> void:
 	range_mode = false
+	short_game_mode = false
 	green_mode = true
 	stroke_play_mode = false
 	run_active = true
@@ -589,8 +594,21 @@ func exit_green_mode() -> void:
 	green_mode = false
 
 
+func enter_short_game_mode() -> void:
+	range_mode = false
+	green_mode = false
+	short_game_mode = true
+	stroke_play_mode = false
+	run_active = true
+
+
+func exit_short_game_mode() -> void:
+	short_game_mode = false
+
+
 ## Leave mid-session without writing records — Menu / Restart → start screen.
 func abandon_run() -> void:
 	run_active = false
 	range_mode = false
 	green_mode = false
+	short_game_mode = false

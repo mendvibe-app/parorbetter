@@ -38,6 +38,7 @@ def main() -> int:
     assert "signal stroke_play_pressed" in SS
     assert "signal green_pressed" in SS
     assert "signal range_pressed" in SS
+    assert "signal short_game_pressed" in SS
     assert "func show_screen" in SS
     assert "format_score_to_par" in SS
     assert "Survival" in SS or "stroke_play" in SS
@@ -72,8 +73,12 @@ def main() -> int:
     assert "green_pressed.connect(_on_practice_green)" in MAIN
     assert "stroke_play_pressed" in MAIN
     assert "load_practice_green()" in MAIN
-    assert "GameState.abandon_run()" in MAIN
+    assert "load_short_game()" in MAIN
+    assert "short_game_mode" in GS
+    assert "func enter_short_game_mode" in GS
     assert "func abandon_run" in GS
+    assert "short_game_mode = false" in GS.split("func abandon_run")[1].split("func ")[0]
+    assert "GameState.abandon_run()" in MAIN
     assert "reset_run(stroke_play)" in MAIN or "reset_run(p_stroke_play" in GS
 
     assert "ROUND COMPLETE" in GO
