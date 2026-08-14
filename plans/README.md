@@ -19,7 +19,7 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 
 | Plan | Status |
 |------|--------|
-| `correction-tv-broadcast-feel.md` | **Next implementable** — putt zoom / hole-out / pacing (3 items; split) |
+| `correction-tv-broadcast-feel.md` | Hole-out polish (1b+2) shipped; remaining: putt aim curve optional, global pacing needs GO |
 | `correction-swipe-sign-convention.md` | **OPEN QA** — playtest swipe sign vs real draw/fade |
 | `epic-contact-quality-haptics.md` | Code shipped; **Android/iOS device smoke** still open |
 | `correction-recommended-power-wind.md` | Partial: `recommended_power` shipped; **aim/commit path** still world-Y wind |
@@ -38,3 +38,4 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 ## Archive
 
 Closed plans include approach zoom, putt-stale F1 metrics, club-select tip priority.
+

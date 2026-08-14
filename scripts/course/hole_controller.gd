@@ -2956,13 +2956,16 @@ func _on_practice_green_holed() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	AudioBus.play_putt_drop()
+	ball.reset_at(_cup_pos, "Green")
+	ball.play_cup_drop()
 	feedback.text = "IN THE HOLE"
 	feedback.modulate = Color(1.0, 0.95, 0.5)
 	_update_hud()
 	var cam_tw := create_tween()
-	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.15)
-	cam_tw.parallel().tween_property(camera, "zoom", Vector2(4.5, 4.5), 0.12)
-	await get_tree().create_timer(0.7).timeout
+	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.2)
+	# Hold zoom — no punch; ball drop carries the make.
+	await get_tree().create_timer(0.75).timeout
 	if GameState.green_mode and GameState.run_active:
 		_reset_practice_green()
 
@@ -3151,19 +3154,15 @@ func _on_holed_out() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	ball.reset_at(_cup_pos, "Green")
-	# Soft hole-out: ease into a modest cup hold, then ease out — no jarring 6× punch.
+	# TV hole-out: hold frame, pan to cup, ball sinks — no in/out zoom punch.
 	AudioBus.play_putt_drop()
-	var close_z := Vector2(3.15, 3.15)
-	var hold_z := Vector2(2.55, 2.55)
+	ball.play_cup_drop()
 	var cam_tw := create_tween()
 	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.38)
-	cam_tw.parallel().tween_property(camera, "zoom", close_z, 0.42)
-	cam_tw.tween_property(flash_rect, "modulate:a", 0.18, 0.12)
+	# Soft sparkle only — zoom stays putt/settle framing (no in/out zoom punch).
+	cam_tw.parallel().tween_property(flash_rect, "modulate:a", 0.18, 0.12)
 	cam_tw.tween_property(flash_rect, "modulate:a", 0.0, 0.45)
-	cam_tw.tween_interval(0.35)
-	cam_tw.set_ease(Tween.EASE_IN_OUT)
-	cam_tw.tween_property(camera, "zoom", hold_z, 0.55)
 	var diff := strokes - hole.par
 	var result := Scoring.result_from_diff(diff)
 	GameState.add_score_to_par(diff)
@@ -3173,17 +3172,15 @@ func _on_holed_out() -> void:
 	_update_hud()
 	feedback.text = _hole_result_feedback(result, diff, life_delta)
 	feedback.modulate = Color(1.0, 0.95, 0.5)
-	if Scoring.is_birdie_or_better(result):
-		_show_birdie(result, diff)
-		AudioBus.play_golf_clap()
-	elif result == Scoring.Result.PAR:
+	_show_hole_result_banner(result, diff, life_delta)
+	if Scoring.is_birdie_or_better(result) or result == Scoring.Result.PAR:
 		AudioBus.play_golf_clap()
 	# Survival: death sting on lives out / finish. Stroke play: only soft finish on 18.
 	var died := GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0)
 	var finished := GameState.current_hole >= GameState.HOLE_COUNT
 	if died:
 		AudioBus.play_water_hazard()
-	# Let the soft cam settle before advancing (was 1.1 with snappy zoom).
+	# Banner + drop settle before advancing.
 	await get_tree().create_timer(1.55).timeout
 	if GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0):
 		request_game_over.emit()
@@ -3207,20 +3204,28 @@ func _hole_result_feedback(result: Scoring.Result, diff: int, life_delta: int) -
 	return "IN THE HOLE  ·  %s (%+d)%s" % [label, diff, life_txt]
 
 
-func _show_birdie(result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1) -> void:
+func _show_hole_result_banner(
+	result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1, life_delta: int = 0
+) -> void:
+	## Fade result on BirdieBanner — all makes, not only birdie+ (replaces zoom punch read).
 	birdie_label.visible = true
 	birdie_label.modulate.a = 0.0
 	if GameState.is_stroke_play():
 		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
-	else:
+	elif Scoring.is_birdie_or_better(result) and life_delta > 0:
 		birdie_label.text = "BIRDIE MOMENTUM  +1 LIFE"
+	else:
+		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
 	var tw := create_tween()
 	tw.tween_property(birdie_label, "modulate:a", 1.0, 0.15)
-	tw.tween_property(flash_rect, "modulate:a", 0.45, 0.08)
-	tw.tween_property(flash_rect, "modulate:a", 0.0, 0.35)
-	tw.tween_interval(0.5)
+	tw.tween_interval(0.65)
 	tw.tween_property(birdie_label, "modulate:a", 0.0, 0.25)
 	tw.tween_callback(func(): birdie_label.visible = false)
+
+
+func _show_birdie(result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1) -> void:
+	## Compat alias — hole-out uses _show_hole_result_banner.
+	_show_hole_result_banner(result, diff, 1 if Scoring.is_birdie_or_better(result) else 0)
 
 
 func _on_perfect_flash() -> void:

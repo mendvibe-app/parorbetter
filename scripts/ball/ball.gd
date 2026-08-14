@@ -769,3 +769,26 @@ func flash_perfect() -> void:
 	var gw := create_tween()
 	gw.tween_property(glow, "scale", Vector2.ONE * (_glow_scale * 1.15), 0.28).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
 	gw.parallel().tween_property(glow, "modulate:a", 0.8, 0.28)
+
+
+func play_cup_drop() -> void:
+	## Visual only — ball sinks into the cup after capture. Call after reset_at(cup).
+	## Next reset_at / _apply_lie_visual restores scale and modulate.
+	if visual == null:
+		return
+	var start_s := _ball_scale
+	visual.scale = Vector2.ONE * start_s
+	visual.self_modulate = Color(1, 1, 1, 1)
+	if shadow:
+		shadow.modulate.a = 1.0
+	var tw := create_tween()
+	tw.set_parallel(true)
+	tw.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+	tw.tween_property(visual, "scale", Vector2.ONE * (start_s * 0.38), 0.18)
+	tw.tween_property(visual, "self_modulate", Color(0.15, 0.15, 0.15, 0.35), 0.18)
+	if shadow:
+		tw.tween_property(shadow, "modulate:a", 0.0, 0.14)
+	if glow:
+		glow.visible = false
+	if spin_fx:
+		spin_fx.visible = false
