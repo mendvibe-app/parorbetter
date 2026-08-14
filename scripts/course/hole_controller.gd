@@ -1487,7 +1487,10 @@ func _begin_club_select() -> void:
 	feedback.text = "RANGE — pick a club" if GameState.range_mode else "%d yd — pick a club" % int(pin_yd)
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 	_show_wind_flag(wind)
-	_club_select.present(lie, pin_yd, wind, ball.get_lie_severity())
+	var pin_dir := _cup_pos - ball.global_position
+	if pin_dir.length_squared() < 1.0:
+		pin_dir = Vector2.UP
+	_club_select.present(lie, pin_yd, wind, ball.get_lie_severity(), pin_dir.normalized())
 
 
 func _on_club_chosen(club: Dictionary) -> void:
@@ -1551,7 +1554,14 @@ func _aim_force_preview(club_max: float, lie: String, wind: Vector2, severity: S
 	if aim_yd < 1.0:
 		aim_yd = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var st := _effective_shot_type_for_aim()
-	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity, st)
+	var dir := _aim_target - ball.global_position
+	if dir.length_squared() < 1.0:
+		dir = _cup_pos - ball.global_position
+	if dir.length_squared() < 1.0:
+		dir = Vector2.UP
+	var solved := BallPhysics.solve_committed_power(
+		aim_yd, club_max, lie, wind, severity, st, dir.normalized()
+	)
 	return BallPhysics.force_factor(float(solved["true_pct"]), club_max, lie, st)
 
 
@@ -1582,7 +1592,7 @@ func _refit_aim_along_bearing(club_max: float, wind: Vector2, severity: String) 
 			lock_yd = club_max * 0.95
 	else:
 		var solved := BallPhysics.solve_committed_power(
-			pin_yd, club_max, lie, wind, severity, st
+			pin_yd, club_max, lie, wind, severity, st, bearing.normalized()
 		)
 		lock_yd = BallPhysics.estimate_carry_yards(
 			float(solved["power"]), club_max, lie, severity, st
@@ -2030,6 +2040,11 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	var type_override := ""
 	if lie != "Green" and not _chosen_shot_type.is_empty() and _chosen_shot_type != "putt":
 		type_override = _chosen_shot_type
+	var launch_dir := _aim_target - ball.global_position
+	if launch_dir.length_squared() < 1.0:
+		launch_dir = _cup_pos - ball.global_position
+	if launch_dir.length_squared() < 1.0:
+		launch_dir = Vector2.UP
 	shot_routine.configure(
 		lie,
 		aim_yd,
@@ -2043,7 +2058,8 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 		club_max,
 		ball.get_lie_severity(),
 		punch,
-		type_override
+		type_override,
+		launch_dir.normalized()
 	)
 	# Landing preview = tick-hit carry (amplitude can go longer or shorter).
 	_power_previewing = not p_practice
@@ -2197,8 +2213,11 @@ func _aim_tree_clearance(
 		shot_type = shot_type_hint
 	else:
 		shot_type = TempoGrade.recommend_shot_type(lie, aim_yd, club_max)
+	var bearing := to - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
 	var solved := BallPhysics.solve_committed_power(
-		aim_yd, club_max, lie, wind, severity, shot_type
+		aim_yd, club_max, lie, wind, severity, shot_type, bearing.normalized()
 	)
 	var carry_yd := BallPhysics.estimate_carry_yards(
 		float(solved["power"]), club_max, lie, severity, shot_type
@@ -2209,9 +2228,6 @@ func _aim_tree_clearance(
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var peak := BallPhysics.estimate_height_peak(club_max, carry_yd, shot_type)
 	# Segment ends at planned total along aim bearing (not past club max).
-	var bearing := to - from
-	if bearing.length_squared() < 1.0:
-		bearing = Vector2(0, -1)
 	var land := from + bearing.normalized() * total_px
 	var any_hit := false
 	var any_block := false
@@ -2248,8 +2264,11 @@ func _aim_planned_total_yd(
 	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
 	var severity := ball.get_lie_severity() if ball else ""
+	var dir := to - from
+	if dir.length_squared() < 1.0:
+		dir = Vector2.UP
 	var solved := BallPhysics.solve_committed_power(
-		aim_yd, club_max, lie, wind, severity, shot_type
+		aim_yd, club_max, lie, wind, severity, shot_type, dir.normalized()
 	)
 	var power := float(solved["power"])
 	if shot_type == "pitch" or shot_type == "flop":
