@@ -19,8 +19,7 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 
 | Plan | Status |
 |------|--------|
-| `correction-club-select-tip-priority.md` | **Next implementable** — tempo tip dominates club icons |
-| `correction-tv-broadcast-feel.md` | Not implemented — putt zoom / hole-out / pacing (3 items) |
+| `correction-tv-broadcast-feel.md` | **Next implementable** — putt zoom / hole-out / pacing (3 items; split) |
 | `correction-swipe-sign-convention.md` | **OPEN QA** — playtest swipe sign vs real draw/fade |
 | `epic-contact-quality-haptics.md` | Code shipped; **Android/iOS device smoke** still open |
 | `correction-recommended-power-wind.md` | Partial: `recommended_power` shipped; **aim/commit path** still world-Y wind |
@@ -38,6 +37,4 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 
 ## Archive
 
-`plans/archive/` holds closed phase epics and shipped corrections (including approach
-zoom and putt-stale flight metrics). Prefer roadmap status notes; open the archive when
-you need original build notes.
+Closed plans include approach zoom, putt-stale F1 metrics, club-select tip priority.

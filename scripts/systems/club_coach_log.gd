@@ -64,12 +64,40 @@ static func avg(arr: Array) -> float:
 	return s / arr.size()
 
 
-static func resolve_tip(stats: Dictionary) -> Dictionary:
+## mode "coach" (default): tempo → path → contact — root cause first (Club Coach screen).
+## mode "select": path → contact → tempo — club-specific signals first (club select rows).
+## Tempo is a player habit; repeating it on every club row hides differentiating path/contact.
+static func resolve_tip(stats: Dictionary, mode: String = "coach") -> Dictionary:
 	var shots := int(stats.get("shots_logged", 0))
 	if shots < MIN_SAMPLES_FOR_TIP:
 		return {"tag": "insufficient_data", "label": "Not enough shots yet", "icon_id": "insufficient_data"}
 
-	# 1. Tempo bias (root cause) checked before path error (symptom).
+	var for_select := mode == "select"
+	if for_select:
+		var path_tip := _tip_path(stats)
+		if not path_tip.is_empty():
+			return path_tip
+		var contact_tip := _tip_contact(stats)
+		if not contact_tip.is_empty():
+			return contact_tip
+		var tempo_tip := _tip_tempo(stats)
+		if not tempo_tip.is_empty():
+			return tempo_tip
+	else:
+		var tempo_tip := _tip_tempo(stats)
+		if not tempo_tip.is_empty():
+			return tempo_tip
+		var path_tip := _tip_path(stats)
+		if not path_tip.is_empty():
+			return path_tip
+		var contact_tip := _tip_contact(stats)
+		if not contact_tip.is_empty():
+			return contact_tip
+
+	return {"tag": "on_track", "label": "Dialed in", "icon_id": "on_track"}
+
+
+static func _tip_tempo(stats: Dictionary) -> Dictionary:
 	var tempo_avg := avg(stats.get("tempo_err_history", []))
 	if tempo_avg <= -TEMPO_THRESHOLD:
 		return {
@@ -83,15 +111,19 @@ static func resolve_tip(stats: Dictionary) -> Dictionary:
 			"label": "Losing rhythm at the top — start down sooner",
 			"icon_id": "lingering_top",
 		}
+	return {}
 
-	# 2. Path error bias, only reached when tempo is clean.
+
+static func _tip_path(stats: Dictionary) -> Dictionary:
 	var path_avg := avg(stats.get("path_error_history", []))
 	if path_avg >= PATH_THRESHOLD:
 		return {"tag": "slice_tendency", "label": "Path leaking right", "icon_id": "slice_tendency"}
 	if path_avg <= -PATH_THRESHOLD:
 		return {"tag": "hook_tendency", "label": "Path leaking left", "icon_id": "hook_tendency"}
+	return {}
 
-	# 3. Dominant contact miss class (lifetime tally).
+
+static func _tip_contact(stats: Dictionary) -> Dictionary:
 	var tally: Dictionary = stats.get("contact_tally", {})
 	var lifetime := 0
 	var bad := 0
@@ -110,8 +142,7 @@ static func resolve_tip(stats: Dictionary) -> Dictionary:
 			"label": "Contact inconsistent — thin/fat misses adding up",
 			"icon_id": "contact_issue",
 		}
-
-	return {"tag": "on_track", "label": "Dialed in", "icon_id": "on_track"}
+	return {}
 
 
 func clear_data() -> void:

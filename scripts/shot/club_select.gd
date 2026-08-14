@@ -229,7 +229,9 @@ func _tendency_tag(name: String) -> String:
 	var stats: Dictionary = GameState.club_coach.clubs.get(name, {})
 	if int(stats.get("shots_logged", 0)) < ClubCoachLog.MIN_SAMPLES_FOR_TIP:
 		return ""
-	var tag := str(ClubCoachLog.resolve_tip(stats).get("tag", ""))
+	# Select mode: path/contact before tempo so a player-wide rush habit doesn't
+	# stamp every row the same (Club Coach keeps tempo-first via default mode).
+	var tag := str(ClubCoachLog.resolve_tip(stats, "select").get("tag", ""))
 	return tag if tag in TENDENCY_ROW_TAGS else ""
 
 
