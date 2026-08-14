@@ -23,6 +23,7 @@ var _lie: String = ""
 var _severity: String = ""
 var _pin_yd: float = 0.0
 var _wind: Vector2 = Vector2.ZERO
+var _launch_dir: Vector2 = Vector2.UP  ## ball→pin for wind-aware effort labels
 var _full_bag: bool = false
 ## Scroll at row press — if it moved past deadzone, release is a drag not a tap.
 var _press_scroll: int = 0
@@ -31,13 +32,16 @@ var _drag_origin_scroll: int = 0
 var _drag_scrolling: bool = false
 const DRAG_DEADZONE := 12
 
-const TENDENCY_BADGE_TEXT := {
-	"rushed_transition": "Rushing",
-	"lingering_top": "Lingering",
-	"slice_tendency": "Slice",
-	"hook_tendency": "Hook",
-	"contact_issue": "Inconsistent",
-}
+## Warning tags that currently earned a text badge — on_track / insufficient_data stay off-row.
+const TENDENCY_ROW_TAGS := [
+	"rushed_transition",
+	"lingering_top",
+	"slice_tendency",
+	"hook_tendency",
+	"contact_issue",
+]
+const TENDENCY_ICON_PX := 48.0
+const TENDENCY_GUTTER := 56.0
 
 
 func _ready() -> void:
@@ -133,11 +137,18 @@ func _process(_delta: float) -> void:
 	_refresh_confirm_enabled()
 
 
-func present(lie: String, pin_yd: float, wind: Vector2, severity: String = "") -> void:
+func present(
+	lie: String,
+	pin_yd: float,
+	wind: Vector2,
+	severity: String = "",
+	launch_dir: Vector2 = Vector2.UP
+) -> void:
 	_lie = lie
 	_severity = severity
 	_pin_yd = pin_yd
 	_wind = wind
+	_launch_dir = launch_dir if launch_dir.length_squared() > 0.001 else Vector2.UP
 	_full_bag = false
 	_selected = {}
 	_confirm_ready_at_msec = Time.get_ticks_msec() + int(OPEN_LOCK_SEC * 1000.0)
@@ -192,35 +203,72 @@ func _on_scroll_gui_input(event: InputEvent) -> void:
 
 
 func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
-	## Swing % = recommended_power for this pin (how hard you'd hit it).
-	## Omit when it's a full swing — "100% today" read as a mystery score.
-	## Club-fit: grossly oversized clubs get a run-through cue instead of a baby %.
-	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
+	## Effort copy for this pin. Recommended-full is unlabeled; oversized clubs run through.
 	var star := "★ " if is_suggested else ""
-	var badge := _tendency_badge(name)
+	var label := BallPhysics.club_short_name(name)
+	var effort := _row_effort_label(name, max_yd)
+	if effort.is_empty():
+		return "%s%s  —  %d yd" % [star, label, int(max_yd)]
+	return "%s%s  —  %d yd · %s" % [star, label, int(max_yd), effort]
+
+
+func _row_effort_label(name: String, max_yd: float) -> String:
+	## PLAYTEST TARGET: band edges. Real golf effort language, not a raw %.
+	var pct := BallPhysics.club_percent_today(
+		_pin_yd, max_yd, _lie, _wind, _severity, _launch_dir
+	)
 	if (
 		_lie != "Green"
 		and not BallPhysics.is_shortest_available(max_yd, _lie)
 		and pct < BallPhysics.POWER_POCKET_LO
 	):
-		return "%s%s  —  %d yd · runs through%s" % [star, name, int(max_yd), badge]
-	if pct >= 0.95:
-		return "%s%s  —  %d yd%s" % [star, name, int(max_yd), badge]
-	return "%s%s  —  %d yd · %d%% swing%s" % [star, name, int(max_yd), int(pct * 100.0), badge]
+		return "it runs"
+	# POWER_POCKET_HI (0.92) is the max recommended_power ever returns — 0.95 was dead.
+	if pct >= BallPhysics.POWER_POCKET_HI:
+		return ""
+	if pct >= 0.85:
+		return "smooth"
+	if pct >= 0.70:
+		return "3/4"
+	return "ease up"
 
 
-func _tendency_badge(name: String) -> String:
-	## Text stub for the tendency icon (Phase 3) — swap for an icon lookup in hud_icons.gd
-	## once tendency art exists; resolve_tip().tag is already the icon key to use then.
+func _tendency_tag(name: String) -> String:
 	if not GameState.club_coach_ui_enabled:
 		return ""
 	var stats: Dictionary = GameState.club_coach.clubs.get(name, {})
 	if int(stats.get("shots_logged", 0)) < ClubCoachLog.MIN_SAMPLES_FOR_TIP:
 		return ""
-	var tag := str(ClubCoachLog.resolve_tip(stats).get("tag", ""))
-	if not TENDENCY_BADGE_TEXT.has(tag):
-		return ""
-	return " · %s" % TENDENCY_BADGE_TEXT[tag]
+	# Select mode: path/contact before tempo so a player-wide rush habit doesn't
+	# stamp every row the same (Club Coach keeps tempo-first via default mode).
+	var tag := str(ClubCoachLog.resolve_tip(stats, "select").get("tag", ""))
+	return tag if tag in TENDENCY_ROW_TAGS else ""
+
+
+func _attach_tendency_icon(btn: Button, club_name: String) -> void:
+	var tex := HudIcons.tendency_texture(_tendency_tag(club_name))
+	if tex == null:
+		return
+	var tr := TextureRect.new()
+	tr.texture = tex
+	tr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	tr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	tr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	tr.custom_minimum_size = Vector2(TENDENCY_ICON_PX, TENDENCY_ICON_PX)
+	tr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tr.set_anchors_preset(Control.PRESET_CENTER_RIGHT)
+	tr.offset_left = -TENDENCY_GUTTER
+	tr.offset_right = -8.0
+	tr.offset_top = -TENDENCY_ICON_PX * 0.5
+	tr.offset_bottom = TENDENCY_ICON_PX * 0.5
+	btn.add_child(tr)
+	for sn in ["normal", "pressed", "hover", "focus"]:
+		var src := btn.get_theme_stylebox(sn)
+		if src == null:
+			continue
+		var d := src.duplicate()
+		d.content_margin_right = maxf(d.content_margin_right, TENDENCY_GUTTER)
+		btn.add_theme_stylebox_override(sn, d)
 
 
 func _rebuild_list(prefer_name: String = "") -> void:
@@ -269,9 +317,12 @@ func _rebuild_list(prefer_name: String = "") -> void:
 		btn.icon = HudIcons.club_texture(name)
 		btn.expand_icon = true
 		btn.text = _club_row_text(name, max_yd, is_suggested)
+		_attach_tendency_icon(btn, name)
 		btn.custom_minimum_size = Vector2(0, UiScale.TOUCH_MIN)
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		btn.add_theme_font_size_override("font_size", UiScale.BODY)
+		# Tight "ease up" is +3px over BODY 48; CAPTION 40 fits. Other bands stay BODY.
+		var type_px := UiScale.CAPTION if btn.text.ends_with("ease up") else UiScale.BODY
+		btn.add_theme_font_size_override("font_size", type_px)
 		btn.set_meta("club_name", name)
 		if is_suggested:
 			btn.add_theme_color_override("font_color", Color(1.0, 0.92, 0.45, 1))

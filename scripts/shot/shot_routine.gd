@@ -129,7 +129,8 @@ func configure(
 	p_club_max_yards: float = -1.0,
 	p_severity: String = "",
 	p_punch: bool = false,
-	p_shot_type_override: String = ""
+	p_shot_type_override: String = "",
+	p_launch_dir: Vector2 = Vector2.UP
 ) -> void:
 	timing_scale = p_timing
 	suggested_shape = p_shape
@@ -163,7 +164,7 @@ func configure(
 		shot_type = TempoGrade.recommend_shot_type(lie, aim_distance_yd, club_max_yards)
 
 	var solved := BallPhysics.solve_committed_power(
-		aim_distance_yd, club_max_yards, lie, wind, p_severity, shot_type
+		aim_distance_yd, club_max_yards, lie, wind, p_severity, shot_type, p_launch_dir
 	)
 	committed_power = float(solved["power"])
 	true_power_pct = float(solved["true_pct"])

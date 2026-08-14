@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dmqs606aa2wr6"
-path="res://.godot/imported/wind_direction_speed.png-90a9ebed296e39e4d195deec50dff1fe.ctex"
+uid="uid://bmasr2ha3cnqk"
+path="res://.godot/imported/tendency_unknown.png-6be5c6d587a6e66117ec3bdde70f7d6d.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://plans/wind_direction_speed.png"
-dest_files=["res://.godot/imported/wind_direction_speed.png-90a9ebed296e39e4d195deec50dff1fe.ctex"]
+source_file="res://assets/ui/tendency_unknown.png"
+dest_files=["res://.godot/imported/tendency_unknown.png-6be5c6d587a6e66117ec3bdde70f7d6d.ctex"]
 
 [params]
 

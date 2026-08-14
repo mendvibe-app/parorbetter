@@ -257,7 +257,7 @@ def main() -> int:
         status = "PASS" if ok else "FAIL"
         print(
             f"  {status}  punch r={r:.1f} Trees ts={TREES_TIMING} "
-            f"→ {g['contact']} (want {sorted(want_set)}) bal={g['balance']:.2f} abs_n={g['abs_n']:.2f}"
+            f"-> {g['contact']} (want {sorted(want_set)}) bal={g['balance']:.2f} abs_n={g['abs_n']:.2f}"
         )
         if not ok:
             return 1
@@ -266,7 +266,7 @@ def main() -> int:
     g_miss = grade(sample_ratio(4.5), "punch", timing_scale=TREES_TIMING)
     print(
         f"  PASS  punch r=3.0 is non-clean ({g3['contact']}); "
-        f"r=4.5 → {g_miss['contact']} (disaster band)"
+        f"r=4.5 -> {g_miss['contact']} (disaster band)"
     )
 
     # --- Aim under-band vs kill-zone (string + numeric model) ---
@@ -279,7 +279,7 @@ def main() -> int:
     assert punch_peak <= min_c * under_frac
     print(
         f"  PASS  punch peak {punch_peak:.1f} <= 0.88×min_canopy "
-        f"({under_frac * min_c:.1f}) → aim under, not blocked"
+        f"({under_frac * min_c:.1f}) -> aim under, not blocked"
     )
     mid_h = (under_frac * min_c + min_c) * 0.5
     assert under_frac * min_c < mid_h < min_c
@@ -316,9 +316,9 @@ def main() -> int:
     s_long["peak_vel"] = 1.0
     g_long = grade(s_long, "punch", timing_scale=TREES_TIMING)
     print(
-        f"  PASS  realistic punch 1.8:1 Trees bs_len=0.12 → "
+        f"  PASS  realistic punch 1.8:1 Trees bs_len=0.12 -> "
         f"contact={g_real['contact']} bal={g_real['balance']:.2f} short_bs=0 "
-        f"(bs_len=0.22 → {g_long['contact']} bal={g_long['balance']:.2f})"
+        f"(bs_len=0.22 -> {g_long['contact']} bal={g_long['balance']:.2f})"
     )
     print(f"  PASS  floor={bs_floor('punch'):.2f} (short-lane; no full-pad double-tax)")
 

@@ -858,10 +858,17 @@ func _draw_full_amplitude_markers() -> void:
 	var tgt := clampf(full_target_frac, 0.0, 1.2)
 	var pocket_pt: Vector2 = start.lerp(top, minf(pocket, 1.0))
 	var tgt_pt: Vector2 = start.lerp(top, minf(tgt, 1.0))
-	# Pocket — amber, shorter tick (mash threshold).
-	draw_line(pocket_pt + Vector2(-16, 0), pocket_pt + Vector2(16, 0), Color(1.0, 0.72, 0.2, 0.9), 3.0, true)
-	# Target — cool tick (suggested pull for this aim).
-	draw_line(tgt_pt + Vector2(-22, 0), tgt_pt + Vector2(22, 0), Color(0.55, 0.95, 1.0, 0.95), 3.5, true)
+	_draw_hazard_tick(pocket_pt, Color(0.95, 0.35, 0.25, 0.9))
+	_draw_target_tick(tgt_pt, Color(0.6, 1.0, 1.0, 1.0))
+
+
+func _draw_hazard_tick(pt: Vector2, color: Color) -> void:
+	draw_dashed_line(pt + Vector2(-16, 0), pt + Vector2(16, 0), color, 3.0, 5.0, true, true)
+
+
+func _draw_target_tick(pt: Vector2, color: Color) -> void:
+	draw_circle(pt, 14.0, Color(color.r, color.g, color.b, 0.18))
+	draw_line(pt + Vector2(-24, 0), pt + Vector2(24, 0), color, 4.5, true)
 
 
 func _draw_golfer() -> void:
@@ -1208,7 +1215,7 @@ func _draw_putt_practice_marker(
 	var band_lo: Vector2 = start.lerp(top, clampf(tgt - band, 0.0, 1.0))
 	var band_hi: Vector2 = start.lerp(top, clampf(tgt + band, 0.0, 1.0))
 	draw_line(band_lo, band_hi, band_c, 22.0, true)
-	draw_line(mark + Vector2(-20, 0), mark + Vector2(20, 0), tick_c, 3.5, true)
+	_draw_target_tick(mark, tick_c)
 
 
 func _draw_mishit_risk_marks(start: Vector2, top: Vector2, tol_scale: float = 1.0) -> void:

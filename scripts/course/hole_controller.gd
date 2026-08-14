@@ -10,12 +10,15 @@ const AIM_NUDGE_PX := 14.0
 const CUP_RADIUS := 2.4
 ## Course pin height in px (readable from fairway; not survey-true ~7 ft).
 const PIN_FLAG_H_PX := 32.0
-## Full-shot "up and in" camera — fractions of pre-shot / corridor base (not absolute).
-## Aim framing got tighter (corridor); absolute 0.55 launch was zooming *out* on hit.
-const FLIGHT_LAUNCH_FRAC := 0.90  ## mild open from aim at launch
-const FLIGHT_APEX_FRAC := 0.95
+## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
+## Launch holds aim (1.0) — 0.90 open caused zoom-out-then-in once pin-primary aim got tight.
+const FLIGHT_LAUNCH_FRAC := 1.0  ## hold aim framing at strike
+const FLIGHT_APEX_FRAC := 1.05  ## mild tighten through apex (never open past aim)
 const FLIGHT_LAND_FRAC := 1.28  ## ends tighter than aim ("up and in")
 const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
+## Non-putt aim: pin-primary through APPROACH_HI, ease to corridor by LONG_HI.
+const APPROACH_ZOOM_HI := 150.0
+const APPROACH_ZOOM_LONG := 220.0
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 ## Putt roll camera: hold stroke-start frame so the ball rolls through a stable shot
@@ -1080,6 +1083,14 @@ func _corridor_zoom_level() -> float:
 	return clampf(view.x * CORRIDOR_SCREEN_FRAC / _play_corridor_width(), 1.05, 1.95)
 
 
+func _approach_pin_zoom(pin_yd: float, view_min: float) -> float:
+	## Distance-driven zoom for non-putt approaches (higher = closer). Primary
+	## framing through short par-3s; softens only as pin yards grow (pin-primary).
+	var dist := BallPhysics.yards_to_pixels(maxf(pin_yd, 8.0))
+	var half_span := maxf(dist * 0.52 + 18.0, 48.0)
+	return clampf(view_min * 0.62 / half_span, 1.35, 7.5)
+
+
 func _flight_z_launch() -> float:
 	return _flight_zoom_base * FLIGHT_LAUNCH_FRAC
 
@@ -1478,7 +1489,10 @@ func _begin_club_select() -> void:
 	feedback.text = "RANGE — pick a club" if GameState.range_mode else "%d yd — pick a club" % int(pin_yd)
 	feedback.modulate = Color(0.95, 0.92, 0.7)
 	_show_wind_flag(wind)
-	_club_select.present(lie, pin_yd, wind, ball.get_lie_severity())
+	var pin_dir := _cup_pos - ball.global_position
+	if pin_dir.length_squared() < 1.0:
+		pin_dir = Vector2.UP
+	_club_select.present(lie, pin_yd, wind, ball.get_lie_severity(), pin_dir.normalized())
 
 
 func _on_club_chosen(club: Dictionary) -> void:
@@ -1542,7 +1556,14 @@ func _aim_force_preview(club_max: float, lie: String, wind: Vector2, severity: S
 	if aim_yd < 1.0:
 		aim_yd = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 	var st := _effective_shot_type_for_aim()
-	var solved := BallPhysics.solve_committed_power(aim_yd, club_max, lie, wind, severity, st)
+	var dir := _aim_target - ball.global_position
+	if dir.length_squared() < 1.0:
+		dir = _cup_pos - ball.global_position
+	if dir.length_squared() < 1.0:
+		dir = Vector2.UP
+	var solved := BallPhysics.solve_committed_power(
+		aim_yd, club_max, lie, wind, severity, st, dir.normalized()
+	)
 	return BallPhysics.force_factor(float(solved["true_pct"]), club_max, lie, st)
 
 
@@ -1573,7 +1594,7 @@ func _refit_aim_along_bearing(club_max: float, wind: Vector2, severity: String) 
 			lock_yd = club_max * 0.95
 	else:
 		var solved := BallPhysics.solve_committed_power(
-			pin_yd, club_max, lie, wind, severity, st
+			pin_yd, club_max, lie, wind, severity, st, bearing.normalized()
 		)
 		lock_yd = BallPhysics.estimate_carry_yards(
 			float(solved["power"]), club_max, lie, severity, st
@@ -2021,6 +2042,11 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	var type_override := ""
 	if lie != "Green" and not _chosen_shot_type.is_empty() and _chosen_shot_type != "putt":
 		type_override = _chosen_shot_type
+	var launch_dir := _aim_target - ball.global_position
+	if launch_dir.length_squared() < 1.0:
+		launch_dir = _cup_pos - ball.global_position
+	if launch_dir.length_squared() < 1.0:
+		launch_dir = Vector2.UP
 	shot_routine.configure(
 		lie,
 		aim_yd,
@@ -2034,9 +2060,10 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 		club_max,
 		ball.get_lie_severity(),
 		punch,
-		type_override
+		type_override,
+		launch_dir.normalized()
 	)
-	# Landing preview locked to committed carry (gesture can only subtract).
+	# Landing preview = tick-hit carry (amplitude can go longer or shorter).
 	_power_previewing = not p_practice
 	_apply_committed_preview()
 	shot_routine.begin_shot(p_practice, p_allow_back)
@@ -2067,7 +2094,16 @@ func _apply_committed_preview() -> void:
 	var lie := ball.get_lie()
 	var club_max := float(_chosen_club.get("max_yards", shot_routine.club_max_yards))
 	var power := shot_routine.committed_power
-	var est := BallPhysics.estimate_carry_yards(power, club_max, lie, ball.get_lie_severity())
+	var st := shot_routine.flight_shot_type()
+	var est: float
+	# Pitch/flop amplitude floors at POWER_POCKET_LO — preview must match the pad tick.
+	if st == "pitch" or st == "flop":
+		power = maxf(power, BallPhysics.POWER_POCKET_LO)
+		est = BallPhysics.estimate_carry_yards(
+			power, club_max, lie, ball.get_lie_severity(), st
+		)
+	else:
+		est = BallPhysics.estimate_carry_yards(power, club_max, lie, ball.get_lie_severity())
 	var from := ball.global_position
 	var bearing := _aim_target - from
 	if bearing.length_squared() < 1.0:
@@ -2179,8 +2215,11 @@ func _aim_tree_clearance(
 		shot_type = shot_type_hint
 	else:
 		shot_type = TempoGrade.recommend_shot_type(lie, aim_yd, club_max)
+	var bearing := to - from
+	if bearing.length_squared() < 1.0:
+		bearing = Vector2(0, -1)
 	var solved := BallPhysics.solve_committed_power(
-		aim_yd, club_max, lie, wind, severity, shot_type
+		aim_yd, club_max, lie, wind, severity, shot_type, bearing.normalized()
 	)
 	var carry_yd := BallPhysics.estimate_carry_yards(
 		float(solved["power"]), club_max, lie, severity, shot_type
@@ -2191,9 +2230,6 @@ func _aim_tree_clearance(
 	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
 	var peak := BallPhysics.estimate_height_peak(club_max, carry_yd, shot_type)
 	# Segment ends at planned total along aim bearing (not past club max).
-	var bearing := to - from
-	if bearing.length_squared() < 1.0:
-		bearing = Vector2(0, -1)
 	var land := from + bearing.normalized() * total_px
 	var any_hit := false
 	var any_block := false
@@ -2230,10 +2266,15 @@ func _aim_planned_total_yd(
 	var aim_yd := BallPhysics.pixels_to_yards(from.distance_to(to))
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
 	var severity := ball.get_lie_severity() if ball else ""
+	var dir := to - from
+	if dir.length_squared() < 1.0:
+		dir = Vector2.UP
 	var solved := BallPhysics.solve_committed_power(
-		aim_yd, club_max, lie, wind, severity, shot_type
+		aim_yd, club_max, lie, wind, severity, shot_type, dir.normalized()
 	)
 	var power := float(solved["power"])
+	if shot_type == "pitch" or shot_type == "flop":
+		power = maxf(power, BallPhysics.POWER_POCKET_LO)
 	if shot_type == "flop":
 		var lie_m := BallPhysics.lie_multiplier(lie, severity)
 		power = minf(power, BallPhysics.FLOP_MAX_YD / maxf(club_max * lie_m, 1.0))
@@ -2602,6 +2643,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 		wind_note,
 		sev_at_strike
 	)
+	var flight_st := shot_routine.flight_shot_type()
 	GameState.last_shot_metrics = {
 		"power": result.power,
 		"true_power": result.true_power,
@@ -2617,8 +2659,10 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"aim_radius_yd": _aim_radius_yd,
 		"aim_offset": aim_offset,
 		"form": GameState.get_form(),
-		"shot_type": shot_routine.flight_shot_type(),
+		"shot_type": flight_st,
 		"punch": shot_routine.punch_mode,
+		# Honest putt flag (not _is_putt_context — that includes near-green chips).
+		"is_putt": flight_st == "putt",
 	}
 	# Full-shot flight owns the screen (up-and-in + tracer); glance waits for settle.
 	# Putts stay short — keep the live glance.
@@ -2683,17 +2727,21 @@ func _desired_camera_zoom() -> Vector2:
 		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
 		z = clampf(view_min * 0.52 / half_span, 2.6, 42.0)
 	else:
-		# Full / approach: zoom so fairway + side belts own ~half the portrait width
-		# (not a needle fairway in an ocean of mid-rough).
+		# Pin-primary: tight ball→pin framing through short par-3s (~150 yd), ease to
+		# corridor only for long tee (150→220). Old band ended at 90 → 109 yd stayed corridor.
 		var z_cor := _corridor_zoom_level()
+		var z_pin := _approach_pin_zoom(pin_yd, view_min)
+		var t_long := clampf(
+			(pin_yd - APPROACH_ZOOM_HI) / maxf(APPROACH_ZOOM_LONG - APPROACH_ZOOM_HI, 1.0),
+			0.0,
+			1.0
+		)
+		# t=0 pin; t=1 corridor. Long tee slightly open (0.88).
+		z = lerpf(z_pin, z_cor * 0.88, t_long)
 		if _aiming and _should_show_green_book():
-			# Slightly wider so book + landing stay readable
-			z = lerpf(z_cor * 0.92, z_cor * 0.78, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
-		elif pin_yd <= 90.0:
-			z = lerpf(z_cor * 1.08, z_cor, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
-		else:
-			# Long tee: a touch wider for aim cone, still corridor-first
-			z = z_cor * 0.88
+			# Mild widen for book readability — must not wipe pin framing.
+			var book_w := clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0)
+			z *= lerpf(0.98, 0.94, book_w)
 	# Pinch-to-zoom override — aim phase only; auto-framing owns zoom everywhere else.
 	if _aiming and _user_zoom_mult != 1.0:
 		z = clampf(z * _user_zoom_mult, PINCH_ABS_ZOOM_MIN, PINCH_ABS_ZOOM_MAX)
@@ -2716,8 +2764,8 @@ func _desired_camera_look() -> Vector2:
 
 
 func _flight_camera_zoom() -> Vector2:
-	## Mild open through apex; snap tighter than aim on descent (TV "up and in").
-	## Scales from _flight_zoom_base so corridor aim never jumps to an old absolute wide shot.
+	## Hold aim at launch; mild tighten through apex; land tighter ("up and in").
+	## Monotonic closer: launch ≥ aim base, never open past aim then punch in.
 	var t := ball.air_progress()
 	var z: float
 	if ball.state == GolfBall.State.ROLL or t >= 1.0:
@@ -2751,9 +2799,10 @@ func _follow_ball() -> void:
 		tw_p.tween_property(camera, "global_position", _putt_cam_look, 0.18).set_trans(Tween.TRANS_SINE)
 		tw_p.parallel().tween_property(camera, "zoom", _putt_cam_zoom, 0.2)
 		return
-	# Capture pre-shot framing; flight fracs open slightly then land tighter than aim.
-	_flight_zoom_base = maxf(camera.zoom.x, _corridor_zoom_level() * 0.9)
-	var z := Vector2(_flight_z_launch(), _flight_z_launch())
+	# Seed from aim framing only — never max with corridor (that fought tight pin aim).
+	# Prefer max(live, desired) so a lagging lerp still picks up pin-primary aim.
+	_flight_zoom_base = maxf(camera.zoom.x, _desired_camera_zoom().x)
+	var z := Vector2(_flight_z_launch(), _flight_z_launch())  # launch frac 1.0 = hold aim
 	var tw := create_tween()
 	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
 	tw.parallel().tween_property(camera, "zoom", z, 0.2)
@@ -2865,10 +2914,16 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		_last_report.set_actual(actual)
 		GameState.last_shot_metrics["actual_yd"] = actual
 		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
-		# Apex debug for tree-carry playtest (same units as canopy_h).
-		GameState.last_shot_metrics["height_peak"] = ball.flight_height_peak()
-		GameState.last_shot_metrics["height_max"] = ball.flight_height_max()
-		GameState.last_shot_metrics["flight"] = ball.flight_metrics()
+		# Putts skip FLIGHT — hang/carry stay stale from the prior airborne shot.
+		# Blank is correct; do not write flight/apex into F1 metrics.
+		var settled_putt := (
+			bool(GameState.last_shot_metrics.get("is_putt", false))
+			or str(GameState.last_shot_metrics.get("shot_type", "")) == "putt"
+		)
+		if not settled_putt:
+			GameState.last_shot_metrics["height_peak"] = ball.flight_height_peak()
+			GameState.last_shot_metrics["height_max"] = ball.flight_height_max()
+			GameState.last_shot_metrics["flight"] = ball.flight_metrics()
 		# Panel owns the report; clearing Feedback avoids the stacked double-text bug.
 		feedback.text = ""
 		if shot_result_panel and shot_result_panel.has_method("show_final"):
@@ -2917,13 +2972,16 @@ func _on_practice_green_holed() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	AudioBus.play_putt_drop()
+	ball.reset_at(_cup_pos, "Green")
+	ball.play_cup_drop()
 	feedback.text = "IN THE HOLE"
 	feedback.modulate = Color(1.0, 0.95, 0.5)
 	_update_hud()
 	var cam_tw := create_tween()
-	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.15)
-	cam_tw.parallel().tween_property(camera, "zoom", Vector2(4.5, 4.5), 0.12)
-	await get_tree().create_timer(0.7).timeout
+	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.2)
+	# Hold zoom — no punch; ball drop carries the make.
+	await get_tree().create_timer(0.75).timeout
 	if GameState.green_mode and GameState.run_active:
 		_reset_practice_green()
 
@@ -3112,19 +3170,15 @@ func _on_holed_out() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	ball.reset_at(_cup_pos, "Green")
-	# Soft hole-out: ease into a modest cup hold, then ease out — no jarring 6× punch.
+	# TV hole-out: hold frame, pan to cup, ball sinks — no in/out zoom punch.
 	AudioBus.play_putt_drop()
-	var close_z := Vector2(3.15, 3.15)
-	var hold_z := Vector2(2.55, 2.55)
+	ball.play_cup_drop()
 	var cam_tw := create_tween()
 	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.38)
-	cam_tw.parallel().tween_property(camera, "zoom", close_z, 0.42)
-	cam_tw.tween_property(flash_rect, "modulate:a", 0.18, 0.12)
+	# Soft sparkle only — zoom stays putt/settle framing (no in/out zoom punch).
+	cam_tw.parallel().tween_property(flash_rect, "modulate:a", 0.18, 0.12)
 	cam_tw.tween_property(flash_rect, "modulate:a", 0.0, 0.45)
-	cam_tw.tween_interval(0.35)
-	cam_tw.set_ease(Tween.EASE_IN_OUT)
-	cam_tw.tween_property(camera, "zoom", hold_z, 0.55)
 	var diff := strokes - hole.par
 	var result := Scoring.result_from_diff(diff)
 	GameState.add_score_to_par(diff)
@@ -3134,17 +3188,15 @@ func _on_holed_out() -> void:
 	_update_hud()
 	feedback.text = _hole_result_feedback(result, diff, life_delta)
 	feedback.modulate = Color(1.0, 0.95, 0.5)
-	if Scoring.is_birdie_or_better(result):
-		_show_birdie(result, diff)
-		AudioBus.play_golf_clap()
-	elif result == Scoring.Result.PAR:
+	_show_hole_result_banner(result, diff, life_delta)
+	if Scoring.is_birdie_or_better(result) or result == Scoring.Result.PAR:
 		AudioBus.play_golf_clap()
 	# Survival: death sting on lives out / finish. Stroke play: only soft finish on 18.
 	var died := GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0)
 	var finished := GameState.current_hole >= GameState.HOLE_COUNT
 	if died:
 		AudioBus.play_water_hazard()
-	# Let the soft cam settle before advancing (was 1.1 with snappy zoom).
+	# Banner + drop settle before advancing.
 	await get_tree().create_timer(1.55).timeout
 	if GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0):
 		request_game_over.emit()
@@ -3168,20 +3220,28 @@ func _hole_result_feedback(result: Scoring.Result, diff: int, life_delta: int) -
 	return "IN THE HOLE  ·  %s (%+d)%s" % [label, diff, life_txt]
 
 
-func _show_birdie(result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1) -> void:
+func _show_hole_result_banner(
+	result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1, life_delta: int = 0
+) -> void:
+	## Fade result on BirdieBanner — all makes, not only birdie+ (replaces zoom punch read).
 	birdie_label.visible = true
 	birdie_label.modulate.a = 0.0
 	if GameState.is_stroke_play():
 		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
-	else:
+	elif Scoring.is_birdie_or_better(result) and life_delta > 0:
 		birdie_label.text = "BIRDIE MOMENTUM  +1 LIFE"
+	else:
+		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
 	var tw := create_tween()
 	tw.tween_property(birdie_label, "modulate:a", 1.0, 0.15)
-	tw.tween_property(flash_rect, "modulate:a", 0.45, 0.08)
-	tw.tween_property(flash_rect, "modulate:a", 0.0, 0.35)
-	tw.tween_interval(0.5)
+	tw.tween_interval(0.65)
 	tw.tween_property(birdie_label, "modulate:a", 0.0, 0.25)
 	tw.tween_callback(func(): birdie_label.visible = false)
+
+
+func _show_birdie(result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1) -> void:
+	## Compat alias — hole-out uses _show_hole_result_banner.
+	_show_hole_result_banner(result, diff, 1 if Scoring.is_birdie_or_better(result) else 0)
 
 
 func _on_perfect_flash() -> void:
