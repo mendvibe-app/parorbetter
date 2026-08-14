@@ -1080,6 +1080,14 @@ func _corridor_zoom_level() -> float:
 	return clampf(view.x * CORRIDOR_SCREEN_FRAC / _play_corridor_width(), 1.05, 1.95)
 
 
+func _approach_pin_zoom(pin_yd: float, view_min: float) -> float:
+	## Distance-driven zoom for short non-putt shots (higher = closer). Frames
+	## ball→pin with room for aim cone / land marks — softer than putt formula.
+	var dist := BallPhysics.yards_to_pixels(maxf(pin_yd, 8.0))
+	var half_span := maxf(dist * 0.72 + 40.0, 70.0)
+	return clampf(view_min * 0.50 / half_span, 1.15, 5.5)
+
+
 func _flight_z_launch() -> float:
 	return _flight_zoom_base * FLIGHT_LAUNCH_FRAC
 
@@ -2697,14 +2705,24 @@ func _desired_camera_zoom() -> Vector2:
 		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
 		z = clampf(view_min * 0.52 / half_span, 2.6, 42.0)
 	else:
-		# Full / approach: zoom so fairway + side belts own ~half the portrait width
-		# (not a needle fairway in an ocean of mid-rough).
+		# Full / approach: corridor owns long-tee framing; short approaches blend in
+		# pin-distance zoom (same idea as putts). Green book (pin<=80) used to only
+		# multiply z_cor by 0.78–0.92 — wide holes stayed under-zoomed on 30–50 yd wedges.
 		var z_cor := _corridor_zoom_level()
+		var z_pin := _approach_pin_zoom(pin_yd, view_min)
+		# TempoGrade.CHIP_YD..90 yd: weight toward pin framing. Above 90: corridor-first.
+		var short_hi := 90.0
+		var blend := (
+			1.0
+			- clampf((pin_yd - TempoGrade.CHIP_YD) / maxf(short_hi - TempoGrade.CHIP_YD, 1.0), 0.0, 1.0)
+		)
+		var z_blended := lerpf(z_cor, z_pin, blend * 0.88)
 		if _aiming and _should_show_green_book():
-			# Slightly wider so book + landing stay readable
-			z = lerpf(z_cor * 0.92, z_cor * 0.78, clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0))
-		elif pin_yd <= 90.0:
-			z = lerpf(z_cor * 1.08, z_cor, clampf((pin_yd - 28.0) / 62.0, 0.0, 1.0))
+			# Slight widen so book + landing stay readable (on top of blended base).
+			var book_w := clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0)
+			z = z_blended * lerpf(0.96, 0.90, book_w)
+		elif pin_yd <= short_hi:
+			z = z_blended
 		else:
 			# Long tee: a touch wider for aim cone, still corridor-first
 			z = z_cor * 0.88
