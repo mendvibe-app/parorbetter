@@ -28,11 +28,10 @@ Shipped epic/correction specs live in [`archive/`](archive/). Living roadmaps an
 ## Deferred / unplanned
 
 - **Bag calibration Part B** — unapproved bag rescale
-- **`feature/short-game-practice`** — branch only (next product candidate)
 - **Unplayable lie / drop** — no epic written
 
 ---
 
-## Recently shipped (not open)
+## Recently shipped
 
-Menu abandon mid-session, pin-primary approach zoom, aim-commit wind, tip priority, hole-out drop.
+Short Game practice mode (12 stations), menu abandon, pin-primary zoom, aim-commit wind, tip priority, hole-out drop.
