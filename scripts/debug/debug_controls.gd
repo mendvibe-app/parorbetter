@@ -293,10 +293,12 @@ func _process(_delta: float) -> void:
 			amp_line,
 		]
 	else:
+		# Putts have no flight phase — blank is correct (stale hang/carry from prior full shot).
+		var is_putt := bool(m.get("is_putt", false)) or shot_type == "putt"
 		var h_peak := float(m.get("height_peak", -1.0))
 		var h_max := float(m.get("height_max", -1.0))
 		var height_line := "Apex —"
-		if h_peak >= 0.0 or h_max >= 0.0:
+		if not is_putt and (h_peak >= 0.0 or h_max >= 0.0):
 			# Indices: airy=4 (lowest), oak=3 (mid), tall=7 (wall) — single source TREE_CANOPY_H.
 			var ch: Array = HoleController.TREE_CANOPY_H
 			var airy_h := float(ch[4]) if ch.size() > 4 else 55.0
@@ -310,7 +312,7 @@ func _process(_delta: float) -> void:
 				tall_h,
 			]
 		var flight: Dictionary = {}
-		if shot_type != "putt" and m.get("flight") is Dictionary:
+		if not is_putt and m.get("flight") is Dictionary:
 			flight = m["flight"] as Dictionary
 		if not flight.is_empty():
 			var carry_px := float(flight.get("carry_px", 0.0))

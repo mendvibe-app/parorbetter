@@ -2613,6 +2613,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 		wind_note,
 		sev_at_strike
 	)
+	var flight_st := shot_routine.flight_shot_type()
 	GameState.last_shot_metrics = {
 		"power": result.power,
 		"true_power": result.true_power,
@@ -2628,8 +2629,10 @@ func _on_shot_ready(result: ShotResult) -> void:
 		"aim_radius_yd": _aim_radius_yd,
 		"aim_offset": aim_offset,
 		"form": GameState.get_form(),
-		"shot_type": shot_routine.flight_shot_type(),
+		"shot_type": flight_st,
 		"punch": shot_routine.punch_mode,
+		# Honest putt flag (not _is_putt_context — that includes near-green chips).
+		"is_putt": flight_st == "putt",
 	}
 	# Full-shot flight owns the screen (up-and-in + tracer); glance waits for settle.
 	# Putts stay short — keep the live glance.
@@ -2878,7 +2881,11 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
 		# Putts skip FLIGHT — hang/carry stay stale from the prior airborne shot.
 		# Blank is correct; do not write flight/apex into F1 metrics.
-		if str(GameState.last_shot_metrics.get("shot_type", "")) != "putt":
+		var settled_putt := (
+			bool(GameState.last_shot_metrics.get("is_putt", false))
+			or str(GameState.last_shot_metrics.get("shot_type", "")) == "putt"
+		)
+		if not settled_putt:
 			GameState.last_shot_metrics["height_peak"] = ball.flight_height_peak()
 			GameState.last_shot_metrics["height_max"] = ball.flight_height_max()
 			GameState.last_shot_metrics["flight"] = ball.flight_metrics()
