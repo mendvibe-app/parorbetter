@@ -310,7 +310,7 @@ func _process(_delta: float) -> void:
 				tall_h,
 			]
 		var flight: Dictionary = {}
-		if m.get("flight") is Dictionary:
+		if shot_type != "putt" and m.get("flight") is Dictionary:
 			flight = m["flight"] as Dictionary
 		if not flight.is_empty():
 			var carry_px := float(flight.get("carry_px", 0.0))
