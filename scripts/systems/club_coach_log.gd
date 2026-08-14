@@ -6,6 +6,9 @@ extends RefCounted
 const WINDOW := 20  ## rolling sample size per club, mirrors path_miss_history style
 const MIN_SAMPLES_FOR_TIP := 5
 const SAVE_PATH := "user://club_coach.cfg"
+## Bump invalidates saved history (pre–flight-rebuild yardage/tempo is a different game).
+const SCHEMA_VERSION := 2
+const META_SECTION := "_meta"
 
 ## Tempo/path bias thresholds — first-guess playtest knobs, retune once real F1 data exists.
 const TEMPO_THRESHOLD := 0.35
@@ -111,12 +114,25 @@ static func resolve_tip(stats: Dictionary) -> Dictionary:
 	return {"tag": "on_track", "label": "Dialed in", "icon_id": "on_track"}
 
 
+func clear_data() -> void:
+	## Wipe all clubs and rewrite save (schema stamp only). Used on schema mismatch.
+	clubs.clear()
+	save_data()
+
+
 func load_data() -> void:
 	var cfg := ConfigFile.new()
 	if cfg.load(SAVE_PATH) != OK:
 		return
+	var ver := int(cfg.get_value(META_SECTION, "schema_version", 1))
+	if ver != SCHEMA_VERSION:
+		# Pre–flight-rebuild history (or any older schema) is not comparable.
+		clear_data()
+		return
 	clubs.clear()
 	for section in cfg.get_sections():
+		if section == META_SECTION:
+			continue
 		clubs[section] = {
 			"shots_logged": int(cfg.get_value(section, "shots_logged", 0)),
 			"yardage_history": Array(cfg.get_value(section, "yardage_history", [])),
@@ -129,6 +145,7 @@ func load_data() -> void:
 
 func save_data() -> void:
 	var cfg := ConfigFile.new()
+	cfg.set_value(META_SECTION, "schema_version", SCHEMA_VERSION)
 	for club_name in clubs:
 		var stats: Dictionary = clubs[club_name]
 		cfg.set_value(club_name, "shots_logged", stats["shots_logged"])
