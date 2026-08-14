@@ -25,7 +25,7 @@ static func default_aim_target(
 	if lie != "Green":
 		var rec := TempoGrade.recommend_shot_type(lie, pin_yd, club_max_yards)
 		var solved := BallPhysics.solve_committed_power(
-			pin_yd, club_max_yards, lie, wind, severity, rec
+			pin_yd, club_max_yards, lie, wind, severity, rec, to_pin.normalized()
 		)
 		if bool(solved["overclub"]) and BallPhysics.shot_type_uses_full_pocket(rec):
 			var total_yd := BallPhysics.estimate_carry_yards(

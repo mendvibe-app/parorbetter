@@ -45,10 +45,19 @@ def main() -> None:
     assert "launch_dir: Vector2 = Vector2.UP" in rp
     assert "wind.dot(dir)" in rp
     assert "dir.orthogonal()" in rp
-    # Range swing passes real bearing; club_percent_today / solve_committed stay on default.
+    # Aim / commit / club-select pass real bearing into solve / club_percent.
     hole = (ROOT / "scripts" / "course" / "hole_controller.gd").read_text(encoding="utf-8")
     assert "bearing.normalized()" in hole
     assert "recommended_power(" in hole
+    assert "solve_committed_power" in PHYS
+    sc = PHYS.split("static func solve_committed_power")[1][:500]
+    assert "launch_dir" in sc
+    assert "recommended_power(" in sc and "launch_dir" in sc
+    cp = PHYS.split("static func club_percent_today")[1][:400]
+    assert "launch_dir" in cp
+    select = (ROOT / "scripts" / "shot" / "club_select.gd").read_text(encoding="utf-8")
+    assert "_launch_dir" in select
+    assert "club_percent_today" in select
 
     # Wind yards: dir=UP must match legacy -wy*0.35 + abs(wx)*0.08 exactly.
     def wind_yards(wx: float, wy: float, dx: float, dy: float) -> float:

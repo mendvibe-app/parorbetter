@@ -513,9 +513,10 @@ static func club_percent_today(
 	club_max_yards: float,
 	lie: String,
 	wind: Vector2 = Vector2.ZERO,
-	severity: String = ""
+	severity: String = "",
+	launch_dir: Vector2 = Vector2.UP
 ) -> float:
-	return recommended_power(remaining_yd, club_max_yards, lie, wind, severity)
+	return recommended_power(remaining_yd, club_max_yards, lie, wind, severity, launch_dir)
 
 
 static func lie_multiplier(lie: String, severity: String = "") -> float:
@@ -678,9 +679,12 @@ static func solve_committed_power(
 	lie: String,
 	wind: Vector2 = Vector2.ZERO,
 	severity: String = "",
-	shot_type: String = "full"
+	shot_type: String = "full",
+	launch_dir: Vector2 = Vector2.UP
 ) -> Dictionary:
-	var true_pct := recommended_power(remaining_yd, club_max_yards, lie, wind, severity)
+	var true_pct := recommended_power(
+		remaining_yd, club_max_yards, lie, wind, severity, launch_dir
+	)
 	var power := true_pct
 	var overclub := false
 	if lie != "Green" and true_pct < POWER_POCKET_LO and shot_type_uses_full_pocket(shot_type):

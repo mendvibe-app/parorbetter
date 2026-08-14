@@ -23,6 +23,7 @@ var _lie: String = ""
 var _severity: String = ""
 var _pin_yd: float = 0.0
 var _wind: Vector2 = Vector2.ZERO
+var _launch_dir: Vector2 = Vector2.UP  ## ball→pin for wind-aware effort labels
 var _full_bag: bool = false
 ## Scroll at row press — if it moved past deadzone, release is a drag not a tap.
 var _press_scroll: int = 0
@@ -136,11 +137,18 @@ func _process(_delta: float) -> void:
 	_refresh_confirm_enabled()
 
 
-func present(lie: String, pin_yd: float, wind: Vector2, severity: String = "") -> void:
+func present(
+	lie: String,
+	pin_yd: float,
+	wind: Vector2,
+	severity: String = "",
+	launch_dir: Vector2 = Vector2.UP
+) -> void:
 	_lie = lie
 	_severity = severity
 	_pin_yd = pin_yd
 	_wind = wind
+	_launch_dir = launch_dir if launch_dir.length_squared() > 0.001 else Vector2.UP
 	_full_bag = false
 	_selected = {}
 	_confirm_ready_at_msec = Time.get_ticks_msec() + int(OPEN_LOCK_SEC * 1000.0)
@@ -206,7 +214,9 @@ func _club_row_text(name: String, max_yd: float, is_suggested: bool) -> String:
 
 func _row_effort_label(name: String, max_yd: float) -> String:
 	## PLAYTEST TARGET: band edges. Real golf effort language, not a raw %.
-	var pct := BallPhysics.club_percent_today(_pin_yd, max_yd, _lie, _wind, _severity)
+	var pct := BallPhysics.club_percent_today(
+		_pin_yd, max_yd, _lie, _wind, _severity, _launch_dir
+	)
 	if (
 		_lie != "Green"
 		and not BallPhysics.is_shortest_available(max_yd, _lie)

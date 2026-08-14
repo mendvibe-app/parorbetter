@@ -27,3 +27,5 @@ Log of gameplay-affecting decisions, added as they happen.
 - **Swing input rework (Phases 0–6 code):** backswing **amplitude owns power**; tempo **ratio owns contact quality**. Full → pitch/flop → punch → chip/putt alignment shipped; aim-solve kept as advisory target + preview (not retired). Linear amplitude→power is the starting map (per-club curves deferred to feel). Logged: PERFECT chip still gets +6% via `contact_multiplier`. Device feel pass is playtest-only.
 - **Putt F1 metrics:** putts have no flight phase — F1 blanks apex/Carry/hang/launch (no stale full-shot numbers). `last_shot_metrics.is_putt` + settle skips writing flight for putts.
 
+
+- **Wind recommend path complete:** `solve_committed_power` / `club_percent_today` take `launch_dir`; aim, club select, and swing configure pass ball?pin/aim bearing (default UP = legacy).
