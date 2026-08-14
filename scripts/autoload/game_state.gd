@@ -587,3 +587,10 @@ func enter_green_mode() -> void:
 
 func exit_green_mode() -> void:
 	green_mode = false
+
+
+## Leave mid-session without writing records — Menu / Restart → start screen.
+func abandon_run() -> void:
+	run_active = false
+	range_mode = false
+	green_mode = false

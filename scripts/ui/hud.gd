@@ -27,7 +27,7 @@ func _ready() -> void:
 
 
 func _setup_menu_btn() -> void:
-	## Practice modes only — leave range/green without F1.
+	## Leave any mode (Survival / 18-Hole / range / green) without F1.
 	menu_btn = Button.new()
 	menu_btn.name = "MenuButton"
 	menu_btn.text = "Menu"
@@ -61,7 +61,7 @@ func refresh(hole: HoleData, strokes: int) -> void:
 	_refresh_score()
 	lives_row.visible = GameState.is_survival()
 	if menu_btn:
-		menu_btn.visible = false
+		menu_btn.visible = true
 
 
 func refresh_range(swings: int) -> void:
