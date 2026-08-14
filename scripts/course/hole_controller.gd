@@ -1083,9 +1083,10 @@ func _corridor_zoom_level() -> float:
 func _approach_pin_zoom(pin_yd: float, view_min: float) -> float:
 	## Distance-driven zoom for short non-putt shots (higher = closer). Frames
 	## ball→pin with room for aim cone / land marks — softer than putt formula.
+	## Playtest: first pass (0.72 / 0.50 / 5.5) still felt a touch wide on wedges.
 	var dist := BallPhysics.yards_to_pixels(maxf(pin_yd, 8.0))
-	var half_span := maxf(dist * 0.72 + 40.0, 70.0)
-	return clampf(view_min * 0.50 / half_span, 1.15, 5.5)
+	var half_span := maxf(dist * 0.62 + 28.0, 58.0)
+	return clampf(view_min * 0.55 / half_span, 1.20, 6.5)
 
 
 func _flight_z_launch() -> float:
@@ -2716,11 +2717,11 @@ func _desired_camera_zoom() -> Vector2:
 			1.0
 			- clampf((pin_yd - TempoGrade.CHIP_YD) / maxf(short_hi - TempoGrade.CHIP_YD, 1.0), 0.0, 1.0)
 		)
-		var z_blended := lerpf(z_cor, z_pin, blend * 0.88)
+		var z_blended := lerpf(z_cor, z_pin, blend * 0.95)
 		if _aiming and _should_show_green_book():
 			# Slight widen so book + landing stay readable (on top of blended base).
 			var book_w := clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0)
-			z = z_blended * lerpf(0.96, 0.90, book_w)
+			z = z_blended * lerpf(0.98, 0.93, book_w)
 		elif pin_yd <= short_hi:
 			z = z_blended
 		else:
