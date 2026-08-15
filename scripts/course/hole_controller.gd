@@ -81,10 +81,13 @@ const TREE_TEXTURES := [
 ## ALL PLAYTEST TARGETS.
 const TREE_CANOPY_H: Array[float] = [56.0, 72.0, 61.0, 65.0, 50.0, 63.0, 58.0, 83.0]
 ##                                   round  pine cluster oak  airy  dark broad tall
-## Portrait course framing: dark rough belt just outside fairway + tree line on it.
-## Camera aims to keep this corridor ~half of screen width (not oceans of mid-rough).
-const SIDE_BELT_W := 58.0
-const CORRIDOR_SCREEN_FRAC := 0.50  ## fairway + belts ≈ this fraction of viewport width
+## Portrait course framing. Split from overloaded SIDE_BELT_W (rough-base-layer P0):
+## art width, camera pad, and tree line must move independently.
+const FIRST_CUT_W := 14.0  ## PLAYTEST TARGET — first-cut halo width (art only)
+const CORRIDOR_PAD := 58.0  ## camera framing pad each side (was SIDE_BELT_W)
+const TREE_LINE_PAD := 20.0  ## was SIDE_BELT_W * 0.35 — tree offset beyond fairway edge
+const CORRIDOR_SCREEN_FRAC := 0.50  ## fairway + pads ≈ this fraction of viewport width
+const GROUND_TILE_PX := 300.0  ## PLAYTEST TARGET — shared ground tile density
 var hole: HoleData
 var strokes: int = 0
 var ball_in_flight: bool = false
@@ -562,14 +565,21 @@ func _build_course() -> void:
 	_setup_tee_positions()
 	var course_len := (_tee_back_pos.y - GREEN_Y) + 180.0
 
-	# Rough apron (mid rough — camera + side belts keep this from dominating the frame)
-	_add_rect(course_root, Rect2(0, GREEN_Y - 140, 1080, course_len + 220), Color(0.92, 0.98, 0.92), "", TEX_ROUGH, 340.0)
+	# Base rough is the world (dark tile). Fairway is mown into it; first-cut is a halo.
+	_add_rect(
+		course_root,
+		Rect2(0, GREEN_Y - 140, 1080, course_len + 220),
+		Color(1, 1, 1),
+		"",
+		TEX_ROUGH_DARK,
+		GROUND_TILE_PX
+	)
 
-	# Bent / shaped fairway
+	# First-cut halo (lighter rough) between base and fairway — follow bend.
+	_add_first_cut()
+
+	# Bent / shaped fairway (lightest, striped)
 	_add_bent_fairway(fairway_w)
-
-	# Deep-rough belts just outside fairway (follow bend) — hole edge, not empty field
-	_add_side_belts()
 
 	# Green sprite (variant per layout) + detection area
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
@@ -663,7 +673,7 @@ func _add_bent_fairway(width: float) -> void:
 	var poly := Polygon2D.new()
 	poly.color = Color(1, 1, 1)
 	poly.texture = TEX_FAIRWAY
-	poly.texture_scale = Vector2.ONE * (float(TEX_FAIRWAY.get_width()) / 300.0)
+	poly.texture_scale = Vector2.ONE * (float(TEX_FAIRWAY.get_width()) / GROUND_TILE_PX)
 	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	var pts := PackedVector2Array()
 	pts.append(bot + Vector2(-half, 0))
@@ -1156,8 +1166,8 @@ func _along_from_y(y: float) -> float:
 
 
 func _play_corridor_width() -> float:
-	## Fairway + deep-rough belts on both sides — the visual "hole channel".
-	return maxf(_fairway_half * 2.0 + SIDE_BELT_W * 2.0, 140.0)
+	## Fairway + corridor pad on both sides — the visual "hole channel".
+	return maxf(_fairway_half * 2.0 + CORRIDOR_PAD * 2.0, 140.0)
 
 
 func _corridor_zoom_level() -> float:
@@ -1185,8 +1195,9 @@ func _flight_z_land() -> float:
 	return _flight_zoom_base * FLIGHT_LAND_FRAC
 
 
-func _add_side_belts() -> void:
-	## Dark rough strips hugging the fairway edge (follow bend). Not gameplay OOB.
+func _add_first_cut() -> void:
+	## Light first-cut halo hugging fairway edge (follow bend). Not gameplay OOB.
+	## Brightness order outward: fairway > first cut > base rough (monotonic).
 	var step := 36.0
 	var y := GREEN_Y - 50.0
 	var y_end := _tee_back_pos.y + 70.0
@@ -1195,22 +1206,21 @@ func _add_side_belts() -> void:
 		var along := _along_from_y(y + h * 0.5)
 		var cx := _fairway_center_x(along)
 		var half := _fairway_half
-		# Left / right deep rough just outside fairway
 		_add_rect(
 			course_root,
-			Rect2(cx - half - SIDE_BELT_W, y, SIDE_BELT_W, h),
-			Color(0.85, 0.9, 0.85),
+			Rect2(cx - half - FIRST_CUT_W, y, FIRST_CUT_W, h),
+			Color(1, 1, 1),
 			"",
-			TEX_ROUGH_DARK,
-			280.0
+			TEX_ROUGH,  # lighter tile = first cut
+			GROUND_TILE_PX
 		)
 		_add_rect(
 			course_root,
-			Rect2(cx + half, y, SIDE_BELT_W, h),
-			Color(0.85, 0.9, 0.85),
+			Rect2(cx + half, y, FIRST_CUT_W, h),
+			Color(1, 1, 1),
 			"",
-			TEX_ROUGH_DARK,
-			280.0
+			TEX_ROUGH,
+			GROUND_TILE_PX
 		)
 		y += step
 
@@ -1237,7 +1247,7 @@ func _place_tree_group(
 			c.x += s * float(i) * 14.0
 		else:
 			var fc := _fairway_center_at(a)
-			var lat := _fairway_half + size * rng.randf_range(0.25, 0.55) + SIDE_BELT_W * 0.35
+			var lat := _fairway_half + size * rng.randf_range(0.25, 0.55) + TREE_LINE_PAD
 			if role == HoleData.ROLE_LANDING and n > 1:
 				lat += float(i) * 8.0
 			c = Vector2(fc.x + s * lat + rng.randf_range(-10.0, 10.0), fc.y + rng.randf_range(-14.0, 14.0))
