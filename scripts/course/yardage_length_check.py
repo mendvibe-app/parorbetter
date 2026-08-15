@@ -50,9 +50,12 @@ def main() -> int:
     assert "TEE_Y_MAX := 1500.0" in aim
     assert tee_y(650.0) < 1500.0
 
-    # Generator size band — real-ish greens (~60–130 ft), not airport runways.
-    assert "lerpf(0.95, 0.22, t)" in GEN or "lerpf(0.95, 0.22" in GEN
-    assert "lerpf(22.0, 48.0, green_size)" in GEN
+    # Distance-driven green sizing (approach yards, not difficulty t).
+    assert "func _approach_yards" in GEN or "static func _approach_yards" in GEN
+    assert "func _green_target_radii_px" in GEN or "static func _green_target_radii_px" in GEN
+    assert "GREEN_AREA_FLOOR_SQFT" in GEN
+    assert "EXPECTED_DRIVE_YD" in GEN
+    assert "lerpf(0.95, 0.22, t)" not in GEN  # old t-driven size retired
 
     print("yardage_length_check: ok")
     return 0

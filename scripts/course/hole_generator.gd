@@ -12,6 +12,15 @@ const PIN_EDGE_MARGIN_YD := 5.0
 ## ~3 ft cup shelf for uniform grade around the hole.
 const PIN_SHELF_YD := 1.0
 const PIN_MAX_LOCAL_SLOPE := 0.18
+## PLAYTEST TARGET — expected shot lengths used to derive approach for green sizing.
+const EXPECTED_DRIVE_YD := 235.0  ## solid but not maxed Driver
+const EXPECTED_LAYUP_YD := 210.0  ## Hybrid second on a par 5
+## Brauer / USGA-anchored green area (sq ft). PLAYTEST TARGET.
+const GREEN_AREA_FLOOR_SQFT := 4300.0
+const GREEN_AREA_CEIL_SQFT := 9000.0
+## Width/depth per approach yard (26×31 at 160 yd). PLAYTEST TARGET.
+const GREEN_WIDTH_PER_APPR := 0.1625
+const GREEN_DEPTH_PER_APPR := 0.1940
 
 ## Base green-shape weights (Oval 35%, Kidney 25%, Tiered 15%, L 10%, Peninsula 8%, Complex 7%).
 const GREEN_SHAPE_ITEMS: Array = [
@@ -329,9 +338,17 @@ static func generate_hole(
 		rng.randf()
 
 	var size_bias := float(arch.get("green_size_bias", 0.0))
-	var green_size := lerpf(0.95, 0.22, t) + size_bias + rng.randf_range(-0.04, 0.04)
-	green_size = clampf(green_size, 0.18, 1.0)
-	var radii := _green_radii(green_shape, green_size, rng)
+	# Distance-driven green sizing (epic-distance-driven-green-sizing): approach yards,
+	# not difficulty t. size_bias + jitter AFTER area clamp so rails keep variety.
+	var approach_yd := _approach_yards(par, yardage)
+	var target_radii := _green_target_radii_px(approach_yd, size_bias, rng)
+	var radii := _green_radii(green_shape, target_radii, rng)
+	# Legacy 0–1 green_size for HoleData consumers (normalized by area vs mid range).
+	var green_size := clampf(
+		(PI * radii.x * radii.y) / (PI * 32.0 * 36.0),
+		0.18,
+		1.0
+	)
 	var contour := _pick_contour(rng, t, arch, green_shape)
 
 	var fairway_width := (
@@ -666,35 +683,69 @@ static func _layout_for_shape(
 			return HoleData.LayoutStyle.ISLAND if rng.randf() < 0.4 else HoleData.LayoutStyle.BI_TIER
 
 
+## Approach length the green is sized for (par 3 = full yardage).
+static func _approach_yards(par: int, yardage: float) -> float:
+	var appr := yardage
+	if par >= 4:
+		appr -= EXPECTED_DRIVE_YD
+	if par >= 5:
+		appr -= EXPECTED_LAYUP_YD
+	return clampf(appr, 60.0, 220.0)
+
+
+## Target rx/ry in px from approach distance. Clamp area then apply bias/jitter.
+static func _green_target_radii_px(
+	approach_yd: float, size_bias: float, rng: RandomNumberGenerator
+) -> Vector2:
+	var w_yd := GREEN_WIDTH_PER_APPR * approach_yd
+	var d_yd := GREEN_DEPTH_PER_APPR * approach_yd
+	# Area sq ft = π * (w/2) * (d/2) * 9
+	var area := PI * (w_yd * 0.5) * (d_yd * 0.5) * 9.0
+	var target := clampf(area, GREEN_AREA_FLOOR_SQFT, GREEN_AREA_CEIL_SQFT)
+	if area > 0.01:
+		var s := sqrt(target / area)
+		w_yd *= s
+		d_yd *= s
+	# AFTER clamp: archetype bias + rng so floor/ceiling holes still vary.
+	var j := clampf(1.0 + size_bias * 0.12 + rng.randf_range(-0.05, 0.05), 0.88, 1.12)
+	w_yd *= j
+	d_yd *= j
+	var rx := BallPhysics.yards_to_pixels(w_yd * 0.5)
+	var ry := BallPhysics.yards_to_pixels(d_yd * 0.5)
+	return Vector2(rx, ry)
+
+
+## Area-preserving aspect variation (deeper-than-wide). target = pre-shape radii.
 static func _green_radii(
 	shape: HoleData.GreenShape,
-	green_size: float,
+	target: Vector2,
 	rng: RandomNumberGenerator
 ) -> Vector2:
-	# World px radii — ~60–130 ft diameter (real greens), not airport runways.
-	var base := lerpf(22.0, 48.0, green_size)
-	var rx := base
-	var ry := base
+	var mx := 1.0
+	var my := 1.0
 	match shape:
 		HoleData.GreenShape.OVAL:
-			rx = base * rng.randf_range(1.05, 1.25)
-			ry = base * rng.randf_range(0.85, 1.0)
+			mx = rng.randf_range(0.85, 1.00)
+			my = rng.randf_range(1.05, 1.25)
 		HoleData.GreenShape.KIDNEY:
-			rx = base * rng.randf_range(1.1, 1.35)
-			ry = base * rng.randf_range(0.75, 0.95)
+			mx = rng.randf_range(0.75, 0.95)
+			my = rng.randf_range(1.10, 1.35)
 		HoleData.GreenShape.TIERED:
-			rx = base * rng.randf_range(0.95, 1.15)
-			ry = base * rng.randf_range(0.7, 0.9)
+			mx = rng.randf_range(0.70, 0.90)
+			my = rng.randf_range(0.95, 1.15)
 		HoleData.GreenShape.L_SHAPED:
-			rx = base * rng.randf_range(1.15, 1.4)
-			ry = base * rng.randf_range(0.65, 0.85)
+			mx = rng.randf_range(0.65, 0.85)
+			my = rng.randf_range(1.15, 1.40)
 		HoleData.GreenShape.PENINSULA:
-			rx = base * rng.randf_range(0.85, 1.05)
-			ry = base * rng.randf_range(0.85, 1.05)
+			mx = rng.randf_range(0.85, 1.05)
+			my = rng.randf_range(0.85, 1.05)
 		HoleData.GreenShape.COMPLEX:
-			rx = base * rng.randf_range(0.9, 1.2)
-			ry = base * rng.randf_range(0.65, 0.88)
-	return Vector2(rx, ry)
+			mx = rng.randf_range(0.65, 0.88)
+			my = rng.randf_range(0.90, 1.20)
+	# Normalize so mx*my = 1 → same area as target for every shape.
+	var p := mx * my
+	var n := sqrt(1.0 / maxf(p, 0.01))
+	return Vector2(target.x * mx * n, target.y * my * n)
 
 
 static func _pick_contour(
