@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 import sys
 from pathlib import Path
 
@@ -147,9 +148,10 @@ def main() -> int:
     assert "putt_aim_ft" not in GESTURE
     assert "SCALE_LABELED_FT" in GESTURE
 
-    # Greens ~60–130 ft diameter (real-ish); long lags can span most of a medium green
+    # Distance-driven green sizing; contours still vary slope for break.
     GEN = DIR.joinpath("../course/hole_generator.gd").read_text(encoding="utf-8")
-    assert "lerpf(22.0, 48.0, green_size)" in GEN
+    assert "GREEN_AREA_FLOOR_SQFT" in GEN
+    assert "_green_target_radii_px" in GEN
     assert "lerpf(0.10, 0.48, rng.randf())" in GEN
     assert "lerpf(0.12, 0.03, t)" in GEN  # less early FLAT
     # Putt camera zooms out on lags so distance reads
@@ -165,10 +167,15 @@ def main() -> int:
     assert "CUP_CAPTURE_MAX_SPEED" in BALL
     assert "_try_cup_capture" in BALL
     assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
-    # Mid-slope 40 ft must bend ~2 ball-widths (was sub-pixel at K=22)
+    # Mid-slope 40 ft must bend ~2 ball-widths (was sub-pixel at K=22).
+    # decel = roll_decel_px("Green") = 1.8 * FT_TO_PX / ROLL_DURATION_FRAC²
     px_per_yd = 2.25
+    ft_to_px = px_per_yd / 3.0
+    m_frac = re.search(r"const FLIGHT_DURATION_FRAC\s*:=\s*([0-9.]+)", PHYS)
+    assert m_frac, "FLIGHT_DURATION_FRAC missing"
+    roll_frac = float(m_frac.group(1))
+    friction = 1.8 * ft_to_px / (roll_frac * roll_frac)
     travel_px = (40.0 / 3.0) * px_per_yd
-    friction = 108.0
     t_roll = (2.0 * friction * travel_px) ** 0.5 / friction
     bend = 0.5 * (0.22 * 90.0) * t_roll * t_roll
     assert bend >= 4.0, bend

@@ -511,7 +511,10 @@ func _process_flight(delta: float) -> void:
 	if _height > _height_max:
 		_height_max = _height
 
-	velocity += wind * delta * 6.0
+	# Scale wind force so integrated drift ≈ constant across FLIGHT_DURATION_FRAC.
+	# hang ∝ 1/sqrt(g); force ∝ sqrt(g) keeps force×hang ≈ legacy at g=535.
+	var wind_force := 6.0 * sqrt(BallPhysics.GRAVITY_PX / 535.0)
+	velocity += wind * delta * wind_force
 	# Curve offline relative to launch. Curvature ∝ along_spd so soft pitches curve
 	# gently without a separate spin_scale clamp. Preserve airspeed — additive lateral
 	# alone bled forward progress (playtest: plan 13 yd / path −0.22 → actual ~6).
@@ -587,8 +590,6 @@ func _slope_at_ball() -> Vector2:
 func _process_roll(delta: float) -> void:
 	_sync_ground_lie()
 	_height = move_toward(_height, 0.0, delta * 80.0)
-	var friction := BallPhysics.roll_friction_for(_lie)
-
 	var slope := _slope_at_ball()
 	if _is_putt:
 		# Break pulls offline; can fight aim (skill reads matter)
@@ -600,7 +601,7 @@ func _process_roll(delta: float) -> void:
 	elif _lie == "Green":
 		velocity += slope * 16.0 * delta
 
-	velocity = velocity.move_toward(Vector2.ZERO, friction * 60.0 * delta)
+	velocity = velocity.move_toward(Vector2.ZERO, BallPhysics.roll_decel_px(_lie) * delta)
 
 	if not _is_putt:
 		var roll_right := Vector2(-_launch_dir.y, _launch_dir.x)

@@ -258,9 +258,17 @@ const REAL_APEX_FT := {
 }
 ## Game pixels per real foot of height. PLAYTEST TARGET.
 const APEX_SCALE := 0.788
-## hang = sqrt(8 * apex / GRAVITY_PX). THE master pacing knob — raise to shorten hang
-## without changing apex ordering. PLAYTEST TARGET.
-const GRAVITY_PX := 535.0
+## Real gravity in apex px: 32.174 ft/s² × APEX_SCALE. See epic-real-time-pacing.
+const GRAVITY_REAL_PX := 25.35
+## Fraction of real-world flight duration. 1.0 = broadcast-accurate.
+## PLAYTEST TARGET — start 0.65 (was implicit ~0.22 at GRAVITY_PX=535).
+const FLIGHT_DURATION_FRAC := 0.65
+## hang = sqrt(8 * apex / GRAVITY_PX). Derived so hang scales with FLIGHT_DURATION_FRAC.
+const GRAVITY_PX := GRAVITY_REAL_PX / (FLIGHT_DURATION_FRAC * FLIGHT_DURATION_FRAC)
+## ft/s² → px/s² (PX_PER_YARD / 3). PLAYTEST TARGET for roll/putt unit conversion.
+const FT_TO_PX := PX_PER_YARD / 3.0
+## Shared duration fraction for roll/putt (coherent with flight). PLAYTEST TARGET.
+const ROLL_DURATION_FRAC := FLIGHT_DURATION_FRAC
 ## Shot-type apex multipliers. Pitch is explicit 1.0 (no arm). PLAYTEST TARGETS.
 const APEX_SCALE_CHIP := 0.70
 const APEX_SCALE_PUNCH := 0.35
@@ -743,21 +751,28 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 			return 1.0
 
 
-## Roll friction by lie (unitless coeff; decel = this * 60 px/s²). Single owner —
-## landing_speed and GolfBall._process_roll both read here. Keep in sync or the
-## flight→roll handoff jumps.
+## Roll friction in ft/s² (real-ish). Green 1.8 is stimpmeter-true; non-green
+## values are effective decelerations including bounce loss (no bounce model).
+## Decel px/s² = value * FT_TO_PX / ROLL_DURATION_FRAC². Single owner —
+## landing_speed and GolfBall._process_roll both read here.
 static func roll_friction_for(lie: String) -> float:
 	match lie:
 		"Green":
-			return 1.8
+			return 1.8  ## stimp-10 real; no bounce on putt
 		"Fairway", "Tee":
-			return 2.4
+			return 10.0  ## PLAYTEST TARGET — effective with bounce (was 2.4 + wrong *60)
 		"Rough":
-			return 4.5
+			return 18.0  ## PLAYTEST TARGET
 		"Sand":
-			return 7.0
+			return 28.0  ## PLAYTEST TARGET
 		_:
-			return 3.0
+			return 12.0
+
+
+## Deceleration in px/s² for roll/putt (shared duration fraction with flight).
+static func roll_decel_px(lie: String) -> float:
+	var f := ROLL_DURATION_FRAC
+	return roll_friction_for(lie) * FT_TO_PX / maxf(f * f, 0.01)
 
 
 ## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
@@ -815,8 +830,8 @@ static func launch_velocity(
 		var putt_launch := (dir + putt_right * line_miss).normalized()
 		if putt_launch.dot(dir) < 0.35:
 			putt_launch = (dir + putt_right * signf(line_miss) * 0.55).normalized()
-		# Green roll decel ≈ 1.8 * 60 = 108
-		var putt_speed := sqrt(2.0 * 108.0 * maxf(total_px, 1.0))
+		# Green roll: a = roll_decel_px("Green"); v = sqrt(2 a s)
+		var putt_speed := sqrt(2.0 * roll_decel_px("Green") * maxf(total_px, 1.0))
 		return {
 			"velocity": putt_launch * putt_speed,
 			"spin": 0.0,
@@ -892,7 +907,7 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
-		landing_speed = sqrt(2.0 * roll_friction_for(lie) * 60.0 * roll_px)
+		landing_speed = sqrt(2.0 * roll_decel_px(lie) * roll_px)
 
 	return {
 		"velocity": velocity,

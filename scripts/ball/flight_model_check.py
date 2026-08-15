@@ -39,6 +39,7 @@ _require(PHYS, "static func resolve_distance")
 _require(PHYS, "static func estimate_carry_yards")
 _require(PHYS, "static func launch_speed_for")
 _require(PHYS, "static func roll_friction_for")
+_require(PHYS, "static func roll_decel_px")
 _require(PHYS, "static func air_distance_fraction")
 _require(PHYS, "static func force_factor")
 _require(PHYS, "static func apex_for")
@@ -46,6 +47,8 @@ _require(PHYS, "static func hang_time")
 _require(PHYS, "const REAL_APEX_FT")
 _require(PHYS, "const APEX_SCALE")
 _require(PHYS, "const GRAVITY_PX")
+_require(PHYS, "const FT_TO_PX")
+_require(PHYS, "const FLIGHT_DURATION_FRAC")
 _require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
 _require(BALL, "const SPIN_CURVE_COEFF")
@@ -70,9 +73,24 @@ DIST_MUL_LO = _f(PHYS, r"var dist_mul := lerpf\(1\.0,\s*([0-9.]+),\s*force\)")
 assert abs(MASH_POWER_LERP - 0.94) < 1e-9, MASH_POWER_LERP
 assert abs(DIST_MUL_LO - 0.88) < 1e-9, DIST_MUL_LO
 
-# Phase 1 apex-primary knobs
+# Phase 1 apex-primary knobs (GRAVITY_PX derived from REAL * 1/FRAC²)
 APEX_SCALE = _f(PHYS, r"const APEX_SCALE\s*:=\s*([0-9.]+)")
-GRAVITY_PX = _f(PHYS, r"const GRAVITY_PX\s*:=\s*([0-9.]+)")
+_g_real = re.search(r"const GRAVITY_REAL_PX\s*:=\s*([0-9.]+)", PHYS)
+_g_frac = re.search(r"const FLIGHT_DURATION_FRAC\s*:=\s*([0-9.]+)", PHYS)
+if _g_real and _g_frac:
+    GRAVITY_REAL_PX = float(_g_real.group(1))
+    FLIGHT_DURATION_FRAC = float(_g_frac.group(1))
+    GRAVITY_PX = GRAVITY_REAL_PX / (FLIGHT_DURATION_FRAC ** 2)
+else:
+    GRAVITY_REAL_PX = 25.35
+    FLIGHT_DURATION_FRAC = 0.65
+    GRAVITY_PX = _f(PHYS, r"const GRAVITY_PX\s*:=\s*([0-9.]+)")
+# FT_TO_PX may be literal or PX_PER_YARD/3 expression
+_ft = re.search(r"const FT_TO_PX\s*:=\s*([0-9.]+)", PHYS)
+FT_TO_PX = float(_ft.group(1)) if _ft else PX_PER_YARD / 3.0
+ROLL_DURATION_FRAC = FLIGHT_DURATION_FRAC
+# Wind force scaled so integrated drift ≈ constant vs hang (ball.gd)
+WIND_FORCE = 6.0 * math.sqrt(GRAVITY_PX / 535.0)
 APEX_SCALE_CHIP = _f(PHYS, r"const APEX_SCALE_CHIP\s*:=\s*([0-9.]+)")
 APEX_SCALE_PUNCH = _f(PHYS, r"const APEX_SCALE_PUNCH\s*:=\s*([0-9.]+)")
 APEX_SCALE_FLOP = _f(PHYS, r"const APEX_SCALE_FLOP\s*:=\s*([0-9.]+)")
@@ -199,19 +217,20 @@ def sim_roll_out(
     planned_px: float,
     start_along_px: float,
     landing_speed: float,
-    friction: float,
+    decel_px: float,
     *,
     clamp_remain: bool,
 ) -> dict:
-    """Mirror non-putt _process_roll (no slope/spin/collision)."""
+    """Mirror non-putt _process_roll (no slope/spin/collision).
+
+    decel_px is roll_decel_px(lie) — px/s², not raw friction * 60.
+    """
     along = start_along_px
     speed = max(landing_speed, 0.0)
     dt = 1.0 / 60.0
     reason = "timeout"
-    for _ in range(60 * 30):
-        # decel toward zero
-        decel = friction * 60.0 * dt
-        speed = max(0.0, speed - decel)
+    for _ in range(60 * 120):  # longer timeout at slow real-time pace
+        speed = max(0.0, speed - decel_px * dt)
         if clamp_remain:
             remain = planned_px - along
             if remain < 40.0:
@@ -321,16 +340,22 @@ def launch_speed_for(air_px: float, air_time: float) -> float:
 
 
 def roll_friction_for(lie: str) -> float:
-    """Mirror BallPhysics.roll_friction_for — single owner for landing_speed + roll."""
+    """Mirror BallPhysics.roll_friction_for — ft/s² effective (incl. bounce)."""
     if lie == "Green":
         return 1.8
     if lie in ("Fairway", "Tee"):
-        return 2.4
+        return 10.0
     if lie == "Rough":
-        return 4.5
+        return 18.0
     if lie == "Sand":
-        return 7.0
-    return 3.0
+        return 28.0
+    return 12.0
+
+
+def roll_decel_px(lie: str) -> float:
+    """Mirror BallPhysics.roll_decel_px — px/s² for roll/putt."""
+    f = ROLL_DURATION_FRAC
+    return roll_friction_for(lie) * FT_TO_PX / max(f * f, 0.01)
 
 
 def sim_flight_land(
@@ -362,9 +387,9 @@ def sim_flight_land(
     time_cap = air_time * 3.0 + 0.5  # hang detector for path-only mode
     first_exit = ""
     while t < time_cap:
-        # ball.gd: velocity += wind * delta * 6.0
-        vx += wind[0] * dt * 6.0
-        vy += wind[1] * dt * 6.0
+        # ball.gd: wind_force = 6 * sqrt(G/535) so integrated drift ≈ constant
+        vx += wind[0] * dt * WIND_FORCE
+        vy += wind[1] * dt * WIND_FORCE
         spd = math.hypot(vx, vy)
         along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
         if spd > 0.01 and abs(spin) > 1e-6:
@@ -490,7 +515,7 @@ def launch(
     air_px = total_px * air_frac
     base_speed = launch_speed_for(air_px, air_time)
     roll_px = total_px * (1.0 - air_frac)
-    decel = roll_friction_for(lie) * 60.0
+    decel = roll_decel_px(lie)
     landing_speed = math.sqrt(2.0 * decel * roll_px) if roll_px > 1.0 else 0.0
     return {
         "total_yd": total_yards,
@@ -851,6 +876,8 @@ def verify_live_constants_reflected() -> None:
     )
     print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
     # Floor must be planned air/hang, not flat 12 / along_spd (LW sky-ball playtest).
+    # Absolute yard floor moves with hang (slower launch under same integrated wind);
+    # prove planned floor beats reverse-without-guard and stays forward.
     assert "planned_spd" in BALL and "planned_spd * 0.35" in BALL
     assert "along_spd * 0.35, 12.0" not in BALL
     lw_repro = launch(65.0, 1.62, 0.84, "full", "Rough", "PERFECT", 0.0)
@@ -858,12 +885,20 @@ def verify_live_constants_reflected() -> None:
     lw_head = sim_flight_land(
         lw_air, lw_repro["air_time"], 0.0, wind=(0.0, 33.5), reverse_guard=True
     )
+    lw_off = sim_flight_land(
+        lw_air, lw_repro["air_time"], 0.0, wind=(0.0, 33.5), reverse_guard=False
+    )
     lw_carry = lw_head["along_px"] / PX_PER_YARD
+    lw_carry_off = lw_off["along_px"] / PX_PER_YARD
     print(
         f"  LW84 Rough PERFECT @ head33.5: carry={lw_carry:.1f}yd "
-        f"trips={lw_head['guard_trips']} (old flat-12 floor was ~16.1)"
+        f"(no-guard={lw_carry_off:.1f}) trips={lw_head['guard_trips']}"
     )
-    assert lw_carry >= 18.0, f"LW sky-ball floor still too low: {lw_carry:.1f}yd"
+    assert lw_carry > lw_carry_off + 1.0, (
+        f"planned floor must beat no-guard under headwind: "
+        f"{lw_carry:.1f} vs {lw_carry_off:.1f}"
+    )
+    assert lw_carry >= 8.0, f"LW sky-ball floor still too low: {lw_carry:.1f}yd"
     assert lw_head["guard_trips"] >= 1, "repro wind should still engage guard"
 
     # Phase 5 CP5: which exit predicate fires first (report before deleting t/along).
@@ -971,67 +1006,55 @@ def verify_live_constants_reflected() -> None:
     print("-" * 74)
     expected_fric = {
         "Green": 1.8,
-        "Fairway": 2.4,
-        "Tee": 2.4,
-        "Rough": 4.5,
-        "Sand": 7.0,
-        "Unknown": 3.0,
+        "Fairway": 10.0,
+        "Tee": 10.0,
+        "Rough": 18.0,
+        "Sand": 28.0,
+        "Unknown": 12.0,
     }
     for lie, want in expected_fric.items():
         assert abs(roll_friction_for(lie) - want) < 1e-12, (lie, roll_friction_for(lie), want)
-    # ball.gd must not keep a parallel table — only roll_friction_for.
+    # ball.gd must not keep a parallel table — only roll_decel_px.
     roll_body = BALL.split("func _process_roll")[1].split("func ")[0]
-    assert "roll_friction_for" in roll_body
+    assert "roll_decel_px" in roll_body
     assert "friction = 1.8" not in roll_body
     assert "friction = 4.5" not in roll_body
     assert "friction = 7.0" not in roll_body
-    assert "roll_friction_for(lie)" in PHYS or 'roll_friction_for(lie)' in PHYS
-    assert "roll_friction_for(lie) * 60.0" in PHYS
+    assert "roll_decel_px" in PHYS
+    assert "roll_friction_for(lie) * 60.0" not in PHYS  # retired wrong *60 unit
 
     r_fw = launch(260.0, 0.62, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
     roll_px = r_fw["roll_yd"] * PX_PER_YARD
-    old_fairway_spd = math.sqrt(2.0 * 144.0 * roll_px)
-    assert abs(r_fw["landing_speed"] - old_fairway_spd) < 1e-9, (
+    fairway_decel = roll_decel_px("Fairway")
+    fairway_spd = math.sqrt(2.0 * fairway_decel * roll_px)
+    assert abs(r_fw["landing_speed"] - fairway_spd) < 1e-9, (
         r_fw["landing_speed"],
-        old_fairway_spd,
+        fairway_spd,
     )
     r_tee = launch(260.0, 0.62, STOCK_POWER, "full", "Tee", "GOOD", 0.0)
-    # Tee uses Fairway kinematics for air_frac (no sand tax) + same friction 2.4.
-    assert abs(r_tee["landing_speed"] - old_fairway_spd) < 1e-9, (
+    # Tee uses Fairway kinematics for air_frac (no sand tax) + same friction 10.0.
+    assert abs(r_tee["landing_speed"] - fairway_spd) < 1e-9, (
         r_tee["landing_speed"],
-        old_fairway_spd,
+        fairway_spd,
     )
     print(
         f"{'lie':10}{'fric':>6}{'decel':>8}{'land_spd':>10}{'settle_err':>11}"
     )
     for lie in ("Fairway", "Tee", "Rough", "Sand", "Green"):
         f = roll_friction_for(lie)
-        spd = math.sqrt(2.0 * f * 60.0 * roll_px)
-        # Old bug: always Fairway landing energy into this lie's friction.
-        old_spd = old_fairway_spd
-        settled_old = sim_roll_out(
-            r_fw["total_yd"] * PX_PER_YARD,
-            r_fw["carry_yd"] * PX_PER_YARD,
-            old_spd,
-            f,
-            clamp_remain=False,
-        )
+        dec = roll_decel_px(lie)
+        spd = math.sqrt(2.0 * dec * roll_px)
         settled_new = sim_roll_out(
             r_fw["total_yd"] * PX_PER_YARD,
             r_fw["carry_yd"] * PX_PER_YARD,
             spd,
-            f,
+            dec,
             clamp_remain=False,
         )
-        err_old = settled_old["end_yd"] - r_fw["total_yd"]
         err_new = settled_new["end_yd"] - r_fw["total_yd"]
-        print(
-            f"{lie:10}{f:6.1f}{f*60.0:8.1f}{spd:10.1f}"
-            f"{err_new:+11.1f}  (was {err_old:+.1f})"
-        )
+        print(f"{lie:10}{f:6.1f}{dec:8.1f}{spd:10.1f}{err_new:+11.1f}")
         if lie == "Sand":
             assert abs(err_new) < 2.0, f"Driver→Sand settle still bad: {err_new:.1f} yd"
-            assert err_old < -8.0, "precondition: old Sand shortfall missing"
 
     print(
         f"flight_model_check: constants ok bag={len(BAG)} "
