@@ -7,7 +7,8 @@ const WINDOW := 20  ## rolling sample size per club, mirrors path_miss_history s
 const MIN_SAMPLES_FOR_TIP := 5
 const SAVE_PATH := "user://club_coach.cfg"
 ## Bump invalidates saved history (pre–flight-rebuild yardage/tempo is a different game).
-const SCHEMA_VERSION := 2
+## Bump after green-sizing / pacing stack so GIR+yardage history matches new course model.
+const SCHEMA_VERSION := 3
 const META_SECTION := "_meta"
 
 ## Tempo/path bias thresholds — first-guess playtest knobs, retune once real F1 data exists.

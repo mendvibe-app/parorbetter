@@ -68,7 +68,7 @@ def resolve_tip(stats: dict, mode: str = "coach") -> dict:
 
 def main() -> int:
     assert "const SCHEMA_VERSION" in SRC
-    assert "SCHEMA_VERSION := 2" in SRC or "SCHEMA_VERSION:=2" in SRC
+    assert "SCHEMA_VERSION := 3" in SRC or "SCHEMA_VERSION:=3" in SRC
     assert "func clear_data" in SRC
     load_fn = SRC.split("func load_data")[1].split("func ")[0]
     assert "schema_version" in load_fn and "clear_data()" in load_fn
