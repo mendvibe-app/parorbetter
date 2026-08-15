@@ -1,15 +1,17 @@
 # Correction — TV Broadcast Feel: Putt Zoom, Hole-Out, Global Pacing
 
-## Status: CLOSED (partial ship; remainder deferred)
+## Status: CLOSED (partial ship; item 3 superseded)
 
-**Closed 2026-08-14** — board clean. Reopen items below after free play if needed.
+**Closed 2026-08-14** — board clean. **2026-08-15:** item 3 superseded by
+`plans/epic-real-time-pacing.md` (implemented). Do **not** treat the "keep GRAVITY_PX=535"
+guidance below as current — that constant is now derived from `FLIGHT_DURATION_FRAC`.
 
 | Item | Status |
 |------|--------|
 | 1b Hole-out zoom punch → banner | **Shipped** (`fix/tv-hole-out-feel`) |
 | 2 Ball cup drop visual | **Shipped** (same) |
 | 1a Putt aim curve (non-linear last feet) | Deferred — reopen if address putts feel flat |
-| 3 Global pacing (`GRAVITY_PX` / roll friction) | Deferred — reopen only with explicit GO |
+| 3 Global pacing (`GRAVITY_PX` / roll friction) | **Superseded** by epic-real-time-pacing |
 
 **Track:** correction, found live during playtest  
 Original three findings share a broadcast-feel theme; ship independently.
@@ -138,9 +140,8 @@ is entirely a physics constant.
 3. If both need adjusting, do it as two small, separately-attributable passes, not one
    sweeping constant change — same discipline as everything else this session.
 
-**Do not implement a global slowdown tonight or without a fresh device confirmation** — this
-constant was deliberately marked `PLAYTEST TARGET` for exactly this kind of revision, but
-changing it silently would undo a decision you made deliberately and tested carefully.
+**SUPERSEDED 2026-08-15:** implement via `epic-real-time-pacing.md` only. The "keep 535"
+hold is lifted; do not re-apply this section against the new duration-fraction model.
 
 ---
 

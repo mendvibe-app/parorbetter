@@ -137,6 +137,10 @@ preview, camera framing, `estimate_height_peak()` UI estimates, Club Coach histo
 
 **Shipped (PR #45):** verified on device; all deltas under 1.5%; `GRAVITY_PX` 535 confirmed by playtest; no calibration changes.
 
+**Superseded pacing (2026-08-15):** `GRAVITY_PX` is no longer a hardcoded 535. See
+`plans/archive/epic-real-time-pacing.md` — `FLIGHT_DURATION_FRAC` (start 0.65) derives
+`GRAVITY_PX = GRAVITY_REAL_PX / FRAC²`. Apex unchanged; hang scales with the fraction.
+
 ---
 
 ### Phase 2 — Canopy and tree rebalance
