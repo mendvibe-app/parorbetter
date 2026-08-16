@@ -262,8 +262,8 @@ const APEX_SCALE := 0.788
 const GRAVITY_REAL_PX := 25.35
 ## Fraction of model-real flight duration (FRAC=1 → ~5 s driver hang).
 ## Tour avg driver hang is ~6.1–6.5 s; full real is too slow on phone.
-## PLAYTEST TARGET — 0.45 ≈ 2.25 s driver (~36% Tour). 0.65 was too slow on device.
-const FLIGHT_DURATION_FRAC := 0.45
+## PLAYTEST TARGET — 0.40 ≈ 2.0 s driver (~32% Tour). 0.45 still a titch slow on device.
+const FLIGHT_DURATION_FRAC := 0.40
 ## hang = sqrt(8 * apex / GRAVITY_PX). Derived so hang scales with FLIGHT_DURATION_FRAC.
 const GRAVITY_PX := GRAVITY_REAL_PX / (FLIGHT_DURATION_FRAC * FLIGHT_DURATION_FRAC)
 ## ft/s² → px/s² (PX_PER_YARD / 3). PLAYTEST TARGET for roll/putt unit conversion.
