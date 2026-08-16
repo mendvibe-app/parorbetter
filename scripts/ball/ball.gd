@@ -592,10 +592,13 @@ func _process_roll(delta: float) -> void:
 	_height = move_toward(_height, 0.0, delta * 80.0)
 	var slope := _slope_at_ball()
 	if _is_putt:
-		# Break pulls offline; can fight aim (skill reads matter)
+		# Break pulls offline; can fight aim (skill reads matter).
+		# Scale with green decel so integrated bend matches the 90/55 tune at a=108
+		# (pacing lowered decel ~16×; unscaled break sent putts across the green).
 		var right := Vector2(-_pin_dir.y, _pin_dir.x)
-		var break_amt := slope.dot(right) * PUTT_BREAK_LATERAL
-		var along_break := slope.dot(_pin_dir) * PUTT_BREAK_ALONG
+		var break_scale := BallPhysics.roll_decel_px("Green") / BallPhysics.PUTT_BREAK_CAL_DECEL
+		var break_amt := slope.dot(right) * PUTT_BREAK_LATERAL * break_scale
+		var along_break := slope.dot(_pin_dir) * PUTT_BREAK_ALONG * break_scale
 		velocity += right * break_amt * delta
 		velocity += _pin_dir * along_break * delta
 	elif _lie == "Green":
@@ -640,7 +643,11 @@ func _process_roll(delta: float) -> void:
 	else:
 		AudioBus.set_roll_intensity(0.0)
 
-	if velocity.length() < 10.0:
+	# Putts launch well below the old 10 px/s roll floor at real-time green decel.
+	var settle_spd := (
+		BallPhysics.PUTT_SETTLE_SPEED if _is_putt else BallPhysics.ROLL_SETTLE_SPEED
+	)
+	if velocity.length() < settle_spd:
 		_finish_settle()
 
 

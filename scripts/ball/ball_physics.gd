@@ -776,6 +776,14 @@ static func roll_decel_px(lie: String) -> float:
 	return roll_friction_for(lie) * FT_TO_PX / maxf(f * f, 0.01)
 
 
+## Putt break (ball.gd 90/55) was tuned at legacy green decel 1.8*60.
+## Scale break forces by roll_decel_px("Green") / this so bend stays FRAC-invariant.
+const PUTT_BREAK_CAL_DECEL := 108.0
+## Putts launch ~5–20 px/s at FRAC 0.45; roll settle 10 would kill short putts.
+const PUTT_SETTLE_SPEED := 1.5
+const ROLL_SETTLE_SPEED := 10.0
+
+
 ## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
 ## re-derive resolve_distance / air_frac. Callers supply air_px and air_time.
 static func launch_speed_for(air_px: float, air_time: float) -> float:

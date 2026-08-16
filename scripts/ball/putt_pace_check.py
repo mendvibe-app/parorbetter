@@ -163,23 +163,35 @@ def main() -> int:
     assert "BALL_R_PUTT := 1.0" in BALL
     assert "PUTT_BREAK_LATERAL := 90.0" in BALL
     assert "PUTT_BREAK_ALONG := 55.0" in BALL
+    # Break scales with green decel so FRAC changes don't nuclear-bend putts.
+    assert "PUTT_BREAK_CAL_DECEL" in PHYS
+    assert "break_scale" in BALL
+    assert "PUTT_SETTLE_SPEED" in PHYS
+    assert "PUTT_SETTLE_SPEED" in BALL
     # Cup capture: speed gate (lip-out) + center-in-cup; no hot teleport makes.
     assert "CUP_CAPTURE_MAX_SPEED" in BALL
     assert "_try_cup_capture" in BALL
     assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
-    # Mid-slope 40 ft must bend ~2 ball-widths (was sub-pixel at K=22).
-    # decel = roll_decel_px("Green") = 1.8 * FT_TO_PX / ROLL_DURATION_FRAC²
+    # Mid-slope 40 ft bend ~2 ball-widths after break_scale (tuned at a=108).
     px_per_yd = 2.25
     ft_to_px = px_per_yd / 3.0
     m_frac = re.search(r"const FLIGHT_DURATION_FRAC\s*:=\s*([0-9.]+)", PHYS)
     assert m_frac, "FLIGHT_DURATION_FRAC missing"
     roll_frac = float(m_frac.group(1))
-    friction = 1.8 * ft_to_px / (roll_frac * roll_frac)
+    a_green = 1.8 * ft_to_px / (roll_frac * roll_frac)
+    cal_decel = 108.0
+    break_scale = a_green / cal_decel
     travel_px = (40.0 / 3.0) * px_per_yd
-    t_roll = (2.0 * friction * travel_px) ** 0.5 / friction
-    bend = 0.5 * (0.22 * 90.0) * t_roll * t_roll
-    assert bend >= 4.0, bend
+    t_roll = (2.0 * a_green * travel_px) ** 0.5 / a_green
+    bend = 0.5 * (0.22 * 90.0 * break_scale) * t_roll * t_roll
+    assert 4.0 <= bend <= 12.0, bend  # band: readable, not nuclear
     assert bend / (1.0 * 2.0) >= 1.8, bend  # ≥ ~1.8 ball diameters
+    # Short putts must launch above putt settle (old 10 px/s floor killed 3–8 ft).
+    settle = 1.5
+    for ft in (3.0, 6.0, 8.0):
+        s = (ft / 3.0) * px_per_yd
+        v = (2.0 * a_green * s) ** 0.5
+        assert v > settle, (ft, v, settle, a_green)
     assert "_sync_pin_flag_visible" in HOLE
     assert "PIN_FLAG_H_PX" in HOLE
     assert "course_pin_flag.gd" in HOLE or "CoursePinFlagScr" in HOLE
