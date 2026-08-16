@@ -260,9 +260,10 @@ const REAL_APEX_FT := {
 const APEX_SCALE := 0.788
 ## Real gravity in apex px: 32.174 ft/s² × APEX_SCALE. See epic-real-time-pacing.
 const GRAVITY_REAL_PX := 25.35
-## Fraction of real-world flight duration. 1.0 = broadcast-accurate.
-## PLAYTEST TARGET — start 0.65 (was implicit ~0.22 at GRAVITY_PX=535).
-const FLIGHT_DURATION_FRAC := 0.65
+## Fraction of model-real flight duration (FRAC=1 → ~5 s driver hang).
+## Tour avg driver hang is ~6.1–6.5 s; full real is too slow on phone.
+## PLAYTEST TARGET — 0.45 ≈ 2.25 s driver (~36% Tour). 0.65 was too slow on device.
+const FLIGHT_DURATION_FRAC := 0.45
 ## hang = sqrt(8 * apex / GRAVITY_PX). Derived so hang scales with FLIGHT_DURATION_FRAC.
 const GRAVITY_PX := GRAVITY_REAL_PX / (FLIGHT_DURATION_FRAC * FLIGHT_DURATION_FRAC)
 ## ft/s² → px/s² (PX_PER_YARD / 3). PLAYTEST TARGET for roll/putt unit conversion.

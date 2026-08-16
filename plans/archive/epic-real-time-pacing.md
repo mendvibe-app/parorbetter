@@ -1,7 +1,8 @@
 # Epic: Real-time pacing
 
-**Status: SHIPPED 2026-08-15** (`feature/rough-pacing-greens-stack`). Start
-`FLIGHT_DURATION_FRAC=0.65`. Device feel is the playtest for flight and roll.
+**Status: SHIPPED 2026-08-15** (`feature/rough-pacing-greens-stack`).
+**Playtest dial:** started `FLIGHT_DURATION_FRAC=0.65` (too slow on device) → **0.45**
+(~2.25 s driver hang; ~45% model-real / ~36% Tour avg ~6.2 s).
 **Scope:** Timing constants in `ball_physics.gd` / `ball.gd`. No distance, dispersion, or
 apex changes.
 **Risk:** Phase 1 low (verified isolated). Phases 2–3 medium (friction values need
