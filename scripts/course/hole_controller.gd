@@ -581,11 +581,10 @@ func _build_course() -> void:
 	# Bent / shaped fairway (lightest, striped)
 	_add_bent_fairway(fairway_w)
 
-	# Green sprite (variant per layout) + detection area
+	# Green sprite (variant per layout) + detection area.
+	# Greens ship with even edge value + transparent outside so fairway collar
+	# flows under the silhouette (real aerials: continuous grass, no dark moat).
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
-	# Green art paints a dark opaque rim; fairway is under the sprite so that rim
-	# always read as a moat. Fairway fringe ring on top of the rim seals it.
-	_add_green_fringe_seal()
 
 	_add_circle(course_root, _cup_pos, CUP_RADIUS, Color(0, 0, 0, 0), "cup")
 	var cup_spr := Sprite2D.new()
@@ -682,10 +681,11 @@ func _add_bent_fairway(width: float) -> void:
 	pts.append(bot + Vector2(-half, 0))
 	pts.append(mid + Vector2(-half * 0.85, 0))
 	# True collar: all non-island greens (oval/kidney/tiered/L/complex).
-	# Span up to fairway half or green outer width — no thin 0.7 tongue / rough shoulders.
+	# Prefer green outer width so the approach flanks the front of the green
+	# (real aerials: wide apron, not a thin tongue into a ring).
 	if not _is_island_green():
 		var outer := _green_outer_radii()
-		var collar_half := minf(half, outer.x * 0.98)
+		var collar_half := maxf(minf(half * 1.05, outer.x * 1.02), outer.x * 0.72)
 		pts.append_array(_collar_arc_points(collar_half))
 	else:
 		pts.append(top + Vector2(-half * 0.7, 0))
@@ -705,54 +705,9 @@ func _add_bent_fairway(width: float) -> void:
 	course_root.add_child(area)
 
 
-## ≥1.0 so fairway seals under the green after dark-rough base (0.97 left a moat
-## through transparent fringe). Green lie still wins overlap (ball.gd group order).
-const COLLAR_UNDERLAP := 1.05
-## Fringe seal ring: cover green art dark rim (opaque, not transparent) with fairway.
-## Inner = putting surface; outer slightly past sprite so rough base cannot peek.
-const FRINGE_SEAL_INNER := 0.94  ## fraction of putting-surface ellipse
-const FRINGE_SEAL_OUTER := 1.06  ## fraction of outer sprite ellipse
-
-
-func _add_green_fringe_seal() -> void:
-	## Visual-only fairway donut over the green sprite's dark rim. Green textures are
-	## fully opaque with a darker edge band (~0.92–1.0 of paint radius); underlap
-	## alone cannot hide that. Skip island — beach ring is intentional.
-	if _is_island_green():
-		return
-	var putt := Vector2(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
-	var outer := _green_outer_radii()
-	var n := 32
-	var outer_pts := PackedVector2Array()
-	var inner_pts := PackedVector2Array()
-	for i in n:
-		var th := TAU * float(i) / float(n) + PI * 0.5  ## start south for stable winding
-		var c := cos(th)
-		var s := sin(th)
-		var ro := (
-			(outer.x * outer.y)
-			/ sqrt(pow(outer.y * c, 2.0) + pow(outer.x * s, 2.0))
-			* FRINGE_SEAL_OUTER
-		)
-		var ri := (
-			(putt.x * putt.y)
-			/ sqrt(pow(putt.y * c, 2.0) + pow(putt.x * s, 2.0))
-			* FRINGE_SEAL_INNER
-		)
-		outer_pts.append(_green_center + Vector2(c, s) * ro)
-		inner_pts.append(_green_center + Vector2(c, s) * ri)
-	var pts := PackedVector2Array()
-	pts.append_array(outer_pts)
-	for i in range(n - 1, -1, -1):
-		pts.append(inner_pts[i])
-	var poly := Polygon2D.new()
-	poly.color = Color(1, 1, 1)
-	poly.texture = TEX_FAIRWAY
-	poly.texture_scale = Vector2.ONE * (float(TEX_FAIRWAY.get_width()) / GROUND_TILE_PX)
-	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
-	poly.polygon = pts
-	poly.z_index = 1  ## same layer as green; added after → draws over dark rim
-	course_root.add_child(poly)
+## ≥1.0 so fairway tucks under transparent green edge after dark-rough base.
+## Green lie still wins overlap (ball.gd group order).
+const COLLAR_UNDERLAP := 1.04
 
 
 func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:
