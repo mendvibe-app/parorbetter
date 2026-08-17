@@ -109,7 +109,7 @@ def main() -> None:
     assert "SPIN_CURVE_COEFF" in BALL and "along_spd" in BALL
     assert "var spin_scale" not in BALL  # flight clamp gone; roll_spin_scale may remain
     # Speed-preserving curve — spin must not bleed airspeed on soft pitches.
-    assert "normalized() * spd" in BALL
+    assert "flight_speed_at" in BALL or "flight_speed_scale" in BALL
     assert "path_len" in BALL
 
     samples_w = [260, 235, 210, 190, 175, 160, 145, 130, 110, 95, 80, 65]

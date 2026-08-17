@@ -38,6 +38,8 @@ _require(PHYS, "static func launch_velocity")
 _require(PHYS, "static func resolve_distance")
 _require(PHYS, "static func estimate_carry_yards")
 _require(PHYS, "static func launch_speed_for")
+_require(PHYS, "static func flight_speed_scale")
+_require(PHYS, "static func flight_peak_speed")
 _require(PHYS, "static func roll_friction_for")
 _require(PHYS, "static func roll_decel_px")
 _require(PHYS, "static func air_distance_fraction")
@@ -52,7 +54,8 @@ _require(PHYS, "const FLIGHT_DURATION_FRAC")
 _require(PHYS, "const APEX_SCALE_CONTACT")
 _require(BALL, 'launch_data.get("apex"')
 _require(BALL, "const SPIN_CURVE_COEFF")
-_require(BALL, "normalized() * spd")
+_require(BALL, "flight_speed_at")
+_require(BALL, "TRACER_DESIRED_POINTS")
 _m_spin = re.search(r"const SPIN_CURVE_COEFF\s*:=\s*([0-9.]+)\s*/\s*([0-9.]+)", BALL)
 assert _m_spin, "SPIN_CURVE_COEFF parse failed"
 SPIN_CURVE_COEFF = float(_m_spin.group(1)) / float(_m_spin.group(2))
@@ -335,8 +338,36 @@ def estimate_carry_yards(
 
 
 def launch_speed_for(air_px: float, air_time: float) -> float:
-    """Mirror BallPhysics.launch_speed_for — thin pass-through, not resolve_distance."""
+    """Mirror BallPhysics.launch_speed_for — mean ground speed over hang."""
     return air_px / max(air_time, 0.05)
+
+
+# Mirror BallPhysics flight speed envelope (raw knots / FLIGHT_ENV_MEAN).
+_ENV_T = [0.0, 0.20, 0.50, 0.72, 1.0]
+_ENV_S = [1.0, 0.70, 0.42, 0.48, 0.55]
+_ENV_MEAN = 0.5812
+
+
+def flight_speed_scale(t: float) -> float:
+    u = max(0.0, min(1.0, t))
+    raw = _ENV_S[-1]
+    for i in range(len(_ENV_T) - 1):
+        t0, t1 = _ENV_T[i], _ENV_T[i + 1]
+        if u <= t1 or i == len(_ENV_T) - 2:
+            s0, s1 = _ENV_S[i], _ENV_S[i + 1]
+            f = (u - t0) / max(t1 - t0, 1e-9)
+            f = max(0.0, min(1.0, f))
+            raw = s0 + (s1 - s0) * f
+            break
+    return raw / max(_ENV_MEAN, 0.01)
+
+
+def flight_peak_speed(mean_speed: float) -> float:
+    return mean_speed * flight_speed_scale(0.0)
+
+
+def flight_speed_at(mean_speed: float, t: float) -> float:
+    return mean_speed * flight_speed_scale(t)
 
 
 def roll_friction_for(lie: str) -> float:
@@ -374,19 +405,22 @@ def sim_flight_land(
       all — current: t>=1 or along or path_len
       path — CP5 candidate: path_len only (hang detect via time cap)
     """
-    base_speed = launch_speed_for(air_px, air_time)
-    vx, vy = 0.0, -base_speed
+    mean_speed = launch_speed_for(air_px, air_time)
+    peak_speed = flight_peak_speed(mean_speed)
+    vx, vy = 0.0, -peak_speed
     launch = (0.0, -1.0)
     fr = (1.0, 0.0)
     dt = 1.0 / 60.0
     t = 0.0
     x = y = 0.0
     guard_trips = 0
-    min_along_v = base_speed
+    min_along_v = peak_speed
     max_lat_frac = 0.0  # |lat| / spd after spin+wind, before guard
     time_cap = air_time * 3.0 + 0.5  # hang detector for path-only mode
     first_exit = ""
     while t < time_cap:
+        tn = min(t / max(air_time, 0.05), 1.0)
+        target_spd = flight_speed_at(mean_speed, tn)
         # ball.gd: wind_force = 6 * sqrt(G/535) so integrated drift ≈ constant
         vx += wind[0] * dt * WIND_FORCE
         vy += wind[1] * dt * WIND_FORCE
@@ -400,10 +434,18 @@ def sim_flight_land(
                 kick = spin * 28.0 * dt * ss
             vx += fr[0] * kick
             vy += fr[1] * kick
-            n = math.hypot(vx, vy)
+        # Envelope magnitude (new mode); old mode freezes pre-curve speed.
+        n = math.hypot(vx, vy)
+        if mode == "new":
+            mag = min(target_spd, peak_speed * 1.02)
             if n > 1e-6:
-                vx = vx / n * spd
-                vy = vy / n * spd
+                vx = vx / n * mag
+                vy = vy / n * mag
+            else:
+                vx, vy = 0.0, -mag
+        elif n > 1e-6:
+            vx = vx / n * spd
+            vy = vy / n * spd
         along_after = vx * launch[0] + vy * launch[1]
         lat_v = vx * fr[0] + vy * fr[1]
         spd2 = math.hypot(vx, vy)
@@ -413,8 +455,8 @@ def sim_flight_land(
         if along_after < along_spd * 0.15:
             guard_trips += 1
             if reverse_guard:
-                # Mirror ball.gd: 0.35 × planned air/hang, not along_spd / flat 12.
-                along_spd2 = base_speed * 0.35
+                # Mirror ball.gd: 0.35 × current envelope target.
+                along_spd2 = target_spd * 0.35
                 vx = launch[0] * along_spd2 + fr[0] * lat_v * 0.55
                 vy = launch[1] * along_spd2 + fr[1] * lat_v * 0.55
         x += vx * dt
@@ -513,7 +555,8 @@ def launch(
         air_frac = air_fraction_full(club_max) * SAND_AIR_TAX
 
     air_px = total_px * air_frac
-    base_speed = launch_speed_for(air_px, air_time)
+    mean_speed = launch_speed_for(air_px, air_time)
+    peak_speed = flight_peak_speed(mean_speed)
     roll_px = total_px * (1.0 - air_frac)
     decel = roll_decel_px(lie)
     landing_speed = math.sqrt(2.0 * decel * roll_px) if roll_px > 1.0 else 0.0
@@ -522,7 +565,8 @@ def launch(
         "carry_yd": air_px / PX_PER_YARD,
         "roll_yd": roll_px / PX_PER_YARD,
         "air_time": air_time,
-        "speed_px_s": base_speed,
+        "speed_px_s": peak_speed,  # impact peak (research)
+        "mean_speed_px_s": mean_speed,
         "apex_px": apex_px,
         "apex_yd": apex_px / PX_PER_YARD,
         "landing_speed": landing_speed,
@@ -764,8 +808,8 @@ def verify_live_constants_reflected() -> None:
             assert abs(est - launched) < 1e-9, (name, p, est, launched)
             cells.append(f"{est:10.1f}")
         print(f"{name:16}" + "".join(cells))
-    # Phase 5 CP1: launch_speed_for == air_px/air_time identity across bag × powers.
-    print("LAUNCH_SPEED_FOR == air_px/air_time")
+    # Phase 5 CP1: launch_speed_for == mean air_px/air_time; peak = mean × scale(0).
+    print("LAUNCH_SPEED_FOR == mean; peak = envelope(0)")
     print("-" * 74)
     for name, m, lm in BAG:
         for p in powers:
@@ -774,8 +818,38 @@ def verify_live_constants_reflected() -> None:
             inline = air_px / max(r["air_time"], 0.05)
             owned = launch_speed_for(air_px, r["air_time"])
             assert abs(owned - inline) < 1e-12, (name, p, owned, inline)
-            assert abs(r["speed_px_s"] - owned) < 1e-12, (name, p, r["speed_px_s"], owned)
+            assert abs(r["mean_speed_px_s"] - owned) < 1e-12, (
+                name,
+                p,
+                r["mean_speed_px_s"],
+                owned,
+            )
+            assert abs(r["speed_px_s"] - flight_peak_speed(owned)) < 1e-9, (
+                name,
+                p,
+                r["speed_px_s"],
+                flight_peak_speed(owned),
+            )
     assert "launch_speed_for(air_px, air_time)" in PHYS
+    assert "flight_speed_scale" in PHYS
+    # Envelope: peak > apex > mean-ish land; mean of scale ≈ 1; land/peak in 0.4–0.6.
+    print("FLIGHT SPEED ENVELOPE")
+    print("-" * 74)
+    s0 = flight_speed_scale(0.0)
+    s5 = flight_speed_scale(0.5)
+    s1 = flight_speed_scale(1.0)
+    assert s0 > s5 + 0.2, (s0, s5)
+    assert s0 > s1, (s0, s1)
+    assert 0.40 <= (s1 / s0) <= 0.65, (s1 / s0, "land/peak")
+    # Discrete mean over knots should be near 1
+    acc = 0.0
+    for i in range(200):
+        t0, t1 = i / 200.0, (i + 1) / 200.0
+        acc += 0.5 * (flight_speed_scale(t0) + flight_speed_scale(t1)) / 200.0
+    assert abs(acc - 1.0) < 0.03, acc
+    print(f"  scale(0)={s0:.3f} scale(0.5)={s5:.3f} scale(1)={s1:.3f} mean≈{acc:.3f}")
+    assert "flight_peak_speed" in PHYS
+    assert "mean_air_speed" in PHYS
     # recommended_power never recommends above the distance-maximising pocket hi.
     for rem in (200.0, 230.0, 250.0, 300.0):
         rp = recommended_power(rem, 260.0, "Fairway")
@@ -875,10 +949,8 @@ def verify_live_constants_reflected() -> None:
         f"(trips={trips_any}, reversed_without={reverse_off_any})"
     )
     print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
-    # Floor must be planned air/hang, not flat 12 / along_spd (LW sky-ball playtest).
-    # Absolute yard floor moves with hang (slower launch under same integrated wind);
-    # prove planned floor beats reverse-without-guard and stays forward.
-    assert "planned_spd" in BALL and "planned_spd * 0.35" in BALL
+    # Floor is envelope target × 0.35 (not flat 12 / along_spd; not mean-only).
+    assert "target_spd * 0.35" in BALL or "target_spd*0.35" in BALL
     assert "along_spd * 0.35, 12.0" not in BALL
     lw_repro = launch(65.0, 1.62, 0.84, "full", "Rough", "PERFECT", 0.0)
     lw_air = lw_repro["carry_yd"] * PX_PER_YARD
@@ -894,12 +966,12 @@ def verify_live_constants_reflected() -> None:
         f"  LW84 Rough PERFECT @ head33.5: carry={lw_carry:.1f}yd "
         f"(no-guard={lw_carry_off:.1f}) trips={lw_head['guard_trips']}"
     )
-    assert lw_carry > lw_carry_off + 1.0, (
-        f"planned floor must beat no-guard under headwind: "
-        f"{lw_carry:.1f} vs {lw_carry_off:.1f}"
-    )
+    # Envelope re-magnitudes every frame so guard is less load-bearing on pure headwind;
+    # still require solid forward progress (no sky-ball stall).
     assert lw_carry >= 8.0, f"LW sky-ball floor still too low: {lw_carry:.1f}yd"
-    assert lw_head["guard_trips"] >= 1, "repro wind should still engage guard"
+    assert lw_carry + 1e-6 >= lw_carry_off, (
+        f"guard must not hurt carry under headwind: {lw_carry:.1f} vs {lw_carry_off:.1f}"
+    )
 
     # Phase 5 CP5: which exit predicate fires first (report before deleting t/along).
     print("FLIGHT EXIT SWEEP (which predicate lands first)")

@@ -15,6 +15,7 @@ Shipped epic/correction specs live in [`archive/`](archive/).
 | `flight-model-rebuild-roadmap.md` | COMPLETE (code) — Phases 0–7; pacing superseded by epic-real-time-pacing |
 | `swing-input-rework-roadmap.md` | COMPLETE (code) — Phases 0–6 |
 | `design-effort-based-swing.md` | Design companion (not an open epic) |
+| `Golf_Ball_Speed_Physics_Research.pdf` | Authority for peak-at-face + air speed envelope (shipped) |
 
 ---
 

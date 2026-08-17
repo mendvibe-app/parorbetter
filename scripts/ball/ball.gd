@@ -17,10 +17,15 @@ const TRACER_LIFT := 0.35
 ## Target on-screen trail thickness (px). World width = screen / zoom.
 const TRACER_SCREEN_W := 3.2
 const TRACER_SCREEN_W_PURE := 4.0
-const TRACER_CAP := 128
-const TRACER_CAP_PURE := 160
+## Hard cap only as safety; flight prefers space sampling and never trims mid-air.
+const TRACER_CAP := 280
+const TRACER_CAP_PURE := 320
+## Target trail points across carry path (space-based sampling).
+const TRACER_DESIRED_POINTS := 96.0
+const TRACER_MIN_SPACING := 2.5  ## world px floor between samples
 ## Wet-marker dry: 0 = fresh tip, 1 = fully faded. Advances on roll after flight.
-const TRACER_DRY_RATE := 0.95
+## Slightly slower than pre-pacing so longer hang flights still dry into the land disc.
+const TRACER_DRY_RATE := 0.72
 ## Landing target circle (screen px). Faint in air, lights up on first bounce.
 const LAND_R_SCREEN := 15.0
 const LAND_RING_W_SCREEN := 1.6
@@ -68,6 +73,8 @@ var _pin_dir: Vector2 = Vector2(0, -1)
 var _planned_distance_px: float = 0.0
 var _landing_speed: float = 0.0
 var _air_fraction: float = 0.78
+## Mean ground speed over hang (air_px/hang); envelope multiplies by flight_speed_scale(t).
+var _mean_air_speed: float = 0.0
 var _is_putt: bool = false
 var _spin_vis: float = 0.0
 ## Sample surface under the ball while rolling (fairway/rough/sand/green).
@@ -255,6 +262,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_hang_time_actual = 0.0
 	_carry_px_actual = 0.0
 	_launch_speed = 0.0
+	_mean_air_speed = 0.0
 	_punch_flight = false
 	_is_putt = false
 	_is_perfect_shot = false
@@ -324,6 +332,17 @@ func launch(
 	_planned_distance_px = launch_data["travel_px"]
 	_landing_speed = launch_data["landing_speed"]
 	_air_fraction = launch_data["air_fraction"]
+	var air_px_plan := _planned_distance_px * _air_fraction
+	_mean_air_speed = float(
+		launch_data.get(
+			"mean_air_speed",
+			air_px_plan / maxf(_air_duration, 0.05)
+		)
+	)
+	# Ensure impact is peak (pin-align may have rewritten velocity for non-putts).
+	if not _is_putt and _mean_air_speed > 0.01:
+		var peak := BallPhysics.flight_peak_speed(_mean_air_speed)
+		velocity = _launch_dir * peak
 	# After pin-align may rewrite velocity; capture magnitude for harness comparison.
 	_launch_speed = velocity.length()
 	_trail.clear_points()
@@ -452,16 +471,33 @@ func _physics_process(delta: float) -> void:
 			_process_roll(delta)
 		_:
 			pass
-	# Flight: lofted Trackman tracer. Roll: freeze points and dry the ribbon (wet marker)
-	# into the land circle. Impact flash on land mark decays during roll only.
+	# Flight: lofted Trackman tracer (space-sampled for variable air speed).
+	# Roll: freeze points and dry the ribbon (wet marker) into the land circle.
+	# Never trim trail points mid-flight — longer hang + envelope must not chop the arc.
 	if not _is_putt:
 		if state == State.FLIGHT:
 			_sync_trail_visual()
 			var lift := TRACER_LIFT / maxf(_camera_zoom(), 0.35)
-			_trail.add_point(global_position + Vector2(0.0, -_height * lift))
-			var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
-			if _trail.get_point_count() > cap:
-				_trail.remove_point(0)
+			var pt := global_position + Vector2(0.0, -_height * lift)
+			var n := _trail.get_point_count()
+			var air_px := maxf(_planned_distance_px * _air_fraction, 8.0)
+			var min_sp := maxf(air_px / TRACER_DESIRED_POINTS, TRACER_MIN_SPACING)
+			# Slightly denser while still fast (hot exit reads on the ribbon).
+			var t_air := clampf(_air_timer / maxf(_air_duration, 0.01), 0.0, 1.0)
+			var dens := clampf(BallPhysics.flight_speed_scale(t_air) / 1.2, 0.55, 1.25)
+			min_sp = maxf(min_sp / dens, TRACER_MIN_SPACING * 0.7)
+			var add := n == 0
+			if not add and n > 0:
+				add = pt.distance_to(_trail.get_point(n - 1)) >= min_sp
+			# Short chips: guarantee a few samples even if spacing is large.
+			if not add and n < 10 and _air_timer > float(n) * 0.04:
+				add = true
+			if add:
+				_trail.add_point(pt)
+				var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
+				# Safety only — should not hit during normal hang; never mid-chop prefer.
+				if _trail.get_point_count() > cap:
+					_trail.remove_point(0)
 		elif state == State.ROLL:
 			if _trail.get_point_count() > 0:
 				# Dry from launch end toward the land circle; drop fully-faded head points.
@@ -506,34 +542,38 @@ func _traveled_along() -> float:
 
 func _process_flight(delta: float) -> void:
 	_air_timer += delta
-	var t := _air_timer / maxf(_air_duration, 0.01)
-	_height = sin(clampf(t, 0.0, 1.0) * PI) * _height_peak
+	var t := clampf(_air_timer / maxf(_air_duration, 0.01), 0.0, 1.0)
+	_height = sin(t * PI) * _height_peak
 	if _height > _height_max:
 		_height_max = _height
+
+	# Mean speed preserves carry; envelope makes impact hottest then slows (research).
+	var mean_spd := _mean_air_speed
+	if mean_spd <= 0.01:
+		mean_spd = (_planned_distance_px * _air_fraction) / maxf(_air_duration, 0.05)
+	var target_spd := BallPhysics.flight_speed_at(mean_spd, t)
+	var peak_spd := BallPhysics.flight_peak_speed(mean_spd)
 
 	# Scale wind force so integrated drift ≈ constant across FLIGHT_DURATION_FRAC.
 	# hang ∝ 1/sqrt(g); force ∝ sqrt(g) keeps force×hang ≈ legacy at g=535.
 	var wind_force := 6.0 * sqrt(BallPhysics.GRAVITY_PX / 535.0)
 	velocity += wind * delta * wind_force
 	# Curve offline relative to launch. Curvature ∝ along_spd so soft pitches curve
-	# gently without a separate spin_scale clamp. Preserve airspeed — additive lateral
-	# alone bled forward progress (playtest: plan 13 yd / path −0.22 → actual ~6).
+	# gently. Magnitude is set from the envelope after (not freeze pre-curve speed).
 	var flight_right := Vector2(-_launch_dir.y, _launch_dir.x)
-	var spd := velocity.length()
 	var along_spd := maxf(velocity.dot(_launch_dir), 0.0)
-	if spd > 0.01 and absf(spin) > 0.0001:
+	if velocity.length() > 0.01 and absf(spin) > 0.0001:
 		velocity += flight_right * spin * SPIN_CURVE_COEFF * along_spd * delta
-		velocity = velocity.normalized() * spd
-	# Wind/stall safety net — not a sidespin patch. Calm+spin never trips this
-	# after speed-proportional curvature (Phase 5 CP3); max headwind on soft
-	# shots still reverses without it. Keep until wind integration owns stall.
-	# Floor is 0.35 × planned air/hang (launch_speed_for), not along_spd / a flat
-	# 12 px/s — flat floor sky-balled full-swing LW under headwind (playtest).
+	# Enforce envelope magnitude; never above peak (no post-impact acceleration).
+	if velocity.length_squared() > 0.0001:
+		velocity = velocity.normalized() * minf(target_spd, peak_spd * 1.02)
+	else:
+		velocity = _launch_dir * target_spd
+	# Wind/stall safety net — floor relative to *current* envelope target (not mean-only).
 	var along_after := velocity.dot(_launch_dir)
 	if along_after < along_spd * 0.15:
 		var lat := velocity.dot(flight_right)
-		var planned_spd := (_planned_distance_px * _air_fraction) / maxf(_air_duration, 0.05)
-		velocity = _launch_dir * (planned_spd * 0.35) + flight_right * lat * 0.55
+		velocity = _launch_dir * (target_spd * 0.35) + flight_right * lat * 0.55
 
 	var collision := move_and_collide(velocity * delta)
 	var along := _traveled_along()

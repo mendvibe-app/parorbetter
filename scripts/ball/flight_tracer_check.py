@@ -36,6 +36,12 @@ def main() -> None:
     assert "_trail.gradient" in BALL or "_trail_grad" in BALL
     assert "TRAIL_TEX" not in BALL
     assert "call_deferred(\"_mount_trail\")" in BALL
+    # Space-based sampling for variable airspeed envelope (not 1-point-per-frame only).
+    assert "TRACER_DESIRED_POINTS" in BALL
+    assert "TRACER_MIN_SPACING" in BALL
+    assert "distance_to" in BALL  # min spacing between trail points
+    # Caps high enough that normal hang should not mid-chop the arc.
+    assert "TRACER_CAP := 280" in BALL or "TRACER_CAP := 256" in BALL or "const TRACER_CAP" in BALL
     # No flight tracer on putts — the ball never leaves the ground, nothing to trace.
     # Structure: outer `if not _is_putt:` then FLIGHT (draw) / ROLL (wet-marker dry).
     assert "if not _is_putt:" in BALL

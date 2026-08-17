@@ -786,8 +786,48 @@ const ROLL_SETTLE_SPEED := 10.0
 
 ## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
 ## re-derive resolve_distance / air_frac. Callers supply air_px and air_time.
+## This is the **mean** ground speed over hang (distance-preserving). Peak at impact
+## is mean × flight_speed_scale(0). See Golf_Ball_Speed_Physics_Research.pdf.
 static func launch_speed_for(air_px: float, air_time: float) -> float:
 	return air_px / maxf(air_time, 0.05)
+
+
+## --- Flight speed envelope (research: peak at face, slow through air) ---
+## Piecewise-linear raw knots (t, scale). Peak at impact, min near apex, mild
+## descent recovery. Divided by FLIGHT_ENV_MEAN so ∫scale dt over [0,1] ≈ 1
+## → carry distance stays owned by resolve_distance / air_frac.
+## PLAYTEST TARGETS — land/peak ≈ 0.55 (Tour-ish 40–60% band).
+const FLIGHT_ENV_T: Array[float] = [0.0, 0.20, 0.50, 0.72, 1.0]
+const FLIGHT_ENV_S: Array[float] = [1.0, 0.70, 0.42, 0.48, 0.55]
+## Trapezoid mean of FLIGHT_ENV_S over FLIGHT_ENV_T (precomputed).
+const FLIGHT_ENV_MEAN := 0.5812
+
+
+## Multiplier on mean air speed at normalized flight time t∈[0,1].
+## scale(0)≈1.72 peak · scale(0.5)≈0.72 apex · scale(1)≈0.95 land · mean≈1.
+static func flight_speed_scale(t: float) -> float:
+	var u := clampf(t, 0.0, 1.0)
+	var raw := FLIGHT_ENV_S[FLIGHT_ENV_S.size() - 1]
+	for i in range(FLIGHT_ENV_T.size() - 1):
+		var t0: float = FLIGHT_ENV_T[i]
+		var t1: float = FLIGHT_ENV_T[i + 1]
+		if u <= t1 or i == FLIGHT_ENV_T.size() - 2:
+			var s0: float = FLIGHT_ENV_S[i]
+			var s1: float = FLIGHT_ENV_S[i + 1]
+			var f := (u - t0) / maxf(t1 - t0, 0.0001)
+			raw = lerpf(s0, s1, clampf(f, 0.0, 1.0))
+			break
+	return raw / maxf(FLIGHT_ENV_MEAN, 0.01)
+
+
+## Peak ground speed at impact from mean (air_px/hang).
+static func flight_peak_speed(mean_speed: float) -> float:
+	return mean_speed * flight_speed_scale(0.0)
+
+
+## Instantaneous target ground speed at flight progress t.
+static func flight_speed_at(mean_speed: float, t: float) -> float:
+	return mean_speed * flight_speed_scale(t)
 
 
 static func launch_velocity(
@@ -878,7 +918,9 @@ static func launch_velocity(
 		air_frac = _air_fraction_full(club_max_yards) * (0.55 / 0.68)
 
 	var air_px := total_px * air_frac
-	var base_speed := launch_speed_for(air_px, air_time)
+	# Mean ground speed (distance / hang). Peak at face is mean × flight_speed_scale(0).
+	var mean_speed := launch_speed_for(air_px, air_time)
+	var peak_speed := flight_peak_speed(mean_speed)
 
 	var stab_term := 1.35 - result.stance_stability * 0.5
 	# Forcing a club (wrong bag choice, then mash/baby) taxes line the way it does IRL.
@@ -911,7 +953,8 @@ static func launch_velocity(
 	var launch_dir := (dir + right * offline).normalized()
 	if launch_dir.dot(dir) < 0.55:
 		launch_dir = (dir + right * signf(offline) * 0.45).normalized()
-	var velocity := launch_dir * base_speed
+	# Research: max speed at face separation — never post-impact acceleration above peak.
+	var velocity := launch_dir * peak_speed
 
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
@@ -927,6 +970,7 @@ static func launch_velocity(
 		"landing_speed": landing_speed,
 		"airborne_time": air_time,
 		"air_fraction": air_frac,
+		"mean_air_speed": mean_speed,
 		"launch_dir": launch_dir,
 		"apex": apex,
 		"is_putt": false,

@@ -82,7 +82,7 @@ def sim_flight_along_yd(
 
 
 def main() -> int:
-    assert "normalized() * spd" in BALL
+    assert "flight_speed_at" in BALL or "flight_speed_scale" in BALL
     assert "SPIN_CURVE_COEFF" in BALL
     assert "path_len" in BALL
     assert "var spin_scale" not in BALL
