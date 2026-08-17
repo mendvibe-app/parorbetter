@@ -117,6 +117,14 @@ def main() -> int:
     assert re.search(r'"force_cape"\s*:\s*true', GEN)
     assert "_use_sharp_dogleg" in CTRL  # Cape gated on sharp dogleg
 
+    # Water paint gate — creek sprite is ~45% opaque; AABB alone wet-fires fringe.
+    assert "func _on_painted_water" in CTRL
+    assert 'set_meta("water_sprite"' in CTRL or 'set_meta("water_sprite",' in CTRL
+    assert 'set_meta("water_img"' in CTRL or 'set_meta("water_img",' in CTRL
+    BALL = DIR.joinpath("../ball/ball.gd").read_text(encoding="utf-8")
+    assert "func _water_area_is_wet" in BALL
+    assert "_water_area_is_wet" in BALL.split('is_in_group("water")')[1].split("func ")[0]
+
     # Island soft-lock fix: dry drop relief + approach tongue (not only last_safe).
     assert "func _water_drop_pos" in CTRL
     assert "func _hazard_drop_pos" in CTRL

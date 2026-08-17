@@ -545,6 +545,7 @@ func _build_course() -> void:
 	_bunkers.clear()
 	_trees.clear()
 	_tee_pads.clear()
+	# Water areas rebuilt via _add_water_sprite / _add_rect; paint meta set per area.
 
 	var fairway_w: float = hole.fairway_width
 	if GameState.debug_fairway_scale != null:
@@ -1146,6 +1147,8 @@ func _place_edge_pond(center: Vector2, size: float) -> void:
 
 
 func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D, rotation_deg: float = 0.0) -> void:
+	## Sprite + AABB enter volume. Wet only on painted alpha (creek is ~45% opaque —
+	## full rect over-fires on transparent fringe; same pattern as sand paint gate).
 	var rot := deg_to_rad(rotation_deg)
 	var spr := Sprite2D.new()
 	spr.texture = tex
@@ -1170,6 +1173,9 @@ func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D, rotation_
 	area.monitoring = false
 	area.monitorable = true
 	area.add_to_group("water")
+	# Paint gate data for ball + dry-drop queries (rotated UV via sprite.to_local).
+	area.set_meta("water_sprite", spr)
+	area.set_meta("water_img", tex.get_image())
 	course_root.add_child(area)
 
 
@@ -3410,6 +3416,31 @@ func _on_painted_sand(pos: Vector2, bunker: Dictionary) -> bool:
 	return img.get_pixel(ix, iy).a > 0.5
 
 
+func _on_painted_water(pos: Vector2, water_area: Area2D) -> bool:
+	## Creek/pond sprites are not full rects (creek ~45% opaque). AABB alone wet-fires
+	## on transparent fringe where fairway still shows — playtest: land mark dry, score WATER.
+	## Island water_tile rects have no paint meta → always wet inside the area.
+	if water_area == null:
+		return true
+	if not water_area.has_meta("water_img") or not water_area.has_meta("water_sprite"):
+		return true
+	var spr: Sprite2D = water_area.get_meta("water_sprite") as Sprite2D
+	var img: Image = water_area.get_meta("water_img") as Image
+	if spr == null or img == null:
+		return true
+	var sz := Vector2(float(img.get_width()), float(img.get_height()))
+	var sc := spr.scale
+	if absf(sc.x) < 0.001 or absf(sc.y) < 0.001:
+		return false
+	# to_local handles rotation (diagonal Leven creek).
+	var local := spr.to_local(pos)
+	var ix := int(local.x / sc.x + sz.x * 0.5)
+	var iy := int(local.y / sc.y + sz.y * 0.5)
+	if ix < 0 or iy < 0 or ix >= int(sz.x) or iy >= int(sz.y):
+		return false
+	return img.get_pixel(ix, iy).a > 0.5
+
+
 func _on_painted_green(pos: Vector2) -> bool:
 	## Ellipse is a cheap reject; painted alpha is the real silhouette
 	## (island beach / L-shape edge cutouts must not count as Green).
@@ -3483,6 +3514,10 @@ func _point_in_group_area(world: Vector2, group: String) -> bool:
 	for h in hits:
 		var col: Variant = h.get("collider")
 		if col is Area2D and (col as Area2D).is_in_group(group):
+			var area := col as Area2D
+			# Water: only painted pixels count (transparent creek fringe is dry).
+			if group == "water" and not _on_painted_water(world, area):
+				continue
 			return true
 	return false
 

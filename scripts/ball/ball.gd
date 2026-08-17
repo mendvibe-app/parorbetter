@@ -732,6 +732,29 @@ func _finish_settle() -> void:
 
 
 ## True when the ball drops in (emits holed_out). False = miss / too hot / not over cup.
+func _water_area_is_wet(water_area: Area2D, pos: Vector2) -> bool:
+	## True if this water volume should wet the ball at pos. No paint meta = full rect
+	## (island water_tile). With meta, only opaque creek/pond pixels count.
+	if water_area == null:
+		return true
+	if not water_area.has_meta("water_img") or not water_area.has_meta("water_sprite"):
+		return true
+	var spr: Sprite2D = water_area.get_meta("water_sprite") as Sprite2D
+	var img: Image = water_area.get_meta("water_img") as Image
+	if spr == null or img == null:
+		return true
+	var sz := Vector2(float(img.get_width()), float(img.get_height()))
+	var sc := spr.scale
+	if absf(sc.x) < 0.001 or absf(sc.y) < 0.001:
+		return false
+	var local := spr.to_local(pos)
+	var ix := int(local.x / sc.x + sz.x * 0.5)
+	var iy := int(local.y / sc.y + sz.y * 0.5)
+	if ix < 0 or iy < 0 or ix >= int(sz.x) or iy >= int(sz.y):
+		return false
+	return img.get_pixel(ix, iy).a > 0.5
+
+
 func _try_cup_capture() -> bool:
 	if state != State.ROLL:
 		return false
@@ -820,6 +843,10 @@ func _on_area_entered(other: Area2D) -> void:
 			if a.is_in_group("green"):
 				_apply_lie_string("Green", false)
 				return
+		# Creek/pond sprites are not full rects; AABB over-fires on transparent fringe
+		# (playtest: land mark looked dry, game said WATER). Paint-gate like sand.
+		if not _water_area_is_wet(other, global_position):
+			return
 		_apply_lie_string("Water", false)
 		velocity = Vector2.ZERO
 		state = State.SETTLED
