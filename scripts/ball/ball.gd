@@ -23,6 +23,9 @@ const TRACER_CAP_PURE := 320
 ## Target trail points across carry path (space-based sampling).
 const TRACER_DESIRED_POINTS := 96.0
 const TRACER_MIN_SPACING := 2.5  ## world px floor between samples
+## Clear air between ball and tracer tip (screen px → world via zoom). Small gap reads
+## more Trackman-like and makes tip/ball overlap easy to spot when wrong.
+const TRACER_TIP_GAP_SCREEN := 7.0  ## PLAYTEST TARGET
 ## Wet-marker dry: 0 = fresh tip, 1 = fully faded. Advances on roll after flight.
 ## Slightly slower than pre-pacing so longer hang flights still dry into the land disc.
 const TRACER_DRY_RATE := 0.72
@@ -481,9 +484,11 @@ func _physics_process(delta: float) -> void:
 			_sync_trail_visual()
 			var lift := TRACER_LIFT / maxf(_camera_zoom(), 0.35)
 			var body_pt := global_position + Vector2(0.0, -_height * lift)
-			# Inset tip slightly so round end-cap / width doesn't poke past the ball.
+			# Tip sits behind the ball: half line-width (cap) + deliberate gap.
+			var z := maxf(_camera_zoom(), 0.35)
 			var half_w := _trail.width * 0.5
-			var tip_pt := global_position - _launch_dir * half_w
+			var tip_gap := TRACER_TIP_GAP_SCREEN / z
+			var tip_pt := global_position - _launch_dir * (half_w + tip_gap)
 			var n := _trail.get_point_count()
 			var air_px := maxf(_planned_distance_px * _air_fraction, 8.0)
 			var min_sp := maxf(air_px / TRACER_DESIRED_POINTS, TRACER_MIN_SPACING)

@@ -44,6 +44,7 @@ def main() -> None:
     assert "set_point_position" in BALL  # tip glued to ball every frame
     assert "tip_pt" in BALL and "body_pt" in BALL  # tip on ball; body keeps loft
     assert "func _clamp_trail_behind_tip" in BALL  # apex loft must not pass ball
+    assert "TRACER_TIP_GAP_SCREEN" in BALL  # deliberate air between ball and tip
     # Caps high enough that normal hang should not mid-chop the arc.
     assert "TRACER_CAP := 280" in BALL or "TRACER_CAP := 256" in BALL or "const TRACER_CAP" in BALL
     # No flight tracer on putts — the ball never leaves the ground, nothing to trace.
