@@ -158,6 +158,7 @@ def main() -> int:
     assert "view_min * 0.52" in HOLE
     assert "dist * 0.90" in HOLE
     assert "CUP_RADIUS := 2.4" in HOLE
+    assert "CUP_CAPTURE_RADIUS" in HOLE
     BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
     assert "BALL_R := 3.5" in BALL
     assert "BALL_R_PUTT := 1.0" in BALL
@@ -168,10 +169,20 @@ def main() -> int:
     assert "break_scale" in BALL
     assert "PUTT_SETTLE_SPEED" in PHYS
     assert "PUTT_SETTLE_SPEED" in BALL
-    # Cup capture: speed gate (lip-out) + center-in-cup; no hot teleport makes.
+    # Cup capture: speed gate + dark-hole radius (not full collar sprite).
     assert "CUP_CAPTURE_MAX_SPEED" in BALL
+    assert "CUP_CAPTURE_RADIUS" in BALL
     assert "_try_cup_capture" in BALL
     assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
+    # Capture disc must be tighter than the full cup sprite (collar suck-in bug).
+    m_vis = re.search(r"const CUP_RADIUS\s*:=\s*([0-9.]+)", HOLE)
+    m_cap = re.search(r"const CUP_CAPTURE_RADIUS\s*:=\s*([0-9.]+)", HOLE)
+    assert m_vis and m_cap
+    assert float(m_cap.group(1)) < float(m_vis.group(1)) * 0.7, (
+        m_cap.group(1),
+        m_vis.group(1),
+    )
+    assert "CUP_CAPTURE_RADIUS" in HOLE.split("_add_circle(course_root, _cup_pos")[1].split("\n")[0]
     # Mid-slope 40 ft bend ~2 ball-widths after break_scale (tuned at a=108).
     px_per_yd = 2.25
     ft_to_px = px_per_yd / 3.0

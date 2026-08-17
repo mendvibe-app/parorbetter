@@ -7,7 +7,11 @@ signal request_next_hole
 const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
 ## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
+## Full cup.png scale (dark hole + mown collar/shelf). Visual only.
 const CUP_RADIUS := 2.4
+## Capture disc = dark opening only (~half the sprite). Using CUP_RADIUS sucked
+## balls that died on the light collar (looked short, then "made").
+const CUP_CAPTURE_RADIUS := 1.15  ## PLAYTEST TARGET
 ## Course pin height in px (readable from fairway; not survey-true ~7 ft).
 const PIN_FLAG_H_PX := 32.0
 ## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
@@ -589,7 +593,8 @@ func _build_course() -> void:
 	# Even edge value; fairway collar + apron flow under the silhouette.
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
 
-	_add_circle(course_root, _cup_pos, CUP_RADIUS, Color(0, 0, 0, 0), "cup")
+	# Sensor = dark hole only; sprite keeps full collar for rim/depth read.
+	_add_circle(course_root, _cup_pos, CUP_CAPTURE_RADIUS, Color(0, 0, 0, 0), "cup")
 	var cup_spr := Sprite2D.new()
 	cup_spr.texture = TEX_CUP
 	cup_spr.position = _cup_pos

@@ -97,8 +97,10 @@ const BALL_R_PUTT := 1.0
 const PUTT_BREAK_LATERAL := 90.0
 const PUTT_BREAK_ALONG := 55.0
 ## Max roll speed (px/s) to drop in the cup. Faster → lip out / roll over (no teleport make).
-## Settle stops at <10; this sits above that so dying putts still fall, hot lags don't.
+## Settle is slower (PUTT_SETTLE_SPEED); this sits above that so dying putts can still fall.
 const CUP_CAPTURE_MAX_SPEED := 32.0
+## Must match HoleController.CUP_CAPTURE_RADIUS — dark hole only, not grass collar.
+const CUP_CAPTURE_RADIUS := 1.15
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -764,9 +766,12 @@ func _try_cup_capture() -> bool:
 	for other in area.get_overlapping_areas():
 		if not other.is_in_group("cup"):
 			continue
-		# Sensor is ~10px; require ball *center* inside the cup disc.
+		# Center must reach the dark opening — not the light grass collar on cup.png
+		# (full CUP_RADIUS capture felt like short putts got sucked in).
 		var cs := other.get_child(0) as CollisionShape2D
-		var cup_r: float = cs.shape.radius if cs and cs.shape is CircleShape2D else 3.0
+		var cup_r: float = (
+			cs.shape.radius if cs and cs.shape is CircleShape2D else CUP_CAPTURE_RADIUS
+		)
 		if global_position.distance_to(other.global_position) > cup_r:
 			continue
 		velocity = Vector2.ZERO
