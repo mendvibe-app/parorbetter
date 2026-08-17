@@ -41,7 +41,7 @@ Refs may inform value/hue only.
 | Water | Mid–deep blue; simple caustic/ripple | Tileset or fill extract |
 | Sand bunkers | Warm grain inside silhouette | Prop cutout + sand fill |
 | Greens | Quieter than rough; clear shape; **even value to edge (no dark rim)**; transparent outside silhouette so fairway apron reads continuous (real aerials) | Prop / silhouette |
-| Trees / cup / pin | Simple readable cutouts | 1-dir object / pixflux cutout |
+| Trees / cup / pin | Simple readable cutouts; **cup** = hard near-black opening + thin rim, transparent outside (not a soft blob) | 1-dir object / pixflux cutout |
 
 **Reject:** repeating landmark clumps, soft AA, photo-texture mush, “only good in isolation.”
 

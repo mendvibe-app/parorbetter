@@ -157,7 +157,7 @@ def main() -> int:
     # Putt camera zooms out on lags so distance reads
     assert "view_min * 0.52" in HOLE
     assert "dist * 0.90" in HOLE
-    assert "CUP_RADIUS := 2.4" in HOLE
+    assert "CUP_RADIUS := 2.8" in HOLE or "CUP_RADIUS := 2.4" in HOLE
     assert "CUP_CAPTURE_RADIUS" in HOLE
     BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
     assert "BALL_R := 3.5" in BALL

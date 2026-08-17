@@ -7,10 +7,10 @@ signal request_next_hole
 const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
 ## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
-## Full cup.png scale (dark hole + mown collar/shelf). Visual only.
-const CUP_RADIUS := 2.4
-## Capture disc = dark opening only (~half the sprite). Using CUP_RADIUS sucked
-## balls that died on the light collar (looked short, then "made").
+## Full cup.png scale (dark hole + thin rim + optional shelf). Visual only.
+## Bumped 2.4→2.8 so the hole reads at putt zoom (playtest: soft blob illegible).
+const CUP_RADIUS := 2.8
+## Capture disc = dark opening only (~0.4× visual). Collar/shelf is not "in".
 const CUP_CAPTURE_RADIUS := 1.15  ## PLAYTEST TARGET
 ## Course pin height in px (readable from fairway; not survey-true ~7 ft).
 const PIN_FLAG_H_PX := 32.0
