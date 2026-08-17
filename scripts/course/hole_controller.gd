@@ -580,10 +580,12 @@ func _build_course() -> void:
 
 	# Bent / shaped fairway (lightest, striped)
 	_add_bent_fairway(fairway_w)
+	# Short-grass apron under/around the green so rough cannot form a dark ring
+	# at the shoulders (real aerials: green sits in continuous fairway/fringe).
+	_add_green_apron()
 
 	# Green sprite (variant per layout) + detection area.
-	# Greens ship with even edge value + transparent outside so fairway collar
-	# flows under the silhouette (real aerials: continuous grass, no dark moat).
+	# Even edge value; fairway collar + apron flow under the silhouette.
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
 
 	_add_circle(course_root, _cup_pos, CUP_RADIUS, Color(0, 0, 0, 0), "cup")
@@ -708,6 +710,48 @@ func _add_bent_fairway(width: float) -> void:
 ## ≥1.0 so fairway tucks under transparent green edge after dark-rough base.
 ## Green lie still wins overlap (ball.gd group order).
 const COLLAR_UNDERLAP := 1.04
+## Apron ellipse scale vs outer green sprite — short grass ring under the green
+## so sides/shoulders are not dark rough (playtest 2026-08-17 continuous approach).
+const GREEN_APRON_SCALE := 1.18  ## PLAYTEST TARGET
+
+
+func _add_green_apron() -> void:
+	## Fairway-textured ellipse under the green. The approach collar alone leaves
+	## rough wedges at SW/SE where the tongue meets the oval; real courses put the
+	## green in a continuous short-grass pad. Island keeps water ring (no apron).
+	if _is_island_green():
+		return
+	var outer := _green_outer_radii() * GREEN_APRON_SCALE
+	var n := 28
+	var pts := PackedVector2Array()
+	for i in n:
+		var th := TAU * float(i) / float(n)
+		var c := cos(th)
+		var s := sin(th)
+		var r := (outer.x * outer.y) / sqrt(pow(outer.y * c, 2.0) + pow(outer.x * s, 2.0))
+		pts.append(_green_center + Vector2(c, s) * r)
+	var poly := Polygon2D.new()
+	poly.color = Color(1, 1, 1)
+	poly.texture = TEX_FAIRWAY
+	poly.texture_scale = Vector2.ONE * (float(TEX_FAIRWAY.get_width()) / GROUND_TILE_PX)
+	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	poly.polygon = pts
+	poly.z_index = 0
+	course_root.add_child(poly)
+	var area := Area2D.new()
+	area.position = _green_center
+	area.collision_layer = 2
+	var cs := CollisionPolygon2D.new()
+	# Local space for area (poly is in course root space — match world via offset)
+	var local_pts := PackedVector2Array()
+	for p in pts:
+		local_pts.append(p - _green_center)
+	cs.polygon = local_pts
+	area.add_child(cs)
+	area.add_to_group("fairway")
+	area.monitoring = false
+	area.monitorable = true
+	course_root.add_child(area)
 
 
 func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:

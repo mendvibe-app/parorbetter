@@ -15,11 +15,13 @@ def main() -> int:
     assert "func _green_outer_radii" in HC
     assert "func _collar_arc_points" in HC
     assert "COLLAR_UNDERLAP" in HC
-    # Seal under green after dark-rough base (≥1.0). Fringe donut retired once
-    # green art has even edge value + transparent outside.
+    # Seal under green after dark-rough base (≥1.0). Fringe donut retired;
+    # green apron ellipse kills rough ring at shoulders (real continuous approach).
     assert "COLLAR_UNDERLAP := 1.04" in HC or "COLLAR_UNDERLAP:=1.04" in HC
     assert "func _add_green_fringe_seal" not in HC
-    assert "FRINGE_SEAL_INNER" not in HC
+    assert "func _add_green_apron" in HC
+    assert "_add_green_apron()" in HC
+    assert "GREEN_APRON_SCALE" in HC
 
     # Collar is the default green-end path; oval/kidney-only gate retired.
     assert 'GreenShape.OVAL or hole.green_shape == HoleData.GreenShape.KIDNEY' not in HC
