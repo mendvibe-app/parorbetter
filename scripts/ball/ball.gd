@@ -472,17 +472,18 @@ func _physics_process(delta: float) -> void:
 		_:
 			pass
 	# Flight: lofted Trackman tracer (space-sampled for variable air speed).
-	# Tip is glued to the ball every frame so the ribbon never outruns or lags it.
-	# Body samples keep screen-up loft; tip sits on the ball node (ground pos).
+	# Tip glued to the ball every frame. Body keeps screen-up loft, then every point
+	# is clamped so nothing sits past the tip along launch (apex loft was leading
+	# the ribbon past the ball on driver — playtest screenshot 2026-08-17).
 	# Roll: freeze points and dry the ribbon (wet marker) into the land circle.
 	if not _is_putt:
 		if state == State.FLIGHT:
 			_sync_trail_visual()
 			var lift := TRACER_LIFT / maxf(_camera_zoom(), 0.35)
-			# Body points float for loft; tip is always on the ball so portrait -Y loft
-			# cannot push the ribbon tip past the ball down-range (driver especially).
 			var body_pt := global_position + Vector2(0.0, -_height * lift)
-			var tip_pt := global_position
+			# Inset tip slightly so round end-cap / width doesn't poke past the ball.
+			var half_w := _trail.width * 0.5
+			var tip_pt := global_position - _launch_dir * half_w
 			var n := _trail.get_point_count()
 			var air_px := maxf(_planned_distance_px * _air_fraction, 8.0)
 			var min_sp := maxf(air_px / TRACER_DESIRED_POINTS, TRACER_MIN_SPACING)
@@ -492,14 +493,12 @@ func _physics_process(delta: float) -> void:
 			if n == 0:
 				_trail.add_point(tip_pt)
 			else:
-				# Glue tip to ball every frame first — sampling never leaves tip stale/ahead.
 				_trail.set_point_position(n - 1, tip_pt)
 				var commit := false
 				if n == 1:
 					commit = tip_pt.distance_to(_shot_origin) >= min_sp
 				else:
 					commit = tip_pt.distance_to(_trail.get_point_position(n - 2)) >= min_sp
-				# Short chips: guarantee a few samples even if spacing is large.
 				if not commit and n < 10 and _air_timer > float(n) * 0.04:
 					commit = true
 				if commit:
@@ -509,6 +508,8 @@ func _physics_process(delta: float) -> void:
 					var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
 					if _trail.get_point_count() > cap:
 						_trail.remove_point(0)
+			# Pull any lofted body point that sits past the tip back behind the ball.
+			_clamp_trail_behind_tip(tip_pt)
 		elif state == State.ROLL:
 			if _trail.get_point_count() > 0:
 				# Dry from launch end toward the land circle; drop fully-faded head points.
@@ -753,6 +754,29 @@ func _set_trail_dry(v: float) -> void:
 	# Trim the dried launch end while settling
 	if _trail and _trail_dry > 0.4 and _trail.get_point_count() > 4:
 		_trail.remove_point(0)
+
+
+func _clamp_trail_behind_tip(tip_pt: Vector2) -> void:
+	## Screen-up loft moves points toward -Y (down-range on portrait). Apex samples
+	## can sit past the ball even when their ground sample is behind. Push any point
+	## that is ahead of the tip along launch back so the ribbon never outruns the ball.
+	if _trail == null:
+		return
+	var n := _trail.get_point_count()
+	if n < 2:
+		return
+	var along := _launch_dir
+	if along.length_squared() < 0.0001:
+		along = Vector2(0, -1)
+	else:
+		along = along.normalized()
+	# Keep body at least a hair behind tip (world px).
+	var pad := maxf(_trail.width * 0.35, 0.75)
+	for i in range(n - 1):
+		var p := _trail.get_point_position(i)
+		var ahead := (p - tip_pt).dot(along)
+		if ahead > -pad:
+			_trail.set_point_position(i, p - along * (ahead + pad))
 
 
 func _on_area_entered(other: Area2D) -> void:

@@ -43,6 +43,7 @@ def main() -> None:
     assert "get_point_position" in BALL  # Godot 4 Line2D API (not get_point)
     assert "set_point_position" in BALL  # tip glued to ball every frame
     assert "tip_pt" in BALL and "body_pt" in BALL  # tip on ball; body keeps loft
+    assert "func _clamp_trail_behind_tip" in BALL  # apex loft must not pass ball
     # Caps high enough that normal hang should not mid-chop the arc.
     assert "TRACER_CAP := 280" in BALL or "TRACER_CAP := 256" in BALL or "const TRACER_CAP" in BALL
     # No flight tracer on putts — the ball never leaves the ground, nothing to trace.
