@@ -16,7 +16,11 @@ def main() -> int:
     assert "func _collar_arc_points" in HC
     assert "COLLAR_UNDERLAP" in HC
     # Seal under green after dark-rough base (≥1.0); 0.97 left a moat in fringe.
-    assert "COLLAR_UNDERLAP := 1.02" in HC or "COLLAR_UNDERLAP:=1.02" in HC
+    assert "COLLAR_UNDERLAP := 1.05" in HC or "COLLAR_UNDERLAP:=1.05" in HC
+    # Opaque dark rim on green art needs fairway drawn over it (not only underlap).
+    assert "func _add_green_fringe_seal" in HC
+    assert "_add_green_fringe_seal()" in HC
+    assert "FRINGE_SEAL_INNER" in HC and "FRINGE_SEAL_OUTER" in HC
 
     # Collar is the default green-end path; oval/kidney-only gate retired.
     assert 'GreenShape.OVAL or hole.green_shape == HoleData.GreenShape.KIDNEY' not in HC
