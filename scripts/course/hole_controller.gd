@@ -702,8 +702,9 @@ func _add_bent_fairway(width: float) -> void:
 	course_root.add_child(area)
 
 
-## Slightly inside the rendered silhouette so AA/seams land under the green sprite.
-const COLLAR_UNDERLAP := 0.97
+## ≥1.0 so fairway seals under the green after dark-rough base (0.97 left a moat
+## through transparent fringe). Green lie still wins overlap (ball.gd group order).
+const COLLAR_UNDERLAP := 1.02
 
 
 func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:
@@ -1299,8 +1300,14 @@ func _add_fog_band() -> void:
 	course_root.add_child(spr)
 
 
+## Heat cell centers must sit inside this fraction of the putting ellipse so square
+## cells don't bleed past the green (playtest: heatmap into rough flanks).
+const GREEN_BOOK_ELLIPSE_FRAC := 0.92
+
+
 func _build_green_book() -> void:
 	## Yardage-book from the same height field the ball samples. Aim-only.
+	## Clip to painted putting surface (not ideal ellipse alone) so heat matches art.
 	_green_book = Node2D.new()
 	_green_book.name = "GreenBook"
 	_green_book.z_index = 3
@@ -1320,7 +1327,8 @@ func _build_green_book() -> void:
 				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
 				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
 			)
-			var inside := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry) <= 1.05
+			var ell := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry)
+			var inside := ell <= 1.05
 			var h := hole.green_height_at(local) if inside else 0.0
 			grid[iy * n + ix] = h
 			if inside:
@@ -1342,13 +1350,21 @@ func _build_green_book() -> void:
 		Color(0.95, 0.4, 0.25, 0.45),
 	]
 	var cell := Vector2(2.0 * rx / float(n - 1), 2.0 * ry / float(n - 1))
+	# Half-cell small enough that corners stay inside GREEN_BOOK_ELLIPSE_FRAC ellipse.
+	var hx := cell.x * 0.42
+	var hy := cell.y * 0.42
+	var frac2 := GREEN_BOOK_ELLIPSE_FRAC * GREEN_BOOK_ELLIPSE_FRAC
 	for iy in n - 1:
 		for ix in n - 1:
 			var local := Vector2(
 				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx + cell.x * 0.5,
 				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry + cell.y * 0.5
 			)
-			if (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry) > 1.0:
+			var ell := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry)
+			if ell > frac2:
+				continue
+			# Same silhouette as lie — no heat on transparent fringe / cutouts.
+			if not _on_painted_green(_green_center + local):
 				continue
 			var h := (
 				grid[iy * n + ix] + grid[iy * n + ix + 1]
@@ -1356,8 +1372,6 @@ func _build_green_book() -> void:
 			) * 0.25
 			var t := clampf((h - h_min) / (h_max - h_min), 0.0, 1.0)
 			var ci := mini(int(t * float(heat_lut.size() - 1) + 0.001), heat_lut.size() - 1)
-			var hx := cell.x * 0.52
-			var hy := cell.y * 0.52
 			drawer.heat.append({
 				"pts": PackedVector2Array([
 					local + Vector2(-hx, -hy),

@@ -15,6 +15,8 @@ def main() -> int:
     assert "func _green_outer_radii" in HC
     assert "func _collar_arc_points" in HC
     assert "COLLAR_UNDERLAP" in HC
+    # Seal under green after dark-rough base (≥1.0); 0.97 left a moat in fringe.
+    assert "COLLAR_UNDERLAP := 1.02" in HC or "COLLAR_UNDERLAP:=1.02" in HC
 
     # Collar is the default green-end path; oval/kidney-only gate retired.
     assert 'GreenShape.OVAL or hole.green_shape == HoleData.GreenShape.KIDNEY' not in HC
@@ -23,6 +25,9 @@ def main() -> int:
     # Tip span uses green outer width, not a fixed 0.7× fairway half for collar.
     assert "outer.x * 0.98" in HC or "0.98" in HC
     assert "minf(half" in HC
+    # Green book heat stays on painted surface (not ideal-ellipse bleed into rough).
+    assert "GREEN_BOOK_ELLIPSE_FRAC" in HC
+    assert "_on_painted_green" in HC.split("func _build_green_book")[1].split("func ")[0]
 
     # Island still uses apron tongue (water edge), not collar into the ring.
     fw = HC.split("func _add_bent_fairway")[1].split("func ")[0]
