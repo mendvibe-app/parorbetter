@@ -40,6 +40,7 @@ def main() -> None:
     assert "TRACER_DESIRED_POINTS" in BALL
     assert "TRACER_MIN_SPACING" in BALL
     assert "distance_to" in BALL  # min spacing between trail points
+    assert "get_point_position" in BALL  # Godot 4 Line2D API (not get_point)
     # Caps high enough that normal hang should not mid-chop the arc.
     assert "TRACER_CAP := 280" in BALL or "TRACER_CAP := 256" in BALL or "const TRACER_CAP" in BALL
     # No flight tracer on putts — the ball never leaves the ground, nothing to trace.

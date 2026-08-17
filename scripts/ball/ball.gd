@@ -488,7 +488,8 @@ func _physics_process(delta: float) -> void:
 			min_sp = maxf(min_sp / dens, TRACER_MIN_SPACING * 0.7)
 			var add := n == 0
 			if not add and n > 0:
-				add = pt.distance_to(_trail.get_point(n - 1)) >= min_sp
+				# Godot 4 Line2D: get_point_position (not get_point).
+				add = pt.distance_to(_trail.get_point_position(n - 1)) >= min_sp
 			# Short chips: guarantee a few samples even if spacing is large.
 			if not add and n < 10 and _air_timer > float(n) * 0.04:
 				add = true
