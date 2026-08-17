@@ -529,7 +529,9 @@ func _physics_process(delta: float) -> void:
 					if _land_mark.modulate.a <= 0.02:
 						_hide_land_mark()
 			_sync_trail_visual()
-	_spin_vis += spin * delta * 4.0 + velocity.length() * 0.002
+	# Putt speeds are low (~5–20 px/s); 0.002 was nearly invisible. Visual only.
+	var roll_spin := 0.018 if _is_putt else 0.002  ## PLAYTEST TARGET — putt roll read
+	_spin_vis += spin * delta * 4.0 + velocity.length() * roll_spin
 	visual.rotation = _spin_vis
 	var s := 1.0 + _height * 0.006
 	visual.scale = Vector2.ONE * (_ball_scale * s)
