@@ -472,33 +472,43 @@ func _physics_process(delta: float) -> void:
 		_:
 			pass
 	# Flight: lofted Trackman tracer (space-sampled for variable air speed).
+	# Tip is glued to the ball every frame so the ribbon never outruns or lags it.
+	# Body samples keep screen-up loft; tip sits on the ball node (ground pos).
 	# Roll: freeze points and dry the ribbon (wet marker) into the land circle.
-	# Never trim trail points mid-flight — longer hang + envelope must not chop the arc.
 	if not _is_putt:
 		if state == State.FLIGHT:
 			_sync_trail_visual()
 			var lift := TRACER_LIFT / maxf(_camera_zoom(), 0.35)
-			var pt := global_position + Vector2(0.0, -_height * lift)
+			# Body points float for loft; tip is always on the ball so portrait -Y loft
+			# cannot push the ribbon tip past the ball down-range (driver especially).
+			var body_pt := global_position + Vector2(0.0, -_height * lift)
+			var tip_pt := global_position
 			var n := _trail.get_point_count()
 			var air_px := maxf(_planned_distance_px * _air_fraction, 8.0)
 			var min_sp := maxf(air_px / TRACER_DESIRED_POINTS, TRACER_MIN_SPACING)
-			# Slightly denser while still fast (hot exit reads on the ribbon).
 			var t_air := clampf(_air_timer / maxf(_air_duration, 0.01), 0.0, 1.0)
 			var dens := clampf(BallPhysics.flight_speed_scale(t_air) / 1.2, 0.55, 1.25)
 			min_sp = maxf(min_sp / dens, TRACER_MIN_SPACING * 0.7)
-			var add := n == 0
-			if not add and n > 0:
-				# Godot 4 Line2D: get_point_position (not get_point).
-				add = pt.distance_to(_trail.get_point_position(n - 1)) >= min_sp
-			# Short chips: guarantee a few samples even if spacing is large.
-			if not add and n < 10 and _air_timer > float(n) * 0.04:
-				add = true
-			if add:
-				_trail.add_point(pt)
-				var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
-				# Safety only — should not hit during normal hang; never mid-chop prefer.
-				if _trail.get_point_count() > cap:
-					_trail.remove_point(0)
+			if n == 0:
+				_trail.add_point(tip_pt)
+			else:
+				# Glue tip to ball every frame first — sampling never leaves tip stale/ahead.
+				_trail.set_point_position(n - 1, tip_pt)
+				var commit := false
+				if n == 1:
+					commit = tip_pt.distance_to(_shot_origin) >= min_sp
+				else:
+					commit = tip_pt.distance_to(_trail.get_point_position(n - 2)) >= min_sp
+				# Short chips: guarantee a few samples even if spacing is large.
+				if not commit and n < 10 and _air_timer > float(n) * 0.04:
+					commit = true
+				if commit:
+					# Freeze lofted body sample, then new tip on the ball.
+					_trail.set_point_position(n - 1, body_pt)
+					_trail.add_point(tip_pt)
+					var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
+					if _trail.get_point_count() > cap:
+						_trail.remove_point(0)
 		elif state == State.ROLL:
 			if _trail.get_point_count() > 0:
 				# Dry from launch end toward the land circle; drop fully-faded head points.
