@@ -16,16 +16,21 @@ PX_PER_FOOT = 2.25 / 3.0  # BallPhysics.PX_PER_YARD / 3
 VIEW_MIN = 1080.0  # canvas_items stretch normalizes to design width
 
 
-def desired_putt_zoom(dist_ft: float) -> float:
+def desired_putt_zoom(dist_ft: float, cap: float = 24.0) -> float:
     dist = dist_ft * PX_PER_FOOT
     half_span = max(dist * 0.90 + 6.0, 12.0)
-    return min(max(VIEW_MIN * 0.52 / half_span, 2.6), 42.0)
+    return min(max(VIEW_MIN * 0.52 / half_span, 2.6), cap)
 
 
 def main() -> int:
-    # Setup framing formula unchanged (short putts still read tighter at aim).
+    # Setup framing: short putts still read tighter; cap lowered so cup isn't huge.
     assert "var half_span := maxf(dist * 0.90 + 6.0, 12.0)" in CTRL
-    assert "clampf(view_min * 0.52 / half_span, 2.6, 42.0)" in CTRL
+    assert "PUTT_ZOOM_CAP" in CTRL
+    assert "clampf(view_min * 0.52 / half_span, 2.6, PUTT_ZOOM_CAP)" in CTRL
+    m_cap = __import__("re").search(r"const PUTT_ZOOM_CAP\s*:=\s*([0-9.]+)", CTRL)
+    assert m_cap, "PUTT_ZOOM_CAP parse"
+    putt_cap = float(m_cap.group(1))
+    assert abs(putt_cap - 24.0) < 0.01, putt_cap
 
     # Roll lock — no live chase punch.
     assert "func _lock_putt_camera" in CTRL

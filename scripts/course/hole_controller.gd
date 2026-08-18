@@ -30,6 +30,8 @@ const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 const PUTT_ROLL_LOOK_LERP := 0.07
 const PUTT_ROLL_BALL_WEIGHT := 0.15  ## soft drift toward ball from locked mid-frame
 const PUTT_ROLL_ZOOM_LERP := 0.10
+## Max putt aim zoom (higher = closer). Was 42 — cup ate the screen on tap-ins.
+const PUTT_ZOOM_CAP := 24.0  ## PLAYTEST TARGET
 
 ## Pinch-to-zoom (aim/green-book only) — multiplies _desired_camera_zoom(), then
 ## the result is safety-clamped so a pinch can't push the camera past a readable range.
@@ -3083,7 +3085,7 @@ func _desired_camera_zoom() -> Vector2:
 		# old floor (34) + cap (7.5) together clamped everything under ~70 ft to one flat zoom.
 		var dist := ball.global_position.distance_to(_cup_pos)
 		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
-		z = clampf(view_min * 0.52 / half_span, 2.6, 42.0)
+		z = clampf(view_min * 0.52 / half_span, 2.6, PUTT_ZOOM_CAP)
 	else:
 		# Pin-primary: tight ball→pin framing through short par-3s (~150 yd), ease to
 		# corridor only for long tee (150→220). Old band ended at 90 → 109 yd stayed corridor.
@@ -3250,11 +3252,15 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	_clear_putt_camera_lock()
 	_set_green_book_visible(false)
 	var actual := ball.distance_traveled_yards()
-	# Holed shots short-circuit below before _last_report.set_actual — record here so
-	# a made putt (the one "longest putt" actually cares about) isn't dropped.
+	# Settle predicate stays CUP_RADIUS (2.8) until make-radius PR; capture 1.15 ⊂ this.
 	var holed := pos.distance_to(_cup_pos) < CUP_RADIUS and not GameState.range_mode
 	if _last_result and _last_report:
 		GameState.club_coach.record(_last_report.club_name, _last_result, GameState.last_tempo_metrics, actual, holed)
+	# Write Actual yd / glance before holed early-returns (capture path used to skip these).
+	if _last_report:
+		_last_report.set_actual(actual)
+		GameState.last_shot_metrics["actual_yd"] = actual
+		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
 	if GameState.green_mode and holed:
 		_on_practice_green_holed()
 		return
@@ -3274,9 +3280,6 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 		ball.set_lie(_classify_lie(pos))
 	_update_hud()
 	if _last_report:
-		_last_report.set_actual(actual)
-		GameState.last_shot_metrics["actual_yd"] = actual
-		GameState.last_shot_metrics["summary"] = _last_report.glance_text()
 		# Putts skip FLIGHT — hang/carry stay stale from the prior airborne shot.
 		# Blank is correct; do not write flight/apex into F1 metrics.
 		var settled_putt := (

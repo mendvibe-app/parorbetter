@@ -733,7 +733,8 @@ func _finish_settle() -> void:
 	settled.emit(global_position, _lie)
 
 
-## True when the ball drops in (emits holed_out). False = miss / too hot / not over cup.
+## True when the ball drops in (emits settled so hole_controller records the make).
+## False = miss / too hot / not over cup.
 func _water_area_is_wet(water_area: Area2D, pos: Vector2) -> bool:
 	## True if this water volume should wet the ball at pos. No paint meta = full rect
 	## (island water_tile). With meta, only opaque creek/pond pixels count.
@@ -778,7 +779,9 @@ func _try_cup_capture() -> bool:
 		state = State.SETTLED
 		set_physics_process(false)
 		AudioBus.set_roll_intensity(0.0)
-		holed_out.emit()
+		# Emit settled (not holed_out) so _on_ball_settled records Actual yd + coach
+		# and routes practice/short-game/normal hole-out. Capture radius ⊂ CUP_RADIUS.
+		settled.emit(global_position, _lie)
 		return true
 	return false
 
