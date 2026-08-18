@@ -43,20 +43,21 @@ def main() -> int:
     assert "_putt_cam_look.lerp(ball.global_position, PUTT_ROLL_BALL_WEIGHT)" in CTRL
     assert "camera.zoom = camera.zoom.lerp(_putt_cam_zoom, PUTT_ROLL_ZOOM_LERP)" in CTRL
 
-    z_2ft = desired_putt_zoom(2.0)
-    z_6ft = desired_putt_zoom(6.0)
-    z_10ft = desired_putt_zoom(10.0)
-    z_15ft = desired_putt_zoom(15.0)
-    z_35ft = desired_putt_zoom(35.0)
-    z_60ft = desired_putt_zoom(60.0)
+    z_2ft = desired_putt_zoom(2.0, putt_cap)
+    z_6ft = desired_putt_zoom(6.0, putt_cap)
+    z_10ft = desired_putt_zoom(10.0, putt_cap)
+    z_15ft = desired_putt_zoom(15.0, putt_cap)
+    z_35ft = desired_putt_zoom(35.0, putt_cap)
+    z_60ft = desired_putt_zoom(60.0, putt_cap)
 
-    # Short putts (<~10 ft) read clearly tighter than the 20-40 ft range.
-    assert z_2ft > z_35ft * 1.5, (z_2ft, z_35ft)
-    assert z_10ft > z_35ft * 1.3, (z_10ft, z_35ft)
+    # Short putts hit the cap; still tighter than mid/long (cap 24 vs old 42).
+    assert z_2ft >= putt_cap - 0.01, (z_2ft, putt_cap)
+    assert z_2ft > z_35ft, (z_2ft, z_35ft)
+    assert z_10ft > z_35ft, (z_10ft, z_35ft)
 
-    # Monotonic falloff — no flat plateau spanning the whole putting range like before.
-    assert z_2ft >= z_6ft >= z_10ft >= z_15ft >= z_35ft >= z_60ft, (
-        z_2ft, z_6ft, z_10ft, z_15ft, z_35ft, z_60ft,
+    # Monotonic falloff once below the cap — no flat plateau across mid/long.
+    assert z_10ft >= z_15ft >= z_35ft >= z_60ft, (
+        z_10ft, z_15ft, z_35ft, z_60ft,
     )
     assert z_15ft > z_35ft, (z_15ft, z_35ft)
     assert z_35ft > z_60ft, (z_35ft, z_60ft)
@@ -65,7 +66,7 @@ def main() -> int:
     assert z_60ft < 15.0, z_60ft
 
     print(f"putt_camera_zoom_check: ok z(2ft)={z_2ft:.1f} z(10ft)={z_10ft:.1f} "
-          f"z(35ft)={z_35ft:.1f} z(60ft)={z_60ft:.1f} (roll locked)")
+          f"z(35ft)={z_35ft:.1f} z(60ft)={z_60ft:.1f} cap={putt_cap:.0f} (roll locked)")
     return 0
 
 
