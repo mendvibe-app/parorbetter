@@ -12,6 +12,12 @@ def main() -> int:
     assert "func play_cup_drop" in BALL
     assert "self_modulate" in BALL.split("func play_cup_drop")[1].split("func ")[0]
     assert "play_cup_drop()" in HOLE
+    # Phase 1 lip-in: stash survives reset_at; position cleared on reset.
+    assert "_cup_entry_offset" in BALL
+    assert "LIP_ORBIT_MAX" in BALL
+    assert "visual.position = Vector2.ZERO" in BALL.split("func reset_at")[1].split("func ")[0]
+    # Capture geometry frozen — Phase 1 presentation only.
+    assert "CUP_CAPTURE_RADIUS := 1.9" in BALL or "CUP_CAPTURE_RADIUS:=1.9" in BALL
 
     holed = HOLE.split("func _on_holed_out")[1].split("func ")[0]
     # No zoom-punch variables / zoom tweens on the make sequence.
@@ -21,12 +27,18 @@ def main() -> int:
     assert "play_cup_drop" in holed
     assert "global_position" in holed  # still pans to cup
     assert "_show_hole_result_banner" in holed
+    # Banner after curl budget (drop_hold), not mid-lip.
+    assert "drop_hold" in holed
 
     assert "func _show_hole_result_banner" in HOLE
     # Practice green: drop, no zoom punch
     prac = HOLE.split("func _on_practice_green_holed")[1].split("func ")[0]
     assert "play_cup_drop" in prac
     assert "Vector2(4.5, 4.5)" not in prac
+    assert "cup_drop_total_duration" in prac
+    short = HOLE.split("func _on_short_game_holed")[1].split("func ")[0]
+    assert "play_cup_drop" in short
+    assert "cup_drop_total_duration" in short
 
     print("hole_out_feel_check: ok")
     return 0

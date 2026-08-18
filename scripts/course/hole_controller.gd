@@ -3345,6 +3345,7 @@ func _on_practice_green_holed() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	AudioBus.play_putt_drop()
+	var drop_hold := ball.cup_drop_total_duration()
 	ball.reset_at(_cup_pos, "Green")
 	ball.play_cup_drop()
 	feedback.text = "IN THE HOLE"
@@ -3353,8 +3354,8 @@ func _on_practice_green_holed() -> void:
 	var cam_tw := create_tween()
 	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.2)
-	# Hold zoom — no punch; ball drop carries the make.
-	await get_tree().create_timer(0.75).timeout
+	# Hold through curl+drop so reset doesn't cut the lip-in.
+	await get_tree().create_timer(maxf(0.75, drop_hold + 0.15)).timeout
 	if GameState.green_mode and GameState.run_active:
 		_reset_practice_green()
 
@@ -3365,6 +3366,7 @@ func _on_short_game_holed() -> void:
 	_end_aim_phase()
 	shot_routine.set_active(false)
 	AudioBus.play_putt_drop()
+	var drop_hold := ball.cup_drop_total_duration()
 	ball.reset_at(_cup_pos, "Green")
 	ball.play_cup_drop()
 	feedback.text = "IN THE HOLE"
@@ -3373,7 +3375,7 @@ func _on_short_game_holed() -> void:
 	var cam_tw := create_tween()
 	cam_tw.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	cam_tw.tween_property(camera, "global_position", _cup_pos, 0.2)
-	await get_tree().create_timer(0.75).timeout
+	await get_tree().create_timer(maxf(0.75, drop_hold + 0.15)).timeout
 	if GameState.short_game_mode and GameState.run_active:
 		_reset_short_game_station()
 
@@ -3597,6 +3599,8 @@ func _on_holed_out() -> void:
 	ball_in_flight = false
 	_end_aim_phase()
 	shot_routine.set_active(false)
+	# Duration before reset_at (stash still valid); reset does not clear entry stash.
+	var drop_hold := ball.cup_drop_total_duration()
 	ball.reset_at(_cup_pos, "Green")
 	# TV hole-out: hold frame, pan to cup, ball sinks — no in/out zoom punch.
 	AudioBus.play_putt_drop()
@@ -3616,6 +3620,8 @@ func _on_holed_out() -> void:
 	_update_hud()
 	feedback.text = _hole_result_feedback(result, diff, life_delta)
 	feedback.modulate = Color(1.0, 0.95, 0.5)
+	# Banner after rim curl so "Birdie" isn't mid-lip.
+	await get_tree().create_timer(drop_hold).timeout
 	_show_hole_result_banner(result, diff, life_delta)
 	if Scoring.is_birdie_or_better(result) or result == Scoring.Result.PAR:
 		AudioBus.play_golf_clap()
@@ -3624,8 +3630,8 @@ func _on_holed_out() -> void:
 	var finished := GameState.current_hole >= GameState.HOLE_COUNT
 	if died:
 		AudioBus.play_water_hazard()
-	# Banner + drop settle before advancing.
-	await get_tree().create_timer(1.55).timeout
+	# Remaining hold for banner fade (0.15+0.65+0.25≈1.05).
+	await get_tree().create_timer(maxf(1.55 - drop_hold, 0.85)).timeout
 	if GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0):
 		request_game_over.emit()
 		return

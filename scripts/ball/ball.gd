@@ -8,6 +8,8 @@ signal settled(position: Vector2, lie_hint: String)
 signal entered_hazard(kind: String)
 signal holed_out
 signal perfect_flash
+## Fired when play_cup_drop curl+sink tween finishes (banner / reset timing).
+signal cup_drop_finished
 
 enum State { IDLE, FLIGHT, ROLL, SETTLED }
 
@@ -102,10 +104,23 @@ const PUTT_BREAK_ALONG := 55.0
 const CUP_CAPTURE_MAX_SPEED := 32.0
 ## Must match HoleController.CUP_CAPTURE_RADIUS — dark disc (43/64 of cup.png).
 const CUP_CAPTURE_RADIUS := 1.9
+## Lip-in presentation (Phase 1) — PLAYTEST TARGETS. Capture geometry frozen.
+## Orbit held near max for every rim roll; arc angle carries offset signal.
+## Allow ball proud of void onto grey rim (real lip-ins overhang). Cap vs art edge
+## ((57/64)*CUP_RADIUS≈2.49), bias ~void radius 1.53 — look call on device.
+const LIP_ORBIT_MAX := 1.55
+const LIP_CENTER_OFFSET_MAX := 0.22  ## below → straight drop (with speed gate)
+const LIP_CENTER_SPEED_MAX := 0.35
+const LIP_DROP_DUR := 0.18
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
 var _glow_scale: float = 1.0
+## Cup entry stash for lip-in — set in _try_cup_capture; cleared after drop / launch.
+## Never cleared in reset_at (handlers call reset_at then play_cup_drop).
+var _cup_entry_offset: Vector2 = Vector2.ZERO
+var _cup_entry_speed: float = 0.0
+var _cup_entry_valid: bool = false
 
 func _ready() -> void:
 	_apply_lie_visual()
@@ -280,6 +295,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_sync_trail_gradient()
 	_hide_land_mark()
 	visual.rotation = 0.0
+	visual.position = Vector2.ZERO  ## clear lip-in offset; stash cleared separately
 	visual.self_modulate = Color(1, 1, 1)
 	shadow.position = Vector2.ZERO
 	glow.visible = false
@@ -298,6 +314,8 @@ func launch(
 	p_green_center: Vector2 = Vector2.ZERO,
 	shot_type: String = "full"
 ) -> void:
+	_clear_cup_entry_stash()
+	visual.position = Vector2.ZERO
 	var to_pin := target_pos - global_position
 	_pin_dir = to_pin.normalized()
 	if _pin_dir == Vector2.ZERO:
@@ -759,6 +777,12 @@ func _water_area_is_wet(water_area: Area2D, pos: Vector2) -> bool:
 	return img.get_pixel(ix, iy).a > 0.5
 
 
+func _clear_cup_entry_stash() -> void:
+	_cup_entry_offset = Vector2.ZERO
+	_cup_entry_speed = 0.0
+	_cup_entry_valid = false
+
+
 func _try_cup_capture() -> bool:
 	if state != State.ROLL:
 		return false
@@ -774,8 +798,13 @@ func _try_cup_capture() -> bool:
 		var cup_r: float = (
 			cs.shape.radius if cs and cs.shape is CircleShape2D else CUP_CAPTURE_RADIUS
 		)
-		if global_position.distance_to(other.global_position) > cup_r:
+		var cup_pos := other.global_position
+		if global_position.distance_to(cup_pos) > cup_r:
 			continue
+		# Stash entry BEFORE zeroing velocity — play_cup_drop reads after reset_at.
+		_cup_entry_offset = global_position - cup_pos
+		_cup_entry_speed = velocity.length()
+		_cup_entry_valid = true
 		velocity = Vector2.ZERO
 		state = State.SETTLED
 		set_physics_process(false)
@@ -897,24 +926,90 @@ func flash_perfect() -> void:
 	gw.parallel().tween_property(glow, "modulate:a", 0.8, 0.28)
 
 
+func cup_drop_total_duration() -> float:
+	## Curl + sink — for hole-out awaits (banner / practice reset).
+	if not _cup_entry_valid:
+		return LIP_DROP_DUR
+	var offset_ratio := clampf(_cup_entry_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
+	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
+	if offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX:
+		return LIP_DROP_DUR
+	var curl_dur := lerpf(0.22, 0.48, offset_ratio) + lerpf(0.0, 0.08, speed_ratio)
+	return curl_dur + LIP_DROP_DUR
+
+
 func play_cup_drop() -> void:
-	## Visual only — ball sinks into the cup after capture. Call after reset_at(cup).
-	## Next reset_at / _apply_lie_visual restores scale and modulate.
+	## Visual only — optional rim curl then sink. Call after reset_at(cup).
+	## Stash must survive reset_at; cleared here when the tween finishes.
 	if visual == null:
+		_clear_cup_entry_stash()
+		cup_drop_finished.emit()
 		return
 	var start_s := _ball_scale
 	visual.scale = Vector2.ONE * start_s
 	visual.self_modulate = Color(1, 1, 1, 1)
+	visual.position = Vector2.ZERO
 	if shadow:
 		shadow.modulate.a = 1.0
-	var tw := create_tween()
-	tw.set_parallel(true)
-	tw.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
-	tw.tween_property(visual, "scale", Vector2.ONE * (start_s * 0.38), 0.18)
-	tw.tween_property(visual, "self_modulate", Color(0.15, 0.15, 0.15, 0.35), 0.18)
-	if shadow:
-		tw.tween_property(shadow, "modulate:a", 0.0, 0.14)
 	if glow:
 		glow.visible = false
 	if spin_fx:
 		spin_fx.visible = false
+
+	var offset_len := _cup_entry_offset.length() if _cup_entry_valid else 0.0
+	var offset_ratio := clampf(offset_len / CUP_CAPTURE_RADIUS, 0.0, 1.0)
+	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
+	var rim_roll := (
+		_cup_entry_valid
+		and not (offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX)
+	)
+
+	var tw := create_tween()
+	if rim_roll:
+		# Hold orbit near max; arc angle alone signals offset (boundary arc length readable).
+		var orbit_r := LIP_ORBIT_MAX
+		var start_ang := _cup_entry_offset.angle()
+		var arc_rad := lerpf(TAU * 0.20, TAU * 0.55, offset_ratio)
+		arc_rad *= lerpf(0.85, 1.15, speed_ratio)
+		# Curl toward the side of the miss (cross of offset × approach).
+		var approach := -_cup_entry_offset.normalized()
+		if _launch_dir.length_squared() > 0.01:
+			approach = _launch_dir
+		var cross_z := _cup_entry_offset.x * approach.y - _cup_entry_offset.y * approach.x
+		if cross_z < 0.0:
+			arc_rad = -arc_rad
+		var curl_dur := lerpf(0.22, 0.48, offset_ratio) + lerpf(0.0, 0.08, speed_ratio)
+		visual.position = Vector2.from_angle(start_ang) * orbit_r
+		tw.tween_method(
+			func(a: float) -> void:
+				visual.position = Vector2.from_angle(a) * orbit_r,
+			start_ang,
+			start_ang + arc_rad,
+			curl_dur
+		).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+		tw.tween_property(visual, "position", Vector2.ZERO, LIP_DROP_DUR).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(visual, "scale", Vector2.ONE * (start_s * 0.38), LIP_DROP_DUR).set_trans(
+			Tween.TRANS_QUAD
+		).set_ease(Tween.EASE_IN)
+		tw.parallel().tween_property(
+			visual, "self_modulate", Color(0.15, 0.15, 0.15, 0.35), LIP_DROP_DUR
+		).set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		if shadow:
+			tw.parallel().tween_property(shadow, "modulate:a", 0.0, LIP_DROP_DUR * 0.78)
+	else:
+		tw.set_parallel(true)
+		tw.set_trans(Tween.TRANS_QUAD).set_ease(Tween.EASE_IN)
+		tw.tween_property(visual, "scale", Vector2.ONE * (start_s * 0.38), LIP_DROP_DUR)
+		tw.tween_property(visual, "self_modulate", Color(0.15, 0.15, 0.15, 0.35), LIP_DROP_DUR)
+		if shadow:
+			tw.tween_property(shadow, "modulate:a", 0.0, LIP_DROP_DUR * 0.78)
+
+	tw.finished.connect(
+		func() -> void:
+			visual.position = Vector2.ZERO
+			_clear_cup_entry_stash()
+			cup_drop_finished.emit(),
+		CONNECT_ONE_SHOT
+	)
