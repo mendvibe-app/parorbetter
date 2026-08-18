@@ -161,7 +161,17 @@ def main() -> int:
     assert "CUP_CAPTURE_RADIUS" in HOLE
     BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
     assert "BALL_R := 3.5" in BALL
-    assert "BALL_R_PUTT := 1.0" in BALL
+    assert "const BALL_R_PUTT" in BALL
+    # Visible hole∶ball ≈ real 4.25/1.68. Spans = sprite fill (remeasure if PNG padding changes).
+    BALL_OPAQUE = 33.0  # assets/ball/ball.png opaque bbox
+    CUP_DARK = 43.0  # cup.png void+rim (luma≤60); matches see=catch
+    m_putt = re.search(r"const BALL_R_PUTT\s*:=\s*([0-9.]+)", BALL)
+    m_cup_r = re.search(r"const CUP_RADIUS\s*:=\s*([0-9.]+)", HOLE)
+    assert m_putt and m_cup_r
+    vis_ball = (BALL_OPAQUE / 64.0) * (float(m_putt.group(1)) * 2.0)
+    vis_cup = (CUP_DARK / 64.0) * (float(m_cup_r.group(1)) * 2.0)
+    ball_cup_ratio = vis_cup / vis_ball
+    assert abs(ball_cup_ratio - 2.53) < 0.06, (ball_cup_ratio, vis_cup, vis_ball)
     assert "PUTT_BREAK_LATERAL := 90.0" in BALL
     assert "PUTT_BREAK_ALONG := 55.0" in BALL
     # Break scales with green decel so FRAC changes don't nuclear-bend putts.

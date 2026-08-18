@@ -6,9 +6,12 @@ signal request_next_hole
 
 const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
-## Catch / draw radius. Cup ≈ 2.4× putt ball (BALL_R_PUTT 1.0) — real hole ≈ 2.5× ball.
-## Full cup.png scale (dark hole + thin rim + optional shelf). Visual only.
-## Bumped 2.4→2.8 so the hole reads at putt zoom (playtest: soft blob illegible).
+## Cup sprite outer radius (rim + shelf). Capture uses CUP_CAPTURE_RADIUS (dark disc).
+## On-screen hole∶ball uses texture fill, not raw constants:
+##   vis_cup  = (43/64) * CUP_RADIUS * 2
+##   vis_ball = (33/64) * BALL_R_PUTT * 2
+## Target vis_cup/vis_ball ≈ 2.53 (real 4.25″/1.68″). BALL_R_PUTT carries that ratio;
+## CUP_RADIUS is not the make disc — see CUP_CAPTURE_RADIUS.
 const CUP_RADIUS := 2.8
 ## Dark disc ≈ 43/64 of cup.png → (43/64)*CUP_RADIUS ≈ 1.88. See = catch.
 ## Recompute if cup.png changes. Settle-in make uses this too (was CUP_RADIUS 2.8).

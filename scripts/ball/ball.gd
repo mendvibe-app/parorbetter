@@ -91,8 +91,9 @@ var ground_lie_at: Callable = Callable()
 
 
 const BALL_R := 3.5
-## On-green draw radius — smaller so 40 ft is many ball-widths (flight stays BALL_R).
-const BALL_R_PUTT := 1.0
+## On-green draw radius. Padding-aware: (33/64)*(2R) vs (43/64)*(2*CUP_RADIUS) ≈ 2.53
+## (real 4.25″/1.68″). Visual only — capture uses CUP_CAPTURE_RADIUS, not this.
+const BALL_R_PUTT := 1.44
 ## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
 const PUTT_BREAK_LATERAL := 90.0
 const PUTT_BREAK_ALONG := 55.0
