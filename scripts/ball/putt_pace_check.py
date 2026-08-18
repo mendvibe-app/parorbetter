@@ -174,15 +174,17 @@ def main() -> int:
     assert "CUP_CAPTURE_RADIUS" in BALL
     assert "_try_cup_capture" in BALL
     assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
-    # Capture disc must be tighter than the full cup sprite (collar suck-in bug).
+    # Capture ≈ visible dark disc in cup.png (43/64 of sprite span) — see = catch.
     m_vis = re.search(r"const CUP_RADIUS\s*:=\s*([0-9.]+)", HOLE)
     m_cap = re.search(r"const CUP_CAPTURE_RADIUS\s*:=\s*([0-9.]+)", HOLE)
     assert m_vis and m_cap
-    assert float(m_cap.group(1)) < float(m_vis.group(1)) * 0.7, (
-        m_cap.group(1),
-        m_vis.group(1),
-    )
+    vis = float(m_vis.group(1))
+    cap = float(m_cap.group(1))
+    DARK_FRAC = 43.0 / 64.0
+    assert abs(cap / vis - DARK_FRAC) < 0.05, (cap, vis, cap / vis, DARK_FRAC)
     assert "CUP_CAPTURE_RADIUS" in HOLE.split("_add_circle(course_root, _cup_pos")[1].split("\n")[0]
+    # Settle-in make uses the same disc (not full CUP_RADIUS shelf).
+    assert "distance_to(_cup_pos) < CUP_CAPTURE_RADIUS" in HOLE
     # Mid-slope 40 ft bend ~2 ball-widths after break_scale (tuned at a=108).
     px_per_yd = 2.25
     ft_to_px = px_per_yd / 3.0

@@ -10,8 +10,9 @@ const AIM_NUDGE_PX := 14.0
 ## Full cup.png scale (dark hole + thin rim + optional shelf). Visual only.
 ## Bumped 2.4→2.8 so the hole reads at putt zoom (playtest: soft blob illegible).
 const CUP_RADIUS := 2.8
-## Capture disc = dark opening only (~0.4× visual). Collar/shelf is not "in".
-const CUP_CAPTURE_RADIUS := 1.15  ## PLAYTEST TARGET
+## Dark disc ≈ 43/64 of cup.png → (43/64)*CUP_RADIUS ≈ 1.88. See = catch.
+## Recompute if cup.png changes. Settle-in make uses this too (was CUP_RADIUS 2.8).
+const CUP_CAPTURE_RADIUS := 1.9  ## PLAYTEST TARGET
 ## Course pin height in px (readable from fairway; not survey-true ~7 ft).
 const PIN_FLAG_H_PX := 32.0
 ## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
@@ -3252,8 +3253,8 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	_clear_putt_camera_lock()
 	_set_green_book_visible(false)
 	var actual := ball.distance_traveled_yards()
-	# Settle predicate stays CUP_RADIUS (2.8) until make-radius PR; capture 1.15 ⊂ this.
-	var holed := pos.distance_to(_cup_pos) < CUP_RADIUS and not GameState.range_mode
+	# See = catch: same disc as cup sensor (dark opening), not full sprite/shelf.
+	var holed := pos.distance_to(_cup_pos) < CUP_CAPTURE_RADIUS and not GameState.range_mode
 	if _last_result and _last_report:
 		GameState.club_coach.record(_last_report.club_name, _last_result, GameState.last_tempo_metrics, actual, holed)
 	# Write Actual yd / glance before holed early-returns (capture path used to skip these).

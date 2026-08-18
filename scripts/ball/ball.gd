@@ -99,8 +99,8 @@ const PUTT_BREAK_ALONG := 55.0
 ## Max roll speed (px/s) to drop in the cup. Faster → lip out / roll over (no teleport make).
 ## Settle is slower (PUTT_SETTLE_SPEED); this sits above that so dying putts can still fall.
 const CUP_CAPTURE_MAX_SPEED := 32.0
-## Must match HoleController.CUP_CAPTURE_RADIUS — dark hole only, not grass collar.
-const CUP_CAPTURE_RADIUS := 1.15
+## Must match HoleController.CUP_CAPTURE_RADIUS — dark disc (43/64 of cup.png).
+const CUP_CAPTURE_RADIUS := 1.9
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
