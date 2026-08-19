@@ -36,7 +36,8 @@ Order was intentional — do not retune putt pace before green sizing next time.
 
 | Doc | Status |
 |-----|--------|
-| `cup-lip-out-phase2.md` | IMPLEMENTING — horseshoe on hot rejects only; make rate frozen |
+| `short-game-landing-circle-phase1.md` | IMPLEMENTING — chip/pitch/flop aim circle by rest yards |
+| `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
 
 ---
 

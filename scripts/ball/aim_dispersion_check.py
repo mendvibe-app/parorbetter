@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Landing-area dispersion scales with club, not a fixed circle for every shot."""
+"""Landing-area dispersion: full swing by club; short game by rest yards × shot type."""
 
 from __future__ import annotations
 
@@ -26,6 +26,19 @@ def lateral_spread_range_yards(club_max_yards: float) -> tuple[float, float]:
     if club_max_yards >= 95.0:
         return (10.0, 18.0)
     return (8.0, 18.0)
+
+
+def short_game_aim_radius_yards(planned_rest_yd: float, shot_type: str) -> float:
+    """Mirrors BallPhysics.short_game_aim_radius_yards (base, pre-form)."""
+    d_near, d_far, r_near, r_far = 5.0, 20.0, 0.67, 1.33
+    if shot_type == "pitch":
+        d_near, d_far, r_near, r_far = 20.0, 50.0, 1.67, 3.33
+    elif shot_type == "flop":
+        d_near, d_far, r_near, r_far = 10.0, 30.0, 2.0, 4.0
+    t = 0.0
+    if d_far > d_near:
+        t = max(0.0, min(1.0, (planned_rest_yd - d_near) / (d_far - d_near)))
+    return r_near + (r_far - r_near) * t
 
 
 def main() -> int:
@@ -65,19 +78,40 @@ def main() -> int:
     for i in range(len(spreads) - 1):
         assert spreads[i][1] >= spreads[i + 1][1], "high end must not widen for a shorter club"
 
-    # get_aim_radius_yards now derives non-putt radius from the club, not a fixed constant.
+    # get_aim_radius_yards: full path from club; short path from rest + shot type.
     assert "AIM_RADIUS_WEAK_YD" not in GS
     assert "AIM_RADIUS_MID_YD" not in GS
     assert "AIM_RADIUS_PRO_YD" not in GS
     assert "func get_aim_radius_yards(" in GS
     assert "club_max_yards" in GS
     assert "BallPhysics.lateral_spread_range_yards(club_max_yards)" in GS
+    assert "short_game_aim_radius_yards" in BP
+    assert "short_game_aim_radius_yards" in GS
+    assert "planned_rest_yd" in GS
+    assert 'shot_type == "chip"' in GS or "shot_type == \"chip\"" in GS
     # Putting is a separate mechanic (green-read, not carry dispersion) — untouched.
     assert "PUTT_RADIUS_WEAK_YD" in GS and "PUTT_RADIUS_PRO_YD" in GS
 
-    # Aim radius threads club max (via helper or direct); force widens forced clubs.
+    # Aim radius threads club max + rest/shot type; force widens forced clubs.
     assert "club_max" in HOLE and "get_aim_radius_yards" in HOLE
-    assert "_aim_radius_for_club" in HOLE or "get_aim_radius_yards(false, club_max)" in HOLE
+    assert "_aim_radius_for_club" in HOLE
+    assert "rest_yd" in HOLE.split("func _refresh_aim_visuals")[1].split("func ")[0]
+    assert "radius_px * 0.92" in HOLE  # land ring capped under yellow
+
+    # Short-game bands: chip ≪ wedge floor; flop > pitch > chip; grows with rest.
+    chip_short = short_game_aim_radius_yards(7.0, "chip")  # ~21 ft rest
+    chip_long = short_game_aim_radius_yards(18.0, "chip")
+    pitch_20 = short_game_aim_radius_yards(20.0, "pitch")
+    pitch_40 = short_game_aim_radius_yards(40.0, "pitch")
+    flop_20 = short_game_aim_radius_yards(20.0, "flop")
+    assert 0.6 <= chip_short <= 1.5, chip_short  # ~2–4.5 ft
+    assert chip_long > chip_short
+    assert pitch_40 > pitch_20
+    assert flop_20 > pitch_20 > short_game_aim_radius_yards(20.0, "chip")
+    # Must not inherit LW full-swing half-width floor (4 yd).
+    assert chip_short < 2.0, chip_short
+    wedge_pro_radius = lateral_spread_range_yards(65.0)[0] * 0.5
+    assert chip_short < wedge_pro_radius * 0.5, (chip_short, wedge_pro_radius)
 
     print("aim_dispersion_check: ok")
     return 0

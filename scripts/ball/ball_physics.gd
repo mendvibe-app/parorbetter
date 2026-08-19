@@ -221,6 +221,7 @@ static func sort_club_names_by_bag(names: Array) -> Array:
 ## ballpark figures. Longer clubs disperse much wider than short ones, so the
 ## aim/landing circle should shrink with the club, not stay a fixed size.
 ## Returns (low, high) — low = skilled/tight end, high = weak/wide end.
+## Full-swing only — short game uses short_game_aim_radius_yards (display).
 static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 	if club_max_yards >= 245.0:  # Driver
 		return Vector2(40.0, 60.0)
@@ -233,6 +234,34 @@ static func lateral_spread_range_yards(club_max_yards: float) -> Vector2:
 	if club_max_yards >= 95.0:  # PW / Gap Wedge
 		return Vector2(10.0, 18.0)
 	return Vector2(8.0, 18.0)  # Sand / Lob wedges
+
+
+## Short-game aim-circle radius (yards) from planned rest yards + shot type.
+## PLAYTEST TARGETS — epic_short_game_landing_circle table (ft ÷ 3). Display only;
+## does not drive launch dispersion. Flop wider than pitch wider than chip.
+## Returns base radius before form/force (GameState applies those).
+static func short_game_aim_radius_yards(planned_rest_yd: float, shot_type: String) -> float:
+	var d_near := 5.0
+	var d_far := 20.0
+	var r_near := 0.67  ## ~2 ft
+	var r_far := 1.33  ## ~4 ft
+	match shot_type:
+		"pitch":
+			d_near = 20.0
+			d_far = 50.0
+			r_near = 1.67  ## ~5 ft
+			r_far = 3.33  ## ~10 ft
+		"flop":
+			d_near = 10.0
+			d_far = 30.0
+			r_near = 2.0  ## ~6 ft
+			r_far = 4.0  ## ~12 ft
+		_:
+			pass  # chip defaults above
+	var t := 0.0
+	if d_far > d_near:
+		t = clampf((planned_rest_yd - d_near) / (d_far - d_near), 0.0, 1.0)
+	return lerpf(r_near, r_far, t)
 
 
 ## Punch: lower apex (canopy duck) + more roll. Playtest knobs.

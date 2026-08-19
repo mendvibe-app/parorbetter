@@ -12,11 +12,14 @@ const START_LIVES := 3
 const DEFAULT_HOLE_COUNT := 18
 const FORM_HISTORY_MAX := 8
 
-## Non-putt landing circle radius now derives from the club (see
-## BallPhysics.lateral_spread_range_yards) crossed with form, not a fixed size.
+## Non-putt landing circle: full swing from club bucket
+## (BallPhysics.lateral_spread_range_yards); chip/pitch/flop from planned rest
+## yards × shot-type band (BallPhysics.short_game_aim_radius_yards). Display only.
 ## Putt circle (yards) — ~3–8 feet.
 const PUTT_RADIUS_WEAK_YD := 2.7
 const PUTT_RADIUS_PRO_YD := 1.0
+## Short-game form widen — PLAYTEST TARGET. Sharp stays on table; wild opens ~35%.
+const SHORT_AIM_FORM_WIDEN := 1.35
 
 var lives: int = START_LIVES
 var current_hole: int = 1  # 1-based
@@ -321,15 +324,27 @@ func get_form() -> float:
 	return clampf(sum / float(form_history.size()), 0.0, 1.0)
 
 
-## club_max_yards picks the real-world dispersion bucket (driver disperses far wider
-## than a wedge); form then interpolates within that club's low(skilled)-high(weak)
-## range, same piecewise weak→mid→pro shape as before.
+## club_max_yards picks the real-world dispersion bucket for full swing (driver
+## disperses far wider than a wedge); form then interpolates within that club's
+## low(skilled)-high(weak) range. Chip/pitch/flop ignore the club bucket and
+## scale with planned_rest_yd × shot-type band instead (short-game landing circle).
 func get_aim_radius_yards(
-	on_green: bool = false, club_max_yards: float = 0.0, force: float = 0.0
+	on_green: bool = false,
+	club_max_yards: float = 0.0,
+	force: float = 0.0,
+	planned_rest_yd: float = 0.0,
+	shot_type: String = "full",
 ) -> float:
 	var form := get_form()
 	if on_green:
 		return lerpf(PUTT_RADIUS_WEAK_YD, PUTT_RADIUS_PRO_YD, form)
+	if shot_type == "chip" or shot_type == "pitch" or shot_type == "flop":
+		var r_short := BallPhysics.short_game_aim_radius_yards(planned_rest_yd, shot_type)
+		# Sharp → table; wild → open (PLAYTEST).
+		r_short *= lerpf(SHORT_AIM_FORM_WIDEN, 1.0, form)
+		if force > 0.0:
+			r_short *= lerpf(1.0, 1.45, clampf(force, 0.0, 1.0))
+		return r_short
 	var spread := BallPhysics.lateral_spread_range_yards(club_max_yards)
 	var pro_yd := spread.x * 0.5  # half-width: radius, not full pattern
 	var weak_yd := spread.y * 0.5

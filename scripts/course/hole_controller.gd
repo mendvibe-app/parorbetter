@@ -1718,9 +1718,10 @@ func _begin_range_swing() -> void:
 	)
 	var est := BallPhysics.estimate_carry_yards(recommend, club_max, lie)
 	_aim_target = AimControl.point_along_bearing(_tee_pos, bearing, est)
-	_aim_radius_base_yd = GameState.get_aim_radius_yards(false, club_max)
-	_aim_radius_yd = _aim_radius_base_yd
 	_aim_lock_yards = est
+	# Range sticky swing: full-swing club bucket (refresh recomputes if type changes).
+	_aim_radius_base_yd = GameState.get_aim_radius_yards(false, club_max, 0.0, est, "full")
+	_aim_radius_yd = _aim_radius_base_yd
 	_power_previewing = true
 	_refresh_aim_visuals()
 	_set_aim_visuals_visible(true)
@@ -1747,10 +1748,17 @@ func _aim_force_preview(club_max: float, lie: String, wind: Vector2, severity: S
 	return BallPhysics.force_factor(float(solved["true_pct"]), club_max, lie, st)
 
 
-func _aim_radius_for_club(lie: String, club_max: float, wind: Vector2, severity: String) -> float:
+func _aim_radius_for_club(
+	lie: String,
+	club_max: float,
+	wind: Vector2,
+	severity: String,
+	planned_rest_yd: float = 0.0,
+	shot_type: String = "full",
+) -> float:
 	var on_green := lie == "Green"
 	var force := 0.0 if on_green else _aim_force_preview(club_max, lie, wind, severity)
-	return GameState.get_aim_radius_yards(on_green, club_max, force)
+	return GameState.get_aim_radius_yards(on_green, club_max, force, planned_rest_yd, shot_type)
 
 
 func _refit_aim_along_bearing(club_max: float, wind: Vector2, severity: String) -> void:
@@ -1812,7 +1820,9 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 		_aim_lock_yards = BallPhysics.pixels_to_yards(ball.global_position.distance_to(_aim_target))
 	else:
 		_refit_aim_along_bearing(club_max, wind, severity)
-	_aim_radius_base_yd = _aim_radius_for_club(lie, club_max, wind, severity)
+	var st0 := _effective_shot_type_for_aim()
+	var rest_yd0 := _aim_lock_yards
+	_aim_radius_base_yd = _aim_radius_for_club(lie, club_max, wind, severity, rest_yd0, st0)
 	_aim_radius_yd = _aim_radius_base_yd
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
@@ -2734,6 +2744,16 @@ func _refresh_aim_visuals() -> void:
 		var lie_now := ball.get_lie()
 		# Full under-pocket floors power → rest past drag aim; preview must match commit.
 		var rest := _aim_rest_point(from, to, club_max, lie_now, flight_st)
+		# Recompute every refresh: short-game radius scales with planned rest + shot type.
+		var wind_now: Vector2 = (
+			course_root.get_meta("wind", hole.wind_vector) if course_root else Vector2.ZERO
+		)
+		var severity_now := ball.get_lie_severity()
+		var rest_yd := BallPhysics.pixels_to_yards(from.distance_to(rest))
+		_aim_radius_yd = _aim_radius_for_club(
+			lie_now, club_max, wind_now, severity_now, rest_yd, flight_st
+		)
+		_aim_radius_base_yd = _aim_radius_yd
 		# Cone's widest point (tip) matches the dispersion circle's own radius exactly —
 		# tight takeoff read at the ball, fanning out to the real landing-area width.
 		var radius_px := BallPhysics.yards_to_pixels(_aim_radius_yd)
@@ -2790,7 +2810,8 @@ func _refresh_aim_visuals() -> void:
 		_aim_circle.default_color = circle_col
 		# Carry land (first bounce) + roll connector to rest circle (may be past drag aim).
 		var land := _aim_carry_land_point(from, to, club_max, lie_now, flight_st)
-		var land_r := maxf(radius_px * 0.38, 6.0 * inv_z)
+		# Cap so white land ring never exceeds yellow rest (short-game radii can be ~1 yd).
+		var land_r := minf(maxf(radius_px * 0.38, 6.0 * inv_z), radius_px * 0.92)
 		if _aim_land_mark:
 			_aim_land_mark.points = AimControl.make_circle_points(land, land_r)
 			_aim_land_mark.width = 2.2 / maxf(camera.zoom.x, 0.35)
