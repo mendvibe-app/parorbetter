@@ -2,7 +2,7 @@
 
 **Status:** SHIPPED (Phase 1 presentation).  
 **Prompt:** `plans/cup-lip-in-phase1-agent-prompt.md`  
-**Revision:** stash lifetime, arc-length floor, orbit-cap look call (review notes)
+**Revision:** stash lifetime; arc length (not orbit) is legibility; half→¾ turn rim-rolls; grey-rim overhang (not “stay inside black”)
 
 ---
 
@@ -86,26 +86,45 @@ Alternative floor form (if preferred): `orbit_r = maxf(minf(offset_len, LIP_ORBI
 
 Keeping the ball fully inside the dark disc makes it look already down and wobbling. Real lip-ins ride the liner **proud of the rim**. Cap against **full visible art** `((57/64)*2.8 ≈ 2.49)`, bias toward void radius (~1.53). Mark `LIP_ORBIT_MAX` as **PLAYTEST TARGET — look call on device**.
 
-### Arc / duration (PLAYTEST)
+### Arc / duration (PLAYTEST) — REVISED: half→¾ turn
+
+**Orbit radius is the wrong legibility metric.** The eye reads **arc length**.
+Worked example at a modest 19px screen radius:
+
+```text
+¾ curl: 0.75 × 2π × 19 ≈ 89 screen px ≈ three ball-widths along a curve → reads
+¼ curl: ~30 screen px → reads as a nudge
+```
+
+So question 6 is not “cap the orbit smaller” — **arc angle carries legibility**.
+Rim-roll mapping skews toward large angles; small arcs stay on the near-center
+straight-drop band (`LIP_CENTER_*`), not on a thin curl.
 
 ```gdscript
-arc_rad = lerpf(TAU * 0.20, TAU * 0.55, offset_ratio)  ## ~72°–198°
+## PLAYTEST — anything that should read as a lip-in: half → three-quarter turn
+const LIP_IN_ARC_MIN := TAU * 0.50  ## ~180°
+const LIP_IN_ARC_MAX := TAU * 0.75  ## ~270°
+arc_rad = lerpf(LIP_IN_ARC_MIN, LIP_IN_ARC_MAX, offset_ratio)
 arc_rad *= lerpf(0.85, 1.15, speed_ratio)
-curl_dur = lerpf(0.22, 0.48, offset_ratio) + lerpf(0.0, 0.08, speed_ratio)
+curl_dur = lerpf(0.28, 0.55, offset_ratio) + lerpf(0.0, 0.08, speed_ratio)
 drop_dur = 0.18
 ```
 
-**Boundary arc length (rim-roll entry, orbit held at 1.55):**
+**Boundary arc length (rim-roll entry, orbit held at 1.55, half turn):**
 
 ```text
 orbit_r = 1.55 world → ~37 screen px @ zoom 24
-arc ≈ 100° (offset_ratio 0.22, mid speed)
-arc length = 1.55 × (100π/180) ≈ 2.70 world ≈ 65 screen px
-ball diameter ≈ 36 screen px → ~1.8× ball width of travel → readable motion
+arc = π (LIP_IN_ARC_MIN)
+arc length = 1.55 × π ≈ 4.87 world ≈ 117 screen px → clearly readable
 ```
 
 Re-derive after any zoom / `BALL_R_PUTT` change using:  
 `arc_len_screen ≈ LIP_ORBIT_MAX * arc_rad * PUTT_ZOOM_CAP`.
+
+**Grey rim overhang (not “stay inside black”):** keeping the ball fully inside the
+dark disc makes it look already down and wobbling. Real lip-ins ride the liner
+with part of the ball **proud of the rim** onto the grey ring — that is the hang.
+`LIP_ORBIT_MAX` may put the ball over grey mid-curl; that is intentional.
 
 ### Drop sequence
 

@@ -18,6 +18,17 @@ def main() -> int:
     assert "visual.position = Vector2.ZERO" in BALL.split("func reset_at")[1].split("func ")[0]
     # Capture geometry frozen — Phase 1 presentation only.
     assert "CUP_CAPTURE_RADIUS := 1.9" in BALL or "CUP_CAPTURE_RADIUS:=1.9" in BALL
+    # Phase 2 lip-out: hot rejects only; separate stash; never settles via lip-out.
+    assert "_begin_lip_out" in BALL
+    assert "_lip_out_offset" in BALL
+    assert "LIP_OUT_ORBIT" in BALL
+    assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
+    lip_out_fn = BALL.split("func _begin_lip_out")[1].split("func ")[0]
+    assert "settled.emit" not in lip_out_fn
+    assert "_cup_entry_valid = true" not in lip_out_fn
+    finish_fn = BALL.split("func _finish_lip_out")[1].split("func ")[0]
+    assert "settled.emit" not in finish_fn
+    assert "State.ROLL" in finish_fn
 
     holed = HOLE.split("func _on_holed_out")[1].split("func ")[0]
     # No zoom-punch variables / zoom tweens on the make sequence.

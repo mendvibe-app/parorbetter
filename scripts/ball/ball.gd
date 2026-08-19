@@ -112,6 +112,21 @@ const LIP_ORBIT_MAX := 1.55
 const LIP_CENTER_OFFSET_MAX := 0.22  ## below → straight drop (with speed gate)
 const LIP_CENTER_SPEED_MAX := 0.35
 const LIP_DROP_DUR := 0.18
+## Lip-out presentation (Phase 2) — PLAYTEST TARGETS. Hot rejects only; make rate frozen.
+## Arc length is the legibility metric (not orbit). Half→¾+ turn so horseshoe reads;
+## orbit held at rim shelf (may overhang grey). No sink; resume ROLL with tangent exit.
+const LIP_OUT_ARC_MIN := TAU * 0.55  ## ~198° — above lip-in band
+const LIP_OUT_ARC_MAX := TAU * 0.85  ## ~306° horseshoe
+const LIP_OUT_DUR_MIN := 0.32
+const LIP_OUT_DUR_MAX := 0.62
+const LIP_OUT_ORBIT := LIP_ORBIT_MAX
+const LIP_OUT_SPEED_KEEP := 0.9
+const LIP_OUT_REARM_PAD := 0.5  ## world px past capture disc before re-arm
+## Lip-in rim-roll arc (Phase 1 retune) — half→¾ turn; small arcs reserved for center drop.
+const LIP_IN_ARC_MIN := TAU * 0.50
+const LIP_IN_ARC_MAX := TAU * 0.75
+const LIP_IN_CURL_DUR_MIN := 0.28
+const LIP_IN_CURL_DUR_MAX := 0.55
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -121,6 +136,14 @@ var _glow_scale: float = 1.0
 var _cup_entry_offset: Vector2 = Vector2.ZERO
 var _cup_entry_speed: float = 0.0
 var _cup_entry_valid: bool = false
+## Lip-out stash — separate from make stash so a horseshoe cannot poison play_cup_drop.
+var _lip_out_offset: Vector2 = Vector2.ZERO
+var _lip_out_speed: float = 0.0
+var _lip_out_dir: Vector2 = Vector2(0, -1)
+var _lip_out_cup_pos: Vector2 = Vector2.ZERO
+var _lip_out_armed: bool = true
+var _lip_out_playing: bool = false
+var _lip_out_tween: Tween = null
 
 func _ready() -> void:
 	_apply_lie_visual()
@@ -300,6 +323,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	shadow.position = Vector2.ZERO
 	glow.visible = false
 	spin_fx.visible = false
+	_cancel_lip_out()
 	_apply_lie_visual()
 	set_physics_process(false)
 
@@ -315,6 +339,7 @@ func launch(
 	shot_type: String = "full"
 ) -> void:
 	_clear_cup_entry_stash()
+	_cancel_lip_out()
 	visual.position = Vector2.ZERO
 	var to_pin := target_pos - global_position
 	_pin_dir = to_pin.normalized()
@@ -668,6 +693,10 @@ func _slope_at_ball() -> Vector2:
 
 
 func _process_roll(delta: float) -> void:
+	# Horseshoe owns position while playing; skip friction/settle/capture.
+	if _lip_out_playing:
+		return
+	_update_lip_out_arming()
 	_sync_ground_lie()
 	_height = move_toward(_height, 0.0, delta * 80.0)
 	var slope := _slope_at_ball()
@@ -715,7 +744,8 @@ func _process_roll(delta: float) -> void:
 		velocity = velocity.bounce(collision.get_normal()) * 0.3
 
 	# Cup: re-check every frame so a ball that was too hot on enter can still drop when it dies.
-	if _try_cup_capture():
+	# Lip-out zeros velocity for the rim ride — must not fall through to settle same frame.
+	if _try_cup_capture() or _lip_out_playing:
 		return
 
 	if _lie == "Green":
@@ -732,8 +762,10 @@ func _process_roll(delta: float) -> void:
 
 
 func _finish_settle() -> void:
+	if _lip_out_playing:
+		return
 	# Dying on the lip: one last capture attempt (speed is ~0).
-	if _try_cup_capture():
+	if _try_cup_capture() or _lip_out_playing:
 		return
 	velocity = Vector2.ZERO
 	state = State.SETTLED
@@ -783,24 +815,149 @@ func _clear_cup_entry_stash() -> void:
 	_cup_entry_valid = false
 
 
+func _clear_lip_out_stash() -> void:
+	_lip_out_offset = Vector2.ZERO
+	_lip_out_speed = 0.0
+	_lip_out_dir = Vector2(0, -1)
+	_lip_out_cup_pos = Vector2.ZERO
+
+
+func _cancel_lip_out() -> void:
+	if _lip_out_tween and is_instance_valid(_lip_out_tween):
+		_lip_out_tween.kill()
+	_lip_out_tween = null
+	_lip_out_playing = false
+	_lip_out_armed = true
+	_clear_lip_out_stash()
+
+
+func _cup_disc_at(other: Area2D) -> Dictionary:
+	## Sensor radius + world center for a cup area.
+	var cs := other.get_child(0) as CollisionShape2D
+	var cup_r: float = (
+		cs.shape.radius if cs and cs.shape is CircleShape2D else CUP_CAPTURE_RADIUS
+	)
+	return {"pos": other.global_position, "r": cup_r}
+
+
+func _over_cup_disc(pad: float = 0.0) -> bool:
+	for other in area.get_overlapping_areas():
+		if not other.is_in_group("cup"):
+			continue
+		var d: Dictionary = _cup_disc_at(other)
+		if global_position.distance_to(d["pos"]) <= float(d["r"]) + pad:
+			return true
+	return false
+
+
+func _update_lip_out_arming() -> void:
+	## Re-arm only after leaving the dark disc so one pass cannot double-fire.
+	if _lip_out_playing or _lip_out_armed:
+		return
+	if not _over_cup_disc(LIP_OUT_REARM_PAD):
+		_lip_out_armed = true
+
+
+func _begin_lip_out(cup_pos: Vector2) -> void:
+	## Hot reject horseshoe — presentation only. Never emits settled / never sinks.
+	if _lip_out_playing or not _lip_out_armed:
+		return
+	_lip_out_armed = false
+	_lip_out_playing = true
+	_lip_out_cup_pos = cup_pos
+	_lip_out_offset = global_position - cup_pos
+	_lip_out_speed = velocity.length()
+	if velocity.length_squared() > 0.01:
+		_lip_out_dir = velocity.normalized()
+	elif _launch_dir.length_squared() > 0.01:
+		_lip_out_dir = _launch_dir.normalized()
+	else:
+		_lip_out_dir = Vector2(0, -1)
+	velocity = Vector2.ZERO
+	AudioBus.set_roll_intensity(0.0)
+
+	var offset_len := _lip_out_offset.length()
+	var offset_ratio := clampf(offset_len / CUP_CAPTURE_RADIUS, 0.0, 1.0)
+	var speed_ratio := clampf(
+		(_lip_out_speed - CUP_CAPTURE_MAX_SPEED) / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0
+	)
+	var start_ang: float
+	if offset_len < 0.05:
+		# Dead-center hot: pick a side perpendicular to approach.
+		start_ang = _lip_out_dir.angle() + PI * 0.5
+	else:
+		start_ang = _lip_out_offset.angle()
+
+	var arc_rad := lerpf(LIP_OUT_ARC_MIN, LIP_OUT_ARC_MAX, offset_ratio)
+	arc_rad *= lerpf(0.9, 1.15, speed_ratio)
+	var approach := _lip_out_dir
+	var cross_z := _lip_out_offset.x * approach.y - _lip_out_offset.y * approach.x
+	if offset_len < 0.05:
+		cross_z = 1.0
+	if cross_z < 0.0:
+		arc_rad = -arc_rad
+	var curl_dur := lerpf(LIP_OUT_DUR_MIN, LIP_OUT_DUR_MAX, offset_ratio)
+	var orbit_r := LIP_OUT_ORBIT
+	var arc_sign := signf(arc_rad)
+	if arc_sign == 0.0:
+		arc_sign = 1.0
+
+	# Ride the rim — node moves so collider matches art (not visual-only ghost).
+	visual.position = Vector2.ZERO
+	global_position = cup_pos + Vector2.from_angle(start_ang) * orbit_r
+
+	if _lip_out_tween and is_instance_valid(_lip_out_tween):
+		_lip_out_tween.kill()
+	_lip_out_tween = create_tween()
+	var end_ang := start_ang + arc_rad
+	_lip_out_tween.tween_method(
+		func(a: float) -> void:
+			global_position = cup_pos + Vector2.from_angle(a) * orbit_r,
+		start_ang,
+		end_ang,
+		curl_dur
+	).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
+	_lip_out_tween.finished.connect(
+		func() -> void:
+			_finish_lip_out(end_ang, orbit_r, arc_sign),
+		CONNECT_ONE_SHOT
+	)
+
+
+func _finish_lip_out(exit_ang: float, orbit_r: float, arc_sign: float) -> void:
+	if not _lip_out_playing:
+		return
+	_lip_out_tween = null
+	# End on the rim outside the make disc — no false settle-make.
+	global_position = _lip_out_cup_pos + Vector2.from_angle(exit_ang) * orbit_r
+	visual.position = Vector2.ZERO
+	var exit_tangent := Vector2.from_angle(exit_ang + arc_sign * PI * 0.5)
+	velocity = exit_tangent * (_lip_out_speed * LIP_OUT_SPEED_KEEP)
+	_clear_lip_out_stash()
+	_lip_out_playing = false
+	# Stay disarmed until _update_lip_out_arming sees leave.
+	state = State.ROLL
+	set_physics_process(true)
+
+
 func _try_cup_capture() -> bool:
-	if state != State.ROLL:
-		return false
-	# Hot putt over the cup → lip out (playtest: ball past hole then teleported in).
-	if velocity.length() > CUP_CAPTURE_MAX_SPEED:
+	if state != State.ROLL or _lip_out_playing:
 		return false
 	for other in area.get_overlapping_areas():
 		if not other.is_in_group("cup"):
 			continue
 		# Center must reach the dark opening — not the light grass collar on cup.png
 		# (full CUP_RADIUS capture felt like short putts got sucked in).
-		var cs := other.get_child(0) as CollisionShape2D
-		var cup_r: float = (
-			cs.shape.radius if cs and cs.shape is CircleShape2D else CUP_CAPTURE_RADIUS
-		)
-		var cup_pos := other.global_position
+		var d: Dictionary = _cup_disc_at(other)
+		var cup_pos: Vector2 = d["pos"]
+		var cup_r: float = d["r"]
 		if global_position.distance_to(cup_pos) > cup_r:
 			continue
+		# Hot putt over the cup → horseshoe lip-out (presentation), then keep rolling.
+		# Capture predicate unchanged: speed > max never makes. Make rate frozen.
+		if velocity.length() > CUP_CAPTURE_MAX_SPEED:
+			_begin_lip_out(cup_pos)
+			return false
 		# Stash entry BEFORE zeroing velocity — play_cup_drop reads after reset_at.
 		_cup_entry_offset = global_position - cup_pos
 		_cup_entry_speed = velocity.length()
@@ -874,6 +1031,7 @@ func _on_area_entered(other: Area2D) -> void:
 		return
 	if other.is_in_group("cup"):
 		_try_cup_capture()
+		# Hot horseshoe may have started; do not keep applying ground groups this frame.
 		return
 	if other.is_in_group("water"):
 		# Putting surface wins — island water volumes can graze the green edge.
@@ -934,7 +1092,10 @@ func cup_drop_total_duration() -> float:
 	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
 	if offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX:
 		return LIP_DROP_DUR
-	var curl_dur := lerpf(0.22, 0.48, offset_ratio) + lerpf(0.0, 0.08, speed_ratio)
+	var curl_dur := (
+		lerpf(LIP_IN_CURL_DUR_MIN, LIP_IN_CURL_DUR_MAX, offset_ratio)
+		+ lerpf(0.0, 0.08, speed_ratio)
+	)
 	return curl_dur + LIP_DROP_DUR
 
 
@@ -967,9 +1128,10 @@ func play_cup_drop() -> void:
 	var tw := create_tween()
 	if rim_roll:
 		# Hold orbit near max; arc angle alone signals offset (boundary arc length readable).
+		# Orbit held at rim shelf (may overhang grey). Arc angle carries legibility.
 		var orbit_r := LIP_ORBIT_MAX
 		var start_ang := _cup_entry_offset.angle()
-		var arc_rad := lerpf(TAU * 0.20, TAU * 0.55, offset_ratio)
+		var arc_rad := lerpf(LIP_IN_ARC_MIN, LIP_IN_ARC_MAX, offset_ratio)
 		arc_rad *= lerpf(0.85, 1.15, speed_ratio)
 		# Curl toward the side of the miss (cross of offset × approach).
 		var approach := -_cup_entry_offset.normalized()
@@ -978,7 +1140,10 @@ func play_cup_drop() -> void:
 		var cross_z := _cup_entry_offset.x * approach.y - _cup_entry_offset.y * approach.x
 		if cross_z < 0.0:
 			arc_rad = -arc_rad
-		var curl_dur := lerpf(0.22, 0.48, offset_ratio) + lerpf(0.0, 0.08, speed_ratio)
+		var curl_dur := (
+			lerpf(LIP_IN_CURL_DUR_MIN, LIP_IN_CURL_DUR_MAX, offset_ratio)
+			+ lerpf(0.0, 0.08, speed_ratio)
+		)
 		visual.position = Vector2.from_angle(start_ang) * orbit_r
 		tw.tween_method(
 			func(a: float) -> void:

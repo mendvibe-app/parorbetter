@@ -32,6 +32,14 @@ Order was intentional — do not retune putt pace before green sizing next time.
 
 ---
 
+## Active
+
+| Doc | Status |
+|-----|--------|
+| `cup-lip-out-phase2.md` | IMPLEMENTING — horseshoe on hot rejects only; make rate frozen |
+
+---
+
 ## Deferred (no active ticket)
 
 Not on the board until you re-open:
