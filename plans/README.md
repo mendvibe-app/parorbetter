@@ -36,7 +36,8 @@ Order was intentional — do not retune putt pace before green sizing next time.
 
 | Doc | Status |
 |-----|--------|
-| `short-game-landing-circle-phase1.md` | IMPLEMENTING — chip/pitch/flop aim circle by rest yards |
+| `short-game-wind-offline-phase1.md` | CODE COMPLETE — wind exposure + path drift (chip offline fix) |
+| `short-game-landing-circle-phase1.md` | SHIPPED (`5703bb3`) — chip/pitch/flop aim circle by rest yards |
 | `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
 
 ---

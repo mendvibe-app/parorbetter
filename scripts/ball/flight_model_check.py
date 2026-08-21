@@ -94,6 +94,12 @@ FT_TO_PX = float(_ft.group(1)) if _ft else PX_PER_YARD / 3.0
 ROLL_DURATION_FRAC = FLIGHT_DURATION_FRAC
 # Wind force scaled so integrated drift ≈ constant vs hang (ball.gd)
 WIND_FORCE = 6.0 * math.sqrt(GRAVITY_PX / 535.0)
+# Exposure refs — mirror ball.gd PLAYTEST TARGETS (short-game wind offline Phase 1)
+WIND_REF_HANG_S = 2.0
+WIND_REF_APEX_PX = 80.0
+WIND_EXPOSURE_MIN = 0.02
+WIND_EXPOSURE_MAX = 1.0
+WIND_DRIFT_SCALE = 0.12
 APEX_SCALE_CHIP = _f(PHYS, r"const APEX_SCALE_CHIP\s*:=\s*([0-9.]+)")
 APEX_SCALE_PUNCH = _f(PHYS, r"const APEX_SCALE_PUNCH\s*:=\s*([0-9.]+)")
 APEX_SCALE_FLOP = _f(PHYS, r"const APEX_SCALE_FLOP\s*:=\s*([0-9.]+)")
@@ -389,6 +395,13 @@ def roll_decel_px(lie: str) -> float:
     return roll_friction_for(lie) * FT_TO_PX / max(f * f, 0.01)
 
 
+def wind_exposure(air_time: float, apex_px: float) -> float:
+    """Mirror GolfBall._wind_exposure — hang × apex product vs full-swing refs."""
+    hang_t = max(0.0, min(1.0, air_time / WIND_REF_HANG_S))
+    apex_t = max(0.0, min(1.0, apex_px / WIND_REF_APEX_PX))
+    return max(WIND_EXPOSURE_MIN, min(WIND_EXPOSURE_MAX, hang_t * apex_t))
+
+
 def sim_flight_land(
     air_px: float,
     air_time: float,
@@ -398,12 +411,14 @@ def sim_flight_land(
     wind: tuple[float, float] = (0.0, 0.0),
     reverse_guard: bool = True,
     exit_mode: str = "all",
+    apex_px: float = 80.0,
 ) -> dict:
-    """Integrate _process_flight (wind * 6, spin, optional reverse-guard).
+    """Integrate _process_flight (exposure-scaled wind, along-envelope, keep lateral).
 
     exit_mode:
       all — current: t>=1 or along or path_len
       path — CP5 candidate: path_len only (hang detect via time cap)
+    reverse_guard: retained for API compat; obsolete under keep-lateral (along always restored).
     """
     mean_speed = launch_speed_for(air_px, air_time)
     peak_speed = flight_peak_speed(mean_speed)
@@ -415,50 +430,59 @@ def sim_flight_land(
     x = y = 0.0
     guard_trips = 0
     min_along_v = peak_speed
-    max_lat_frac = 0.0  # |lat| / spd after spin+wind, before guard
+    max_lat_frac = 0.0  # |lat| / |v| after keep-lateral recompose
     time_cap = air_time * 3.0 + 0.5  # hang detector for path-only mode
     first_exit = ""
+    exposure = wind_exposure(air_time, apex_px)
     while t < time_cap:
         tn = min(t / max(air_time, 0.05), 1.0)
         target_spd = flight_speed_at(mean_speed, tn)
-        # ball.gd: wind_force = 6 * sqrt(G/535) so integrated drift ≈ constant
-        vx += wind[0] * dt * WIND_FORCE
-        vy += wind[1] * dt * WIND_FORCE
-        spd = math.hypot(vx, vy)
-        along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
-        if spd > 0.01 and abs(spin) > 1e-6:
-            if mode == "new":
+        if mode == "new":
+            # Along-envelope + keep spin lateral; wind is path drift (mirrors ball.gd).
+            along_spd = min(target_spd, peak_speed * 1.02)
+            lat_spd = vx * fr[0] + vy * fr[1]
+            vx = launch[0] * along_spd + fr[0] * lat_spd
+            vy = launch[1] * along_spd + fr[1] * lat_spd
+            if abs(spin) > 1e-6:
                 kick = spin * SPIN_CURVE_COEFF * along_spd * dt
-            else:
+                vx += fr[0] * kick
+                vy += fr[1] * kick
+            lat_v = vx * fr[0] + vy * fr[1]
+            vx = launch[0] * along_spd + fr[0] * lat_v
+            vy = launch[1] * along_spd + fr[1] * lat_v
+            # Wind displaces position — never steers velocity (chip offline bug).
+            wf = WIND_FORCE * exposure * WIND_DRIFT_SCALE
+            x += wind[0] * dt * wf
+            y += wind[1] * dt * wf
+        else:
+            # Legacy path (pre–keep-lateral) for curve-coeff comparisons only.
+            vx += wind[0] * dt * WIND_FORCE
+            vy += wind[1] * dt * WIND_FORCE
+            spd = math.hypot(vx, vy)
+            along_spd = max(vx * launch[0] + vy * launch[1], 0.0)
+            if spd > 0.01 and abs(spin) > 1e-6:
                 ss = max(0.08, min(1.0, along_spd / 180.0))
                 kick = spin * 28.0 * dt * ss
-            vx += fr[0] * kick
-            vy += fr[1] * kick
-        # Envelope magnitude (new mode); old mode freezes pre-curve speed.
-        n = math.hypot(vx, vy)
-        if mode == "new":
-            mag = min(target_spd, peak_speed * 1.02)
+                vx += fr[0] * kick
+                vy += fr[1] * kick
+            n = math.hypot(vx, vy)
             if n > 1e-6:
-                vx = vx / n * mag
-                vy = vy / n * mag
-            else:
-                vx, vy = 0.0, -mag
-        elif n > 1e-6:
-            vx = vx / n * spd
-            vy = vy / n * spd
+                vx = vx / n * spd
+                vy = vy / n * spd
+            along_after = vx * launch[0] + vy * launch[1]
+            lat_v = vx * fr[0] + vy * fr[1]
+            if along_after < along_spd * 0.15:
+                guard_trips += 1
+                if reverse_guard:
+                    along_spd2 = target_spd * 0.35
+                    vx = launch[0] * along_spd2 + fr[0] * lat_v * 0.55
+                    vy = launch[1] * along_spd2 + fr[1] * lat_v * 0.55
         along_after = vx * launch[0] + vy * launch[1]
         lat_v = vx * fr[0] + vy * fr[1]
         spd2 = math.hypot(vx, vy)
         if spd2 > 1e-6:
             max_lat_frac = max(max_lat_frac, abs(lat_v) / spd2)
         min_along_v = min(min_along_v, along_after)
-        if along_after < along_spd * 0.15:
-            guard_trips += 1
-            if reverse_guard:
-                # Mirror ball.gd: 0.35 × current envelope target.
-                along_spd2 = target_spd * 0.35
-                vx = launch[0] * along_spd2 + fr[0] * lat_v * 0.55
-                vy = launch[1] * along_spd2 + fr[1] * lat_v * 0.55
         x += vx * dt
         y += vy * dt
         t += dt
@@ -886,92 +910,59 @@ def verify_live_constants_reflected() -> None:
                 f"{lo/PX_PER_YARD:9.1f}{ln/PX_PER_YARD:9.1f}{ratio:7.2f}"
             )
 
-    # Phase 5 CP3: reverse-guard trip / reverse sweep (report-first; do not delete here).
-    print("REVERSE-GUARD SWEEP (new coeff, guard ON vs OFF)")
+    # Phase 1 short-game wind offline: exposure × keep-lateral (supersedes CP3 reverse-guard).
+    print("WIND EXPOSURE + KEEP-LATERAL (short-game offline Phase 1)")
     print("-" * 74)
-    winds = {
-        "calm": (0.0, 0.0),
-        "head60": (0.0, 60.0),  # against launch -Y
-        "tail60": (0.0, -60.0),
-        "cross60": (60.0, 0.0),
-        "head+cross": (40.0, 40.0),
-    }
-    cases = [
-        ("LW pitch", 80.0, 1.55, 0.20, "pitch", [0.0, -0.22, -0.55, -1.0, 1.0]),
-        ("Driver", 260.0, 0.62, STOCK_POWER, "full", [0.0, 0.5, -0.5, 1.0, -1.0]),
-        ("7i soft", 160.0, 1.05, 0.50, "full", [0.0, 0.5, -1.0]),
-    ]
-    trips_any = 0
-    reverse_off_any = 0
+    assert "func _wind_exposure" in BALL
+    assert "WIND_REF_HANG_S" in BALL
+    assert "WIND_REF_APEX_PX" in BALL
+    assert "WIND_DRIFT_SCALE" in BALL
+    flight_fn = BALL.split("func _process_flight")[1].split("func ")[0]
+    assert "_wind_exposure()" in flight_fn
+    assert "WIND_DRIFT_SCALE" in flight_fn
+    assert "lat_after" in flight_fn
+    # Wind drifts position — must not add wind into velocity (steer bug).
+    assert "velocity += wind" not in flight_fn
+    assert "global_position += wind" in flight_fn
+    chip_exp = wind_exposure(0.93, 17.0)  # Hole 5 telemetry hang/apex
+    drv_exp = wind_exposure(2.0, 80.0)
+    print(f"  exposure chip(0.93s,17px)={chip_exp:.3f}  driver(2.0s,80px)={drv_exp:.3f}")
+    assert chip_exp < 0.20, chip_exp
+    assert drv_exp > 0.85, drv_exp
+    # Same hang: higher apex → more exposure (flop > punch-ish).
+    assert wind_exposure(1.2, 60.0) > wind_exposure(1.2, 20.0)
+
+    chip_launch = launch(65.0, 1.62, 0.35, "chip", "Fairway", "GOOD", 0.0)
+    drv_launch = launch(260.0, 0.62, STOCK_POWER, "full", "Fairway", "GOOD", 0.0)
+    cross = (52.0, 0.0)  # hole-18-ish peak magnitude, pure cross
+    chip_sim = sim_flight_land(
+        chip_launch["carry_yd"] * PX_PER_YARD,
+        chip_launch["air_time"],
+        0.0,
+        wind=cross,
+        apex_px=chip_launch["apex_px"],
+    )
+    drv_sim = sim_flight_land(
+        drv_launch["carry_yd"] * PX_PER_YARD,
+        drv_launch["air_time"],
+        0.0,
+        wind=cross,
+        apex_px=drv_launch["apex_px"],
+    )
+    chip_lat_yd = chip_sim["lat_px"] / PX_PER_YARD
+    drv_lat_yd = drv_sim["lat_px"] / PX_PER_YARD
     print(
-        f"{'case':10}{'wind':12}{'path':>5}{'trips':>6}"
-        f"{'along_on':>9}{'along_off':>10}{'minV_off':>9}{'rev?':>5}"
+        f"  cross52: chip lat={chip_lat_yd:.2f}yd (along={chip_sim['along_px']/PX_PER_YARD:.1f})  "
+        f"driver lat={drv_lat_yd:.2f}yd (along={drv_sim['along_px']/PX_PER_YARD:.1f})"
     )
-    for cname, m, lm, power, stype, paths in cases:
-        r = launch(m, lm, power, stype, "Fairway", "GOOD", 0.0)
-        air_px = r["carry_yd"] * PX_PER_YARD
-        grip = (
-            0.78
-            if m >= 245
-            else 0.88
-            if m >= 180
-            else 1.0
-            if m >= 150
-            else 1.10
-            if m >= 120
-            else 1.22
-        )
-        for wname, wind in winds.items():
-            for path in paths:
-                # Launch spin at full path authority (no distance damp).
-                spin = path * 0.95 * grip
-                on = sim_flight_land(
-                    air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=True
-                )
-                off = sim_flight_land(
-                    air_px, r["air_time"], spin, mode="new", wind=wind, reverse_guard=False
-                )
-                trips_any += on["guard_trips"]
-                if off["reversed"]:
-                    reverse_off_any += 1
-                if on["guard_trips"] or off["reversed"] or abs(path) >= 0.55:
-                    print(
-                        f"{cname:10}{wname:12}{path:+5.2f}{on['guard_trips']:6d}"
-                        f"{on['along_px']/PX_PER_YARD:9.1f}{off['along_px']/PX_PER_YARD:10.1f}"
-                        f"{off['min_along_v']:9.1f}{'YES' if off['reversed'] else 'no':>5}"
-                    )
-    print(
-        f"  summary: guard_trips_total={trips_any}  "
-        f"reversed_without_guard={reverse_off_any}"
-    )
-    assert trips_any > 0 and reverse_off_any > 0, (
-        "CP3: guard must stay load-bearing under headwind "
-        f"(trips={trips_any}, reversed_without={reverse_off_any})"
-    )
-    print("  CP3: STOP — guard still load-bearing; keep reverse-guard in ball.gd.")
-    # Floor is envelope target × 0.35 (not flat 12 / along_spd; not mean-only).
-    assert "target_spd * 0.35" in BALL or "target_spd*0.35" in BALL
-    assert "along_spd * 0.35, 12.0" not in BALL
-    lw_repro = launch(65.0, 1.62, 0.84, "full", "Rough", "PERFECT", 0.0)
-    lw_air = lw_repro["carry_yd"] * PX_PER_YARD
-    lw_head = sim_flight_land(
-        lw_air, lw_repro["air_time"], 0.0, wind=(0.0, 33.5), reverse_guard=True
-    )
-    lw_off = sim_flight_land(
-        lw_air, lw_repro["air_time"], 0.0, wind=(0.0, 33.5), reverse_guard=False
-    )
-    lw_carry = lw_head["along_px"] / PX_PER_YARD
-    lw_carry_off = lw_off["along_px"] / PX_PER_YARD
-    print(
-        f"  LW84 Rough PERFECT @ head33.5: carry={lw_carry:.1f}yd "
-        f"(no-guard={lw_carry_off:.1f}) trips={lw_head['guard_trips']}"
-    )
-    # Envelope re-magnitudes every frame so guard is less load-bearing on pure headwind;
-    # still require solid forward progress (no sky-ball stall).
-    assert lw_carry >= 8.0, f"LW sky-ball floor still too low: {lw_carry:.1f}yd"
-    assert lw_carry + 1e-6 >= lw_carry_off, (
-        f"guard must not hurt carry under headwind: {lw_carry:.1f} vs {lw_carry_off:.1f}"
-    )
+    # Chip nearly line-true; driver still drifts meaningfully (not nuclear).
+    assert chip_lat_yd < 2.0, chip_lat_yd
+    assert 5.0 < drv_lat_yd < 40.0, drv_lat_yd
+    assert drv_lat_yd > chip_lat_yd * 3.0
+    # Along progress intact.
+    assert chip_sim["along_px"] >= chip_launch["carry_yd"] * PX_PER_YARD * 0.85
+    assert drv_sim["along_px"] >= drv_launch["carry_yd"] * PX_PER_YARD * 0.85
+    print("  wind offline Phase 1: ok")
 
     # Phase 5 CP5: which exit predicate fires first (report before deleting t/along).
     print("FLIGHT EXIT SWEEP (which predicate lands first)")

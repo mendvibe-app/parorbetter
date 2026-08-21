@@ -127,6 +127,16 @@ const LIP_IN_ARC_MIN := TAU * 0.50
 const LIP_IN_ARC_MAX := TAU * 0.75
 const LIP_IN_CURL_DUR_MIN := 0.28
 const LIP_IN_CURL_DUR_MAX := 0.55
+## Wind exposure (Phase 1 short-game offline) — PLAYTEST TARGETS.
+## Scale absolute wind by hang×apex vs full-swing refs so chips are nearly immune
+## and drivers keep meaningful drift. Product (not sum): punch low apex earns less.
+const WIND_REF_HANG_S := 2.0
+const WIND_REF_APEX_PX := 80.0
+const WIND_EXPOSURE_MIN := 0.02
+const WIND_EXPOSURE_MAX := 1.0
+## Path drift scale — wind moves position, not velocity heading. PLAYTEST so driver
+## crosswind stays meaningful (~10–20 yd at peak) without chip steer-off (~60° bug).
+const WIND_DRIFT_SCALE := 0.12
 
 var _ball_scale: float = 1.0
 var _shadow_scale: float = 1.0
@@ -605,6 +615,14 @@ func _traveled_along() -> float:
 	return maxf((global_position - _shot_origin).dot(_launch_dir), 0.0)
 
 
+func _wind_exposure() -> float:
+	## Hang × apex vs full-swing refs. Chips near floor; driver ≈ 1. PLAYTEST.
+	## Product (not geometric mean): chip 0.93s/17px → ~0.10; driver 2s/80px → 1.0.
+	var hang_t := clampf(_air_duration / WIND_REF_HANG_S, 0.0, 1.0)
+	var apex_t := clampf(_height_peak / WIND_REF_APEX_PX, 0.0, 1.0)
+	return clampf(hang_t * apex_t, WIND_EXPOSURE_MIN, WIND_EXPOSURE_MAX)
+
+
 func _process_flight(delta: float) -> void:
 	_air_timer += delta
 	var t := clampf(_air_timer / maxf(_air_duration, 0.01), 0.0, 1.0)
@@ -619,26 +637,24 @@ func _process_flight(delta: float) -> void:
 	var target_spd := BallPhysics.flight_speed_at(mean_spd, t)
 	var peak_spd := BallPhysics.flight_peak_speed(mean_spd)
 
-	# Scale wind force so integrated drift ≈ constant across FLIGHT_DURATION_FRAC.
-	# hang ∝ 1/sqrt(g); force ∝ sqrt(g) keeps force×hang ≈ legacy at g=535.
-	var wind_force := 6.0 * sqrt(BallPhysics.GRAVITY_PX / 535.0)
-	velocity += wind * delta * wind_force
-	# Curve offline relative to launch. Curvature ∝ along_spd so soft pitches curve
-	# gently. Magnitude is set from the envelope after (not freeze pre-curve speed).
 	var flight_right := Vector2(-_launch_dir.y, _launch_dir.x)
-	var along_spd := maxf(velocity.dot(_launch_dir), 0.0)
-	if velocity.length() > 0.01 and absf(spin) > 0.0001:
+	# Along-envelope + keep spin lateral. Wind must NOT enter velocity then renormalize —
+	# that turned absolute push into pure heading rotation on slow chips (~60° offline).
+	var along_spd := minf(target_spd, peak_spd * 1.02)
+	var lat_spd := velocity.dot(flight_right)
+	velocity = _launch_dir * along_spd + flight_right * lat_spd
+	if absf(spin) > 0.0001:
 		velocity += flight_right * spin * SPIN_CURVE_COEFF * along_spd * delta
-	# Enforce envelope magnitude; never above peak (no post-impact acceleration).
-	if velocity.length_squared() > 0.0001:
-		velocity = velocity.normalized() * minf(target_spd, peak_spd * 1.02)
-	else:
-		velocity = _launch_dir * target_spd
-	# Wind/stall safety net — floor relative to *current* envelope target (not mean-only).
-	var along_after := velocity.dot(_launch_dir)
-	if along_after < along_spd * 0.15:
-		var lat := velocity.dot(flight_right)
-		velocity = _launch_dir * (target_spd * 0.35) + flight_right * lat * 0.55
+	# Re-assert along envelope; KEEP spin lateral (no full-vector normalize).
+	var lat_after := velocity.dot(flight_right)
+	velocity = _launch_dir * along_spd + flight_right * lat_after
+	# Wind as path drift — lateral displacement without steering the velocity vector.
+	# Base force keeps integrated drift ≈ constant vs FRAC; exposure kills chip wind.
+	# hang ∝ 1/sqrt(g); force ∝ sqrt(g) keeps force×hang ≈ legacy at g=535.
+	var wind_force := (
+		6.0 * sqrt(BallPhysics.GRAVITY_PX / 535.0) * _wind_exposure() * WIND_DRIFT_SCALE
+	)
+	global_position += wind * delta * wind_force
 
 	var collision := move_and_collide(velocity * delta)
 	var along := _traveled_along()
