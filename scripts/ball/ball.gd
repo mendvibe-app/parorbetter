@@ -109,9 +109,14 @@ const CUP_CAPTURE_RADIUS := 1.9
 ## Allow ball proud of void onto grey rim (real lip-ins overhang). Cap vs art edge
 ## ((57/64)*CUP_RADIUS≈2.49), bias ~void radius 1.53 — look call on device.
 const LIP_ORBIT_MAX := 1.55
-const LIP_CENTER_OFFSET_MAX := 0.22  ## below → straight drop (with speed gate)
-const LIP_CENTER_SPEED_MAX := 0.35
+## Pour band — PLAYTEST. Well-paced center-ish lines drop straight; was 0.22/0.35
+## (almost nothing poured → every make toilet-bowled).
+const LIP_CENTER_OFFSET_MAX := 0.50
+const LIP_CENTER_SPEED_MAX := 0.55
 const LIP_DROP_DUR := 0.18
+## Near-threshold pours occasionally catch a hair (short curl). Dead-center always pours.
+const LIP_POUR_PROMOTE_OFFSET := 0.35
+const LIP_POUR_PROMOTE_CHANCE := 0.12
 ## Lip-out presentation (Phase 2) — PLAYTEST TARGETS. Hot rejects only; make rate frozen.
 ## Arc length is the legibility metric (not orbit). Half→¾+ turn so horseshoe reads;
 ## orbit held at rim shelf (may overhang grey). No sink; resume ROLL with tangent exit.
@@ -120,12 +125,21 @@ const LIP_OUT_ARC_MAX := TAU * 0.85  ## ~306° horseshoe
 const LIP_OUT_DUR_MIN := 0.32
 const LIP_OUT_DUR_MAX := 0.62
 const LIP_OUT_ORBIT := LIP_ORBIT_MAX
-const LIP_OUT_SPEED_KEEP := 0.9
 const LIP_OUT_REARM_PAD := 0.5  ## world px past capture disc before re-arm
-## Lip-in rim-roll arc (Phase 1 retune) — half→¾ turn; small arcs reserved for center drop.
-const LIP_IN_ARC_MIN := TAU * 0.50
+## Lip-out leave exit speed (px/s) — PLAYTEST, ft-grounded on green decel ~8.44.
+## Replaces 0.9×entry (min leave was ~22 yd). Sit→~1 ft; max→~12–15 ft coast.
+const LIP_OUT_EXIT_SIT := 3.0
+const LIP_OUT_EXIT_MAX := 14.0
+## Firm putts inside the make gate can still lip out (Pelz — speed kills).
+## Below SPEED_MIN ratio always drops if in disc. Chance rises toward the hard max.
+const LIP_OUT_CHANCE_SPEED_MIN := 0.55  ## ~17.6 px/s of 32
+const LIP_OUT_CHANCE_AT_MIN := 0.10  ## just entering firm band
+const LIP_OUT_CHANCE_AT_MAX := 0.42  ## at the 32 gate — often rattles out
+## Lip-in rim-roll arc — PLAYTEST. Short curl for mild lips; half–¾ only when earned.
+## (Was floor 0.50τ → every non-pour looked like a toilet bowl.)
+const LIP_IN_ARC_MIN := TAU * 0.12
 const LIP_IN_ARC_MAX := TAU * 0.75
-const LIP_IN_CURL_DUR_MIN := 0.28
+const LIP_IN_CURL_DUR_MIN := 0.16
 const LIP_IN_CURL_DUR_MAX := 0.55
 ## Wind exposure (Phase 1 short-game offline) — PLAYTEST TARGETS.
 ## Scale absolute wind by hang×apex vs full-swing refs so chips are nearly immune
@@ -154,6 +168,8 @@ var _lip_out_cup_pos: Vector2 = Vector2.ZERO
 var _lip_out_armed: bool = true
 var _lip_out_playing: bool = false
 var _lip_out_tween: Tween = null
+## After horseshoe: trickle settle like a putt so ft-scale leaves aren't killed by ROLL_SETTLE=10.
+var _lip_out_leave: bool = false
 
 func _ready() -> void:
 	_apply_lie_visual()
@@ -748,7 +764,8 @@ func _process_roll(delta: float) -> void:
 
 	var along := _traveled_along()
 	# Phase 5 CP6: remain<40 speed clamp removed. Hard settle at plan kept.
-	if along >= _planned_distance_px and not _is_putt:
+	# Lip-out leave skips plan clamp — sideways trickle must coast on speed, not freeze at pin.
+	if along >= _planned_distance_px and not _is_putt and not _lip_out_leave:
 		_finish_settle()
 		return
 	# Putts: stop by speed, allow break past planned if overhit
@@ -770,8 +787,11 @@ func _process_roll(delta: float) -> void:
 		AudioBus.set_roll_intensity(0.0)
 
 	# Putts launch well below the old 10 px/s roll floor at real-time green decel.
+	# Lip-out leave: putt settle so sit→15 ft band isn't truncated by ROLL_SETTLE=10.
 	var settle_spd := (
-		BallPhysics.PUTT_SETTLE_SPEED if _is_putt else BallPhysics.ROLL_SETTLE_SPEED
+		BallPhysics.PUTT_SETTLE_SPEED
+		if _is_putt or _lip_out_leave
+		else BallPhysics.ROLL_SETTLE_SPEED
 	)
 	if velocity.length() < settle_spd:
 		_finish_settle()
@@ -784,6 +804,7 @@ func _finish_settle() -> void:
 	if _try_cup_capture() or _lip_out_playing:
 		return
 	velocity = Vector2.ZERO
+	_lip_out_leave = false
 	state = State.SETTLED
 	set_physics_process(false)
 	AudioBus.set_roll_intensity(0.0)
@@ -843,6 +864,7 @@ func _cancel_lip_out() -> void:
 		_lip_out_tween.kill()
 	_lip_out_tween = null
 	_lip_out_playing = false
+	_lip_out_leave = false
 	_lip_out_armed = true
 	_clear_lip_out_stash()
 
@@ -940,6 +962,24 @@ func _begin_lip_out(cup_pos: Vector2) -> void:
 	)
 
 
+func _lip_out_exit_speed() -> float:
+	## Rim bleeds most energy; exit band is ft-grounded. Heat + offset set kick tendency;
+	## randf stands in for micro-line at the liner (geometry-weighted, not a coin flip).
+	## Heat 0..1 vs capture max (works for in-gate firm lips and over-max rejects).
+	var heat := clampf(_lip_out_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
+	var offset_ratio := clampf(_lip_out_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
+	# Center-hot rattles harder; high-offset horseshoe usually softer exit. PLAYTEST.
+	var kick_tend := clampf(
+		lerpf(0.25, 1.0, heat) * lerpf(1.0, 0.55, offset_ratio), 0.0, 1.0
+	)
+	var u := randf()
+	var sit_bias := lerpf(2.4, 0.75, kick_tend)  # low tend → more sits
+	var leave_t := pow(u, sit_bias)
+	var exit_spd := lerpf(LIP_OUT_EXIT_SIT, LIP_OUT_EXIT_MAX, leave_t)
+	exit_spd *= lerpf(0.45, 1.0, kick_tend)  # cold lips cannot reach hot max
+	return clampf(exit_spd, LIP_OUT_EXIT_SIT, LIP_OUT_EXIT_MAX)
+
+
 func _finish_lip_out(exit_ang: float, orbit_r: float, arc_sign: float) -> void:
 	if not _lip_out_playing:
 		return
@@ -948,9 +988,10 @@ func _finish_lip_out(exit_ang: float, orbit_r: float, arc_sign: float) -> void:
 	global_position = _lip_out_cup_pos + Vector2.from_angle(exit_ang) * orbit_r
 	visual.position = Vector2.ZERO
 	var exit_tangent := Vector2.from_angle(exit_ang + arc_sign * PI * 0.5)
-	velocity = exit_tangent * (_lip_out_speed * LIP_OUT_SPEED_KEEP)
+	velocity = exit_tangent * _lip_out_exit_speed()
 	_clear_lip_out_stash()
 	_lip_out_playing = false
+	_lip_out_leave = true
 	# Stay disarmed until _update_lip_out_arming sees leave.
 	state = State.ROLL
 	set_physics_process(true)
@@ -969,14 +1010,27 @@ func _try_cup_capture() -> bool:
 		var cup_r: float = d["r"]
 		if global_position.distance_to(cup_pos) > cup_r:
 			continue
-		# Hot putt over the cup → horseshoe lip-out (presentation), then keep rolling.
-		# Capture predicate unchanged: speed > max never makes. Make rate frozen.
-		if velocity.length() > CUP_CAPTURE_MAX_SPEED:
+		var spd := velocity.length()
+		var entry_offset := global_position - cup_pos
+		# Always-hot: over the hard max → horseshoe (never makes).
+		if spd > CUP_CAPTURE_MAX_SPEED:
 			_begin_lip_out(cup_pos)
 			return false
+		# Firm band inside the gate: chance to lip out even on a good line (speed kills).
+		# Soft putts below SPEED_MIN still always drop if center is in the disc.
+		var speed_ratio := clampf(spd / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
+		if speed_ratio >= LIP_OUT_CHANCE_SPEED_MIN:
+			var offset_ratio := clampf(entry_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
+			var t_hot := inverse_lerp(LIP_OUT_CHANCE_SPEED_MIN, 1.0, speed_ratio)
+			var lip_chance := lerpf(LIP_OUT_CHANCE_AT_MIN, LIP_OUT_CHANCE_AT_MAX, t_hot)
+			# Center-hot rattles more; glancing firm slightly less. PLAYTEST.
+			lip_chance *= lerpf(1.12, 0.88, offset_ratio)
+			if randf() < lip_chance:
+				_begin_lip_out(cup_pos)
+				return false
 		# Stash entry BEFORE zeroing velocity — play_cup_drop reads after reset_at.
-		_cup_entry_offset = global_position - cup_pos
-		_cup_entry_speed = velocity.length()
+		_cup_entry_offset = entry_offset
+		_cup_entry_speed = spd
 		_cup_entry_valid = true
 		velocity = Vector2.ZERO
 		state = State.SETTLED
@@ -1100,23 +1154,43 @@ func flash_perfect() -> void:
 	gw.parallel().tween_property(glow, "modulate:a", 0.8, 0.28)
 
 
+func _cup_drop_params() -> Dictionary:
+	## Shared pour vs rim-roll decision for duration + play_cup_drop.
+	if not _cup_entry_valid:
+		return {"pour": true, "offset_ratio": 0.0, "speed_ratio": 0.0}
+	var offset_ratio := clampf(_cup_entry_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
+	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
+	var pour := offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX
+	# Dead-center dying always pours; near-threshold may catch a hair (short curl).
+	if pour and offset_ratio >= LIP_POUR_PROMOTE_OFFSET and randf() < LIP_POUR_PROMOTE_CHANCE:
+		pour = false
+	return {"pour": pour, "offset_ratio": offset_ratio, "speed_ratio": speed_ratio}
+
+
 func cup_drop_total_duration() -> float:
 	## Curl + sink — for hole-out awaits (banner / practice reset).
+	## Note: promote luck is re-rolled in play_cup_drop; duration uses a no-luck pour
+	## band estimate plus max curl budget so awaits never cut a promoted short curl.
 	if not _cup_entry_valid:
 		return LIP_DROP_DUR
 	var offset_ratio := clampf(_cup_entry_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
 	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
-	if offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX:
+	var pour := offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX
+	# Budget for rare near-threshold promote (worst-case short curl).
+	if pour and offset_ratio < LIP_POUR_PROMOTE_OFFSET:
 		return LIP_DROP_DUR
 	var curl_dur := (
 		lerpf(LIP_IN_CURL_DUR_MIN, LIP_IN_CURL_DUR_MAX, offset_ratio)
 		+ lerpf(0.0, 0.08, speed_ratio)
 	)
+	# Short arcs finish faster (matches play_cup_drop scale).
+	var arc_span := lerpf(LIP_IN_ARC_MIN, LIP_IN_ARC_MAX, offset_ratio) / LIP_IN_ARC_MAX
+	curl_dur *= clampf(arc_span, 0.35, 1.0)
 	return curl_dur + LIP_DROP_DUR
 
 
 func play_cup_drop() -> void:
-	## Visual only — optional rim curl then sink. Call after reset_at(cup).
+	## Visual only — pour or rim curl then sink. Call after reset_at(cup).
 	## Stash must survive reset_at; cleared here when the tween finishes.
 	if visual == null:
 		_clear_cup_entry_stash()
@@ -1133,33 +1207,31 @@ func play_cup_drop() -> void:
 	if spin_fx:
 		spin_fx.visible = false
 
-	var offset_len := _cup_entry_offset.length() if _cup_entry_valid else 0.0
-	var offset_ratio := clampf(offset_len / CUP_CAPTURE_RADIUS, 0.0, 1.0)
-	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
-	var rim_roll := (
-		_cup_entry_valid
-		and not (offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX)
-	)
+	var params: Dictionary = _cup_drop_params()
+	var offset_ratio: float = params["offset_ratio"]
+	var speed_ratio: float = params["speed_ratio"]
+	var rim_roll := _cup_entry_valid and not bool(params["pour"])
 
 	var tw := create_tween()
 	if rim_roll:
-		# Hold orbit near max; arc angle alone signals offset (boundary arc length readable).
-		# Orbit held at rim shelf (may overhang grey). Arc angle carries legibility.
+		# Orbit at rim shelf (grey overhang OK). Arc length from offset; luck inside band.
 		var orbit_r := LIP_ORBIT_MAX
 		var start_ang := _cup_entry_offset.angle()
-		var arc_rad := lerpf(LIP_IN_ARC_MIN, LIP_IN_ARC_MAX, offset_ratio)
-		arc_rad *= lerpf(0.85, 1.15, speed_ratio)
+		var arc_abs := lerpf(LIP_IN_ARC_MIN, LIP_IN_ARC_MAX, offset_ratio)
+		arc_abs *= lerpf(0.85, 1.15, speed_ratio)
+		arc_abs *= lerpf(0.82, 1.18, randf())  # micro-line variation
+		arc_abs = clampf(arc_abs, LIP_IN_ARC_MIN * 0.85, LIP_IN_ARC_MAX * 1.05)
 		# Curl toward the side of the miss (cross of offset × approach).
 		var approach := -_cup_entry_offset.normalized()
 		if _launch_dir.length_squared() > 0.01:
 			approach = _launch_dir
 		var cross_z := _cup_entry_offset.x * approach.y - _cup_entry_offset.y * approach.x
-		if cross_z < 0.0:
-			arc_rad = -arc_rad
+		var arc_rad := -arc_abs if cross_z < 0.0 else arc_abs
 		var curl_dur := (
 			lerpf(LIP_IN_CURL_DUR_MIN, LIP_IN_CURL_DUR_MAX, offset_ratio)
 			+ lerpf(0.0, 0.08, speed_ratio)
 		)
+		curl_dur *= clampf(arc_abs / LIP_IN_ARC_MAX, 0.35, 1.0)
 		visual.position = Vector2.from_angle(start_ang) * orbit_r
 		tw.tween_method(
 			func(a: float) -> void:

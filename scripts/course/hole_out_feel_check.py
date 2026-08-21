@@ -18,6 +18,9 @@ def main() -> int:
     assert "visual.position = Vector2.ZERO" in BALL.split("func reset_at")[1].split("func ")[0]
     # Capture geometry frozen — Phase 1 presentation only.
     assert "CUP_CAPTURE_RADIUS := 1.9" in BALL or "CUP_CAPTURE_RADIUS:=1.9" in BALL
+    # Pour band wide enough that well-paced center lines don't toilet-bowl.
+    assert "LIP_CENTER_OFFSET_MAX" in BALL and "LIP_CENTER_SPEED_MAX" in BALL
+    assert "func _cup_drop_params" in BALL
     # Phase 2 lip-out: hot rejects only; separate stash; never settles via lip-out.
     assert "_begin_lip_out" in BALL
     assert "_lip_out_offset" in BALL

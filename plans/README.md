@@ -36,7 +36,9 @@ Order was intentional — do not retune putt pace before green sizing next time.
 
 | Doc | Status |
 |-----|--------|
-| `short-game-wind-offline-phase1.md` | CODE COMPLETE — wind exposure + path drift (chip offline fix) |
+| `lip-in-drop-variation-phase1.md` | IMPLEMENTING — pour vs toilet-bowl variation |
+| `lip-out-leave-phase1.md` | CODE COMPLETE — ft-grounded leave + geometry-weighted luck |
+| `short-game-wind-offline-phase1.md` | SHIPPED (`64c76f7`) — wind exposure + path drift |
 | `short-game-landing-circle-phase1.md` | SHIPPED (`5703bb3`) — chip/pitch/flop aim circle by rest yards |
 | `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
 
