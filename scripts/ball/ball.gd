@@ -109,14 +109,15 @@ const CUP_CAPTURE_RADIUS := 1.9
 ## Allow ball proud of void onto grey rim (real lip-ins overhang). Cap vs art edge
 ## ((57/64)*CUP_RADIUS≈2.49), bias ~void radius 1.53 — look call on device.
 const LIP_ORBIT_MAX := 1.55
-## Pour band — PLAYTEST. Well-paced center-ish lines drop straight; was 0.22/0.35
-## (almost nothing poured → every make toilet-bowled).
-const LIP_CENTER_OFFSET_MAX := 0.50
-const LIP_CENTER_SPEED_MAX := 0.55
+## Pour band — PLAYTEST. Offset-led: a good line that MAKES should pour.
+## Speed no longer blocks pour (firmness → lip-OUT chance instead). Was 0.50/0.55
+## AND — ~half of "nice pace" center putts still curled because speed > 17.6.
+const LIP_CENTER_OFFSET_MAX := 0.68  ## clear edge catch only (~1.3 of 1.9)
+const LIP_CENTER_SPEED_MAX := 1.05  ## unused as a hard gate; kept for arc scaling
 const LIP_DROP_DUR := 0.18
-## Near-threshold pours occasionally catch a hair (short curl). Dead-center always pours.
-const LIP_POUR_PROMOTE_OFFSET := 0.35
-const LIP_POUR_PROMOTE_CHANCE := 0.12
+## Near-edge pours occasionally catch a hair (short curl). True center always pours.
+const LIP_POUR_PROMOTE_OFFSET := 0.50
+const LIP_POUR_PROMOTE_CHANCE := 0.10
 ## Lip-out presentation (Phase 2) — PLAYTEST TARGETS. Hot rejects only; make rate frozen.
 ## Arc length is the legibility metric (not orbit). Half→¾+ turn so horseshoe reads;
 ## orbit held at rim shelf (may overhang grey). No sink; resume ROLL with tangent exit.
@@ -1156,12 +1157,13 @@ func flash_perfect() -> void:
 
 func _cup_drop_params() -> Dictionary:
 	## Shared pour vs rim-roll decision for duration + play_cup_drop.
+	## Offset-led: good line → pour. Rim curl only on clear edge catch.
 	if not _cup_entry_valid:
 		return {"pour": true, "offset_ratio": 0.0, "speed_ratio": 0.0}
 	var offset_ratio := clampf(_cup_entry_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
 	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
-	var pour := offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX
-	# Dead-center dying always pours; near-threshold may catch a hair (short curl).
+	var pour := offset_ratio < LIP_CENTER_OFFSET_MAX
+	# True center always pours; near-edge may catch a hair (short curl).
 	if pour and offset_ratio >= LIP_POUR_PROMOTE_OFFSET and randf() < LIP_POUR_PROMOTE_CHANCE:
 		pour = false
 	return {"pour": pour, "offset_ratio": offset_ratio, "speed_ratio": speed_ratio}
@@ -1175,8 +1177,8 @@ func cup_drop_total_duration() -> float:
 		return LIP_DROP_DUR
 	var offset_ratio := clampf(_cup_entry_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
 	var speed_ratio := clampf(_cup_entry_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
-	var pour := offset_ratio < LIP_CENTER_OFFSET_MAX and speed_ratio < LIP_CENTER_SPEED_MAX
-	# Budget for rare near-threshold promote (worst-case short curl).
+	var pour := offset_ratio < LIP_CENTER_OFFSET_MAX
+	# Budget for rare near-edge promote (worst-case short curl).
 	if pour and offset_ratio < LIP_POUR_PROMOTE_OFFSET:
 		return LIP_DROP_DUR
 	var curl_dur := (

@@ -105,11 +105,13 @@ def main() -> int:
 	assert float(m_in_min.group(1)) <= 0.25, m_in_min.group(1)
 	assert float(m_in_max.group(1)) >= 0.70, m_in_max.group(1)
 	m_off = re.search(r"const LIP_CENTER_OFFSET_MAX\s*:=\s*([0-9.]+)", BALL)
-	m_spd = re.search(r"const LIP_CENTER_SPEED_MAX\s*:=\s*([0-9.]+)", BALL)
-	assert m_off and m_spd
-	assert float(m_off.group(1)) >= 0.45, m_off.group(1)
-	assert float(m_spd.group(1)) >= 0.50, m_spd.group(1)
+	assert m_off
+	assert float(m_off.group(1)) >= 0.60, m_off.group(1)  # offset-led pour band
 	assert "func _cup_drop_params" in BALL
+	# Pour decision is offset-led (speed must not AND-block center makes).
+	params_fn = BALL.split("func _cup_drop_params")[1].split("func ")[0]
+	assert "offset_ratio < LIP_CENTER_OFFSET_MAX" in params_fn
+	assert "speed_ratio < LIP_CENTER_SPEED_MAX" not in params_fn
 
 	print("cup_lip_out_check: ok")
 	return 0
