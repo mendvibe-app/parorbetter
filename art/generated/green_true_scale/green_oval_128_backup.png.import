@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://o0tfiav02d0d"
-path="res://.godot/imported/green_tiered.png-646b714b8c03438c065a529e2772f963.ctex"
+uid="uid://ckxbtrdink8yo"
+path="res://.godot/imported/green_oval_128_backup.png-06a0fe58b49bc931d6e322aad9eb828f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/greens/green_tiered.png"
-dest_files=["res://.godot/imported/green_tiered.png-646b714b8c03438c065a529e2772f963.ctex"]
+source_file="res://art/generated/green_true_scale/green_oval_128_backup.png"
+dest_files=["res://.godot/imported/green_oval_128_backup.png-06a0fe58b49bc931d6e322aad9eb828f.ctex"]
 
 [params]
 
