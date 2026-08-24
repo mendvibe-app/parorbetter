@@ -1,72 +1,134 @@
 #!/usr/bin/env python3
 """Contract: putt setup zoom grades short vs long; roll holds locked frame.
 
-Mirrors HoleController._desired_camera_zoom() (putt branch) and the stroke-start
-lock used during putt roll. Live zoom-in / PUTT_TIGHTEN punch during roll was
-jarring on short putts — zoom is frozen at launch framing instead.
+True-scale Phase 2: distance framing + soft object-size floor on short/mid putts.
+Mirrors HoleController._desired_camera_zoom() (putt branch).
 """
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
 CTRL = Path(__file__).with_name("hole_controller.gd").read_text(encoding="utf-8")
+BALL = Path(__file__).resolve().parents[1].joinpath("ball/ball.gd").read_text(encoding="utf-8")
 
 PX_PER_FOOT = 2.25 / 3.0  # BallPhysics.PX_PER_YARD / 3
 VIEW_MIN = 1080.0  # canvas_items stretch normalizes to design width
+BALL_FILL = 33.0 / 64.0
+CUP_FILL = 43.0 / 64.0
 
 
-def desired_putt_zoom(dist_ft: float, cap: float = 24.0) -> float:
+def _const(src: str, name: str) -> float:
+    m = re.search(rf"const {name}\s*:=\s*([0-9.]+)", src)
+    assert m, name
+    return float(m.group(1))
+
+
+def desired_putt_zoom(
+    dist_ft: float,
+    *,
+    cap: float,
+    floor: float,
+    span_coeff: float,
+    span_pad: float,
+    span_floor: float,
+    view_frac: float,
+    min_ball_px: float,
+    min_cup_px: float,
+    blend_start: float,
+    blend_end: float,
+    ball_r: float,
+    cup_r: float,
+) -> float:
     dist = dist_ft * PX_PER_FOOT
-    half_span = max(dist * 0.90 + 6.0, 12.0)
-    return min(max(VIEW_MIN * 0.52 / half_span, 2.6), cap)
+    half_span = max(dist * span_coeff + span_pad, span_floor)
+    z_fit = VIEW_MIN * view_frac / half_span
+    vis_ball = BALL_FILL * (ball_r * 2.0)
+    vis_cup = CUP_FILL * (cup_r * 2.0)
+    z_obj = max(min_ball_px / vis_ball, min_cup_px / vis_cup)
+    t = min(max((dist_ft - blend_start) / max(blend_end - blend_start, 1.0), 0.0), 1.0)
+    z = (1.0 - t) * max(z_fit, z_obj) + t * z_fit
+    return min(max(z, floor), cap)
 
 
 def main() -> int:
-    # Setup framing: short putts still read tighter; cap lowered so cup isn't huge.
-    assert "var half_span := maxf(dist * 0.90 + 6.0, 12.0)" in CTRL
     assert "PUTT_ZOOM_CAP" in CTRL
-    assert "clampf(view_min * 0.52 / half_span, 2.6, PUTT_ZOOM_CAP)" in CTRL
-    m_cap = __import__("re").search(r"const PUTT_ZOOM_CAP\s*:=\s*([0-9.]+)", CTRL)
-    assert m_cap, "PUTT_ZOOM_CAP parse"
-    putt_cap = float(m_cap.group(1))
-    assert abs(putt_cap - 24.0) < 0.01, putt_cap
+    assert "PUTT_SPAN_FLOOR" in CTRL
+    assert "PUTT_MIN_CUP_SCREEN_PX" in CTRL
+    assert "PUTT_MIN_BALL_SCREEN_PX" in CTRL
+    assert "lerpf(maxf(z_fit, z_obj), z_fit, t_long)" in CTRL
+    assert "PINCH_ABS_ZOOM_MAX" in CTRL
 
     # Roll lock — no live chase punch.
     assert "func _lock_putt_camera" in CTRL
     assert "func _clear_putt_camera_lock" in CTRL
     assert "_putt_cam_active" in CTRL
     assert "PUTT_ROLL_LOOK_LERP" in CTRL
-    assert "PUTT_ROLL_BALL_WEIGHT" in CTRL
-    assert "PUTT_ROLL_ZOOM_LERP" in CTRL
     assert "PUTT_TIGHTEN_RADIUS" not in CTRL
-    assert "_putt_cam_look.lerp(ball.global_position, PUTT_ROLL_BALL_WEIGHT)" in CTRL
-    assert "camera.zoom = camera.zoom.lerp(_putt_cam_zoom, PUTT_ROLL_ZOOM_LERP)" in CTRL
 
-    z_2ft = desired_putt_zoom(2.0, putt_cap)
-    z_6ft = desired_putt_zoom(6.0, putt_cap)
-    z_10ft = desired_putt_zoom(10.0, putt_cap)
-    z_15ft = desired_putt_zoom(15.0, putt_cap)
-    z_35ft = desired_putt_zoom(35.0, putt_cap)
-    z_60ft = desired_putt_zoom(60.0, putt_cap)
+    cap = _const(CTRL, "PUTT_ZOOM_CAP")
+    floor = _const(CTRL, "PUTT_ZOOM_FLOOR")
+    span_coeff = _const(CTRL, "PUTT_SPAN_COEFF")
+    span_pad = _const(CTRL, "PUTT_SPAN_PAD")
+    span_floor = _const(CTRL, "PUTT_SPAN_FLOOR")
+    view_frac = _const(CTRL, "PUTT_VIEW_FRAC")
+    min_ball = _const(CTRL, "PUTT_MIN_BALL_SCREEN_PX")
+    min_cup = _const(CTRL, "PUTT_MIN_CUP_SCREEN_PX")
+    blend_start = _const(CTRL, "PUTT_OBJ_BLEND_START_FT")
+    blend_end = _const(CTRL, "PUTT_OBJ_BLEND_END_FT")
+    pinch_max = _const(CTRL, "PINCH_ABS_ZOOM_MAX")
+    ball_r = _const(BALL, "BALL_R_PUTT")
+    cup_r = _const(CTRL, "CUP_RADIUS")
 
-    # Short putts hit the cap; still tighter than mid/long (cap 24 vs old 42).
-    assert z_2ft >= putt_cap - 0.01, (z_2ft, putt_cap)
-    assert z_2ft > z_35ft, (z_2ft, z_35ft)
-    assert z_10ft > z_35ft, (z_10ft, z_35ft)
+    assert cap >= 100.0, cap
+    assert span_floor < 8.0, span_floor  # old 12 blocked z>~47
+    assert pinch_max >= cap - 0.01, (pinch_max, cap)
 
-    # Monotonic falloff once below the cap — no flat plateau across mid/long.
-    assert z_10ft >= z_15ft >= z_35ft >= z_60ft, (
-        z_10ft, z_15ft, z_35ft, z_60ft,
+    kw = dict(
+        cap=cap,
+        floor=floor,
+        span_coeff=span_coeff,
+        span_pad=span_pad,
+        span_floor=span_floor,
+        view_frac=view_frac,
+        min_ball_px=min_ball,
+        min_cup_px=min_cup,
+        blend_start=blend_start,
+        blend_end=blend_end,
+        ball_r=ball_r,
+        cup_r=cup_r,
     )
-    assert z_15ft > z_35ft, (z_15ft, z_35ft)
-    assert z_35ft > z_60ft, (z_35ft, z_60ft)
 
-    # Long lags still zoom out (formula not accidentally clamped tight for them too).
-    assert z_60ft < 15.0, z_60ft
+    z_2ft = desired_putt_zoom(2.0, **kw)
+    z_6ft = desired_putt_zoom(6.0, **kw)
+    z_10ft = desired_putt_zoom(10.0, **kw)
+    z_15ft = desired_putt_zoom(15.0, **kw)
+    z_30ft = desired_putt_zoom(30.0, **kw)
+    z_35ft = desired_putt_zoom(35.0, **kw)
+    z_60ft = desired_putt_zoom(60.0, **kw)
 
-    print(f"putt_camera_zoom_check: ok z(2ft)={z_2ft:.1f} z(10ft)={z_10ft:.1f} "
-          f"z(35ft)={z_35ft:.1f} z(60ft)={z_60ft:.1f} cap={putt_cap:.0f} (roll locked)")
+    # Short putts much closer than pre-Phase-2 (~24) and than long lags.
+    assert z_2ft > 80.0, z_2ft
+    assert z_2ft > z_30ft > z_60ft, (z_2ft, z_30ft, z_60ft)
+    assert z_10ft > z_35ft, (z_10ft, z_35ft)
+    assert z_15ft >= z_35ft >= z_60ft, (z_15ft, z_35ft, z_60ft)
+
+    vis_cup = CUP_FILL * (cup_r * 2.0)
+    vis_ball = BALL_FILL * (ball_r * 2.0)
+    # Short: readable objects (smoke — playtest may nudge mins).
+    assert vis_cup * z_2ft >= min_cup * 0.9, (vis_cup * z_2ft, min_cup)
+    assert vis_ball * z_2ft >= min_ball * 0.9, (vis_ball * z_2ft, min_ball)
+    # Mid 30 ft: cup findable vs old ~6 px.
+    assert vis_cup * z_30ft >= 8.0, vis_cup * z_30ft
+    # Long lags still open vs short.
+    assert z_60ft < z_10ft * 0.55, (z_60ft, z_10ft)
+
+    print(
+        f"putt_camera_zoom_check: ok z(2ft)={z_2ft:.1f} z(10ft)={z_10ft:.1f} "
+        f"z(30ft)={z_30ft:.1f} z(60ft)={z_60ft:.1f} cap={cap:.0f} "
+        f"cup_px@2={vis_cup * z_2ft:.1f} cup_px@30={vis_cup * z_30ft:.1f} (roll locked)"
+    )
     return 0
 
 

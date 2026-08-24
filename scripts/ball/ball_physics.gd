@@ -805,11 +805,22 @@ static func roll_decel_px(lie: String) -> float:
 	return roll_friction_for(lie) * FT_TO_PX / maxf(f * f, 0.01)
 
 
+## On-screen putt pace after true-scale zoom (Phase 2 camera). Distance unchanged:
+## v' = k v, a' = k² a ⇒ s = v²/(2a) same; duration × 1/k. PLAYTEST TARGET (~30 ft zoom ratio).
+const PUTT_PACE_SCALE := 0.35
+
+
+## Green putt decel with pace scale (use for putt launch + putt roll only).
+static func putt_decel_px() -> float:
+	var k := PUTT_PACE_SCALE
+	return roll_decel_px("Green") * k * k
+
+
 ## Putt break (ball.gd 90/55) was tuned at legacy green decel 1.8*60.
-## Scale break forces by roll_decel_px("Green") / this so bend stays FRAC-invariant.
+## Scale break forces by putt_decel_px() / this so bend stays FRAC-invariant.
 const PUTT_BREAK_CAL_DECEL := 108.0
-## Putts launch ~5–20 px/s at FRAC 0.45; roll settle 10 would kill short putts.
-const PUTT_SETTLE_SPEED := 1.5
+## Putts launch slower under PUTT_PACE_SCALE; settle must sit under that band.
+const PUTT_SETTLE_SPEED := 0.525  ## was 1.5 × PUTT_PACE_SCALE
 const ROLL_SETTLE_SPEED := 10.0
 
 
@@ -908,8 +919,8 @@ static func launch_velocity(
 		var putt_launch := (dir + putt_right * line_miss).normalized()
 		if putt_launch.dot(dir) < 0.35:
 			putt_launch = (dir + putt_right * signf(line_miss) * 0.55).normalized()
-		# Green roll: a = roll_decel_px("Green"); v = sqrt(2 a s)
-		var putt_speed := sqrt(2.0 * roll_decel_px("Green") * maxf(total_px, 1.0))
+		# Green roll: a = putt_decel_px(); v = sqrt(2 a s) — pace scale keeps yards, slows screen.
+		var putt_speed := sqrt(2.0 * putt_decel_px() * maxf(total_px, 1.0))
 		return {
 			"velocity": putt_launch * putt_speed,
 			"spin": 0.0,

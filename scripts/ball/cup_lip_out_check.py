@@ -13,8 +13,10 @@ HOLE = Path(__file__).resolve().parents[1].joinpath("course/hole_controller.gd")
 
 def main() -> int:
 	# Capture geometry / see=catch frozen.
-	assert "CUP_CAPTURE_RADIUS := 1.9" in BALL or "CUP_CAPTURE_RADIUS:=1.9" in BALL
-	assert "CUP_CAPTURE_MAX_SPEED := 32.0" in BALL or "CUP_CAPTURE_MAX_SPEED:=32.0" in BALL
+	assert "CUP_CAPTURE_RADIUS := 0.133" in BALL or "CUP_CAPTURE_RADIUS:=0.133" in BALL
+	assert "CUP_CAPTURE_MAX_SPEED := 11.2" in BALL or "CUP_CAPTURE_MAX_SPEED:=11.2" in BALL
+	assert "LIP_ORBIT_MAX := 0.175" in BALL or "LIP_ORBIT_MAX:=0.175" in BALL
+	assert "LIP_OUT_REARM_PAD := 0.04" in BALL or "LIP_OUT_REARM_PAD:=0.04" in BALL
 
 	# Helpers + separate stash (must not reuse make stash).
 	assert "func _begin_lip_out" in BALL
@@ -34,8 +36,9 @@ def main() -> int:
 	m_sit = re.search(r"const LIP_OUT_EXIT_SIT\s*:=\s*([0-9.]+)", BALL)
 	m_max = re.search(r"const LIP_OUT_EXIT_MAX\s*:=\s*([0-9.]+)", BALL)
 	assert m_sit and m_max
-	assert 2.0 <= float(m_sit.group(1)) <= 6.0, m_sit.group(1)
-	assert 10.0 <= float(m_max.group(1)) <= 18.0, m_max.group(1)
+	# Scaled with PUTT_PACE_SCALE (was 3 / 14).
+	assert 0.7 <= float(m_sit.group(1)) <= 1.5, m_sit.group(1)
+	assert 3.5 <= float(m_max.group(1)) <= 7.0, m_max.group(1)
 
 	begin = BALL.split("func _begin_lip_out")[1].split("func ")[0]
 	finish = BALL.split("func _finish_lip_out")[1].split("func ")[0]
@@ -106,7 +109,8 @@ def main() -> int:
 	assert float(m_in_max.group(1)) >= 0.70, m_in_max.group(1)
 	m_off = re.search(r"const LIP_CENTER_OFFSET_MAX\s*:=\s*([0-9.]+)", BALL)
 	assert m_off
-	assert float(m_off.group(1)) >= 0.60, m_off.group(1)  # offset-led pour band
+	# True-scale pour band (~0.36 of CUP_CAPTURE_RADIUS 0.133); was 0.68 pre-scale.
+	assert 0.03 <= float(m_off.group(1)) <= 0.08, m_off.group(1)
 	assert "func _cup_drop_params" in BALL
 	# Pour decision is offset-led (speed must not AND-block center makes).
 	params_fn = BALL.split("func _cup_drop_params")[1].split("func ")[0]

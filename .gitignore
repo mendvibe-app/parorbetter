@@ -23,6 +23,7 @@ __pycache__/
 
 # Local scratch / debug dumps (never ship)
 _tmp_*/
+_bak_*/
 _green_dbg/
 _pixellab_init/
 _pixellab_out/

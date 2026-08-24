@@ -6,16 +6,16 @@ signal request_next_hole
 
 const GREEN_Y := -80.0
 const AIM_NUDGE_PX := 14.0
-## Cup sprite outer radius (rim + shelf). Capture uses CUP_CAPTURE_RADIUS (dark disc).
+## True real-world scale. Real cup radius 2.125" → 0.198 world units.
+## Capture uses CUP_CAPTURE_RADIUS (dark disc, see=catch) — see ball.gd.
 ## On-screen hole∶ball uses texture fill, not raw constants:
 ##   vis_cup  = (43/64) * CUP_RADIUS * 2
 ##   vis_ball = (33/64) * BALL_R_PUTT * 2
-## Target vis_cup/vis_ball ≈ 2.53 (real 4.25″/1.68″). BALL_R_PUTT carries that ratio;
-## CUP_RADIUS is not the make disc — see CUP_CAPTURE_RADIUS.
-const CUP_RADIUS := 2.8
-## Dark disc ≈ 43/64 of cup.png → (43/64)*CUP_RADIUS ≈ 1.88. See = catch.
-## Recompute if cup.png changes. Settle-in make uses this too (was CUP_RADIUS 2.8).
-const CUP_CAPTURE_RADIUS := 1.9  ## PLAYTEST TARGET
+## Target vis_cup/vis_ball ≈ 2.53 (real 4.25″/1.68″). Held across true-scale shrink.
+const CUP_RADIUS := 0.198
+## Dark disc ≈ 43/64 of cup.png → (43/64)*CUP_RADIUS ≈ 0.133. See = catch.
+## Must match GolfBall.CUP_CAPTURE_RADIUS (plans/putt-true-scale-phase1.md).
+const CUP_CAPTURE_RADIUS := 0.133
 ## Course pin height in px (readable from fairway; not survey-true ~7 ft).
 const PIN_FLAG_H_PX := 32.0
 ## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
@@ -34,15 +34,30 @@ const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 const PUTT_ROLL_LOOK_LERP := 0.07
 const PUTT_ROLL_BALL_WEIGHT := 0.15  ## soft drift toward ball from locked mid-frame
 const PUTT_ROLL_ZOOM_LERP := 0.10
-## Max putt aim zoom (higher = closer). Was 42 — cup ate the screen on tap-ins.
-const PUTT_ZOOM_CAP := 24.0  ## PLAYTEST TARGET
+## Max putt aim zoom (higher = closer). Raised for true-scale ball/cup (Phase 2).
+## Was 24 — Phase 1 geometry made objects ~few px; span floor 12 also blocked closer.
+const PUTT_ZOOM_CAP := 130.0  ## PLAYTEST TARGET
+const PUTT_ZOOM_FLOOR := 4.0
+## Distance framing (ball→cup half-span). Lower floor unlocks z ≫ 47 on tap-ins.
+const PUTT_SPAN_COEFF := 0.65
+const PUTT_SPAN_PAD := 2.0
+const PUTT_SPAN_FLOOR := 3.5
+const PUTT_VIEW_FRAC := 0.72
+## Soft min on-screen sizes (opaque ball / dark cup disc). Blend off on long lags.
+const PUTT_MIN_BALL_SCREEN_PX := 10.0  ## PLAYTEST TARGET
+const PUTT_MIN_CUP_SCREEN_PX := 16.0  ## PLAYTEST TARGET
+const PUTT_OBJ_BLEND_START_FT := 8.0
+const PUTT_OBJ_BLEND_END_FT := 48.0
+## Sprite fill fractions (see putt-ball-visible-size.md) — screen-size floors only.
+const PUTT_BALL_FILL := 33.0 / 64.0
+const PUTT_CUP_FILL := 43.0 / 64.0
 
 ## Pinch-to-zoom (aim/green-book only) — multiplies _desired_camera_zoom(), then
 ## the result is safety-clamped so a pinch can't push the camera past a readable range.
 const PINCH_MULT_MIN := 0.6
 const PINCH_MULT_MAX := 1.5
 const PINCH_ABS_ZOOM_MIN := 0.5
-const PINCH_ABS_ZOOM_MAX := 8.0
+const PINCH_ABS_ZOOM_MAX := 130.0  ## was 8 — unusable after true-scale
 const PINCH_MIN_SPAN_PX := 40.0  ## floor on finger-span distance to avoid divide-by-near-zero spikes
 const MAGNIFY_IDLE_RELEASE_MS := 400  ## trackpad magnify gesture has no discrete release; time it out
 
@@ -3105,12 +3120,28 @@ func _desired_camera_zoom() -> Vector2:
 	var view_min := minf(view.x, view.y)
 	var z: float
 	if _is_putt_context():
-		# Frame ball→cup; zoom out sooner on lags so 40 ft reads as travel, not a short lag.
-		# Floor/cap tuned so short putts (<~10 ft) actually read tighter than 20-40 ft ones —
-		# old floor (34) + cap (7.5) together clamped everything under ~70 ft to one flat zoom.
+		# True-scale Phase 2: frame ball→cup, but keep cup/ball readable on short/mid.
+		# Span floor 12 + cap 24 left objects at ~2–6 px after Phase 1 shrink.
 		var dist := ball.global_position.distance_to(_cup_pos)
-		var half_span := maxf(dist * 0.90 + 6.0, 12.0)
-		z = clampf(view_min * 0.52 / half_span, 2.6, PUTT_ZOOM_CAP)
+		var half_span := maxf(dist * PUTT_SPAN_COEFF + PUTT_SPAN_PAD, PUTT_SPAN_FLOOR)
+		var z_fit := view_min * PUTT_VIEW_FRAC / half_span
+		# Opaque ball / dark-disc diameters in world units (Phase 1 constants).
+		var vis_ball := PUTT_BALL_FILL * (GolfBall.BALL_R_PUTT * 2.0)
+		var vis_cup := PUTT_CUP_FILL * (CUP_RADIUS * 2.0)
+		var z_obj := maxf(
+			PUTT_MIN_BALL_SCREEN_PX / maxf(vis_ball, 0.001),
+			PUTT_MIN_CUP_SCREEN_PX / maxf(vis_cup, 0.001)
+		)
+		var dist_ft := dist / maxf(BallPhysics.PX_PER_YARD / 3.0, 0.001)
+		var t_long := clampf(
+			(dist_ft - PUTT_OBJ_BLEND_START_FT)
+			/ maxf(PUTT_OBJ_BLEND_END_FT - PUTT_OBJ_BLEND_START_FT, 1.0),
+			0.0,
+			1.0
+		)
+		# Short: prefer readable objects; long: prefer full-line fit (don't crop lag).
+		z = lerpf(maxf(z_fit, z_obj), z_fit, t_long)
+		z = clampf(z, PUTT_ZOOM_FLOOR, PUTT_ZOOM_CAP)
 	else:
 		# Pin-primary: tight ball→pin framing through short par-3s (~150 yd), ease to
 		# corridor only for long tee (150→220). Old band ended at 90 → 109 yd stayed corridor.

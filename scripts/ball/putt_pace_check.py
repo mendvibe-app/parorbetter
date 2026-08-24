@@ -154,10 +154,11 @@ def main() -> int:
     assert "_green_target_radii_px" in GEN
     assert "lerpf(0.10, 0.48, rng.randf())" in GEN
     assert "lerpf(0.12, 0.03, t)" in GEN  # less early FLAT
-    # Putt camera zooms out on lags so distance reads
-    assert "view_min * 0.52" in HOLE
-    assert "dist * 0.90" in HOLE
-    assert "CUP_RADIUS := 2.8" in HOLE or "CUP_RADIUS := 2.4" in HOLE
+    # Putt camera Phase 2 — true-scale readable framing (see putt_camera_zoom_check).
+    assert "PUTT_VIEW_FRAC" in HOLE
+    assert "PUTT_SPAN_COEFF" in HOLE
+    assert "PUTT_ZOOM_CAP" in HOLE
+    assert "CUP_RADIUS := 0.198" in HOLE
     assert "CUP_CAPTURE_RADIUS" in HOLE
     BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
     assert "BALL_R := 3.5" in BALL
@@ -178,12 +179,15 @@ def main() -> int:
     assert "PUTT_BREAK_CAL_DECEL" in PHYS
     assert "break_scale" in BALL
     assert "PUTT_SETTLE_SPEED" in PHYS
+    assert "PUTT_PACE_SCALE" in PHYS
+    assert "putt_decel_px" in PHYS
     assert "PUTT_SETTLE_SPEED" in BALL
     # Cup capture: speed gate + dark-hole radius (not full collar sprite).
-    assert "CUP_CAPTURE_MAX_SPEED" in BALL
+    assert "CUP_CAPTURE_MAX_SPEED := 11.2" in BALL
     assert "CUP_CAPTURE_RADIUS" in BALL
     assert "_try_cup_capture" in BALL
     assert "CUP_CAPTURE_MAX_SPEED" in BALL.split("func _try_cup_capture")[1].split("func ")[0]
+    assert "putt_decel_px" in BALL
     # Capture ≈ visible dark disc in cup.png (43/64 of sprite span) — see = catch.
     m_vis = re.search(r"const CUP_RADIUS\s*:=\s*([0-9.]+)", HOLE)
     m_cap = re.search(r"const CUP_CAPTURE_RADIUS\s*:=\s*([0-9.]+)", HOLE)

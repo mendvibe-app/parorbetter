@@ -14,12 +14,15 @@ def main() -> int:
     assert "play_cup_drop()" in HOLE
     # Phase 1 lip-in: stash survives reset_at; position cleared on reset.
     assert "_cup_entry_offset" in BALL
-    assert "LIP_ORBIT_MAX" in BALL
+    assert "LIP_ORBIT_MAX := 0.175" in BALL or "LIP_ORBIT_MAX:=0.175" in BALL
     assert "visual.position = Vector2.ZERO" in BALL.split("func reset_at")[1].split("func ")[0]
     # Capture geometry frozen — Phase 1 presentation only.
-    assert "CUP_CAPTURE_RADIUS := 1.9" in BALL or "CUP_CAPTURE_RADIUS:=1.9" in BALL
-    # Pour band wide enough that well-paced center lines don't toilet-bowl.
-    assert "LIP_CENTER_OFFSET_MAX" in BALL and "LIP_CENTER_SPEED_MAX" in BALL
+    assert "CUP_CAPTURE_RADIUS := 0.133" in BALL or "CUP_CAPTURE_RADIUS:=0.133" in BALL
+    # Pour band / orbit at true-scale cup (not pre-scale 1.55 green circle).
+    assert "LIP_CENTER_OFFSET_MAX := 0.048" in BALL or "LIP_CENTER_OFFSET_MAX:=0.048" in BALL
+    assert "LIP_CENTER_SPEED_MAX" in BALL
+    # Orbit sits on rim: capture ≤ orbit ≤ ~cup outer.
+    assert 0.133 <= 0.175 <= 0.198 * 1.15
     assert "func _cup_drop_params" in BALL
     # Phase 2 lip-out: hot rejects only; separate stash; never settles via lip-out.
     assert "_begin_lip_out" in BALL

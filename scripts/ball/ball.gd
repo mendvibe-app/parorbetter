@@ -93,49 +93,48 @@ var ground_lie_at: Callable = Callable()
 
 
 const BALL_R := 3.5
-## On-green draw radius. Padding-aware: (33/64)*(2R) vs (43/64)*(2*CUP_RADIUS) ≈ 2.53
-## (real 4.25″/1.68″). Visual only — capture uses CUP_CAPTURE_RADIUS, not this.
-const BALL_R_PUTT := 1.44
+## True real-world scale (0.75 world-px/ft, from BallPhysics.PX_PER_YARD).
+## Real ball radius 0.84" → 0.102 world units through 33/64 sprite fill.
+## Ratio to CUP_RADIUS held at real 2.53 (see putt-ball-visible-size.md). Visual only.
+const BALL_R_PUTT := 0.102
 ## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
 const PUTT_BREAK_LATERAL := 90.0
 const PUTT_BREAK_ALONG := 55.0
 ## Max roll speed (px/s) to drop in the cup. Faster → lip out / roll over (no teleport make).
-## Settle is slower (PUTT_SETTLE_SPEED); this sits above that so dying putts can still fall.
-const CUP_CAPTURE_MAX_SPEED := 32.0
-## Must match HoleController.CUP_CAPTURE_RADIUS — dark disc (43/64 of cup.png).
-const CUP_CAPTURE_RADIUS := 1.9
-## Lip-in presentation (Phase 1) — PLAYTEST TARGETS. Capture geometry frozen.
-## Orbit held near max for every rim roll; arc angle carries offset signal.
-## Allow ball proud of void onto grey rim (real lip-ins overhang). Cap vs art edge
-## ((57/64)*CUP_RADIUS≈2.49), bias ~void radius 1.53 — look call on device.
-const LIP_ORBIT_MAX := 1.55
-## Pour band — PLAYTEST. Offset-led: a good line that MAKES should pour.
-## Speed no longer blocks pour (firmness → lip-OUT chance instead). Was 0.50/0.55
-## AND — ~half of "nice pace" center putts still curled because speed > 17.6.
-const LIP_CENTER_OFFSET_MAX := 0.68  ## clear edge catch only (~1.3 of 1.9)
+## Scaled with BallPhysics.PUTT_PACE_SCALE (was 32). Settle sits below this.
+const CUP_CAPTURE_MAX_SPEED := 11.2
+## True real-world scale. Real cup radius 2.125" → 0.133 world units through
+## 43/64 dark-disc fill. PLAYTEST TARGET — pure geometric radius, zero lip-catch
+## cushion. Widen toward 0.185 if dying putts feel unfairly harsh; range derives
+## from hole_radius ± ball_radius, see plans/putt-true-scale-phase1.md.
+## Must match HoleController.CUP_CAPTURE_RADIUS.
+const CUP_CAPTURE_RADIUS := 0.133
+## Lip-in presentation — PLAYTEST. Orbit on true-scale grey rim (not pre-scale 1.55).
+## (57/64)*CUP_RADIUS(0.198) ≈ 0.177. Arc angle still carries offset signal.
+const LIP_ORBIT_MAX := 0.175
+## Pour band — PLAYTEST. Fractions of CUP_CAPTURE_RADIUS (was 0.68/0.50 of old 1.9).
+const LIP_CENTER_OFFSET_MAX := 0.048
 const LIP_CENTER_SPEED_MAX := 1.05  ## unused as a hard gate; kept for arc scaling
 const LIP_DROP_DUR := 0.18
 ## Near-edge pours occasionally catch a hair (short curl). True center always pours.
-const LIP_POUR_PROMOTE_OFFSET := 0.50
+const LIP_POUR_PROMOTE_OFFSET := 0.035
 const LIP_POUR_PROMOTE_CHANCE := 0.10
-## Lip-out presentation (Phase 2) — PLAYTEST TARGETS. Hot rejects only; make rate frozen.
-## Arc length is the legibility metric (not orbit). Half→¾+ turn so horseshoe reads;
-## orbit held at rim shelf (may overhang grey). No sink; resume ROLL with tangent exit.
+## Lip-out presentation — PLAYTEST. Hot rejects; orbit = rim; make rate frozen.
+## Arc length is the legibility metric (not orbit). Half→¾+ turn so horseshoe reads.
 const LIP_OUT_ARC_MIN := TAU * 0.55  ## ~198° — above lip-in band
 const LIP_OUT_ARC_MAX := TAU * 0.85  ## ~306° horseshoe
 const LIP_OUT_DUR_MIN := 0.32
 const LIP_OUT_DUR_MAX := 0.62
 const LIP_OUT_ORBIT := LIP_ORBIT_MAX
-const LIP_OUT_REARM_PAD := 0.5  ## world px past capture disc before re-arm
-## Lip-out leave exit speed (px/s) — PLAYTEST, ft-grounded on green decel ~8.44.
-## Replaces 0.9×entry (min leave was ~22 yd). Sit→~1 ft; max→~12–15 ft coast.
-const LIP_OUT_EXIT_SIT := 3.0
-const LIP_OUT_EXIT_MAX := 14.0
+const LIP_OUT_REARM_PAD := 0.04  ## world px past capture disc before re-arm
+## Lip-out leave exit speed (px/s) — scaled with PUTT_PACE_SCALE (was 3 / 14).
+const LIP_OUT_EXIT_SIT := 1.05
+const LIP_OUT_EXIT_MAX := 4.9
 ## Firm putts inside the make gate can still lip out (Pelz — speed kills).
 ## Below SPEED_MIN ratio always drops if in disc. Chance rises toward the hard max.
-const LIP_OUT_CHANCE_SPEED_MIN := 0.55  ## ~17.6 px/s of 32
+const LIP_OUT_CHANCE_SPEED_MIN := 0.55  ## fraction of CUP_CAPTURE_MAX_SPEED
 const LIP_OUT_CHANCE_AT_MIN := 0.10  ## just entering firm band
-const LIP_OUT_CHANCE_AT_MAX := 0.42  ## at the 32 gate — often rattles out
+const LIP_OUT_CHANCE_AT_MAX := 0.42  ## at the capture-max gate — often rattles out
 ## Lip-in rim-roll arc — PLAYTEST. Short curl for mild lips; half–¾ only when earned.
 ## (Was floor 0.50τ → every non-pour looked like a toilet bowl.)
 const LIP_IN_ARC_MIN := TAU * 0.12
@@ -735,10 +734,9 @@ func _process_roll(delta: float) -> void:
 	var slope := _slope_at_ball()
 	if _is_putt:
 		# Break pulls offline; can fight aim (skill reads matter).
-		# Scale with green decel so integrated bend matches the 90/55 tune at a=108
-		# (pacing lowered decel ~16×; unscaled break sent putts across the green).
+		# Scale with putt decel (includes PUTT_PACE_SCALE²) so bend stays yard-correct.
 		var right := Vector2(-_pin_dir.y, _pin_dir.x)
-		var break_scale := BallPhysics.roll_decel_px("Green") / BallPhysics.PUTT_BREAK_CAL_DECEL
+		var break_scale := BallPhysics.putt_decel_px() / BallPhysics.PUTT_BREAK_CAL_DECEL
 		var break_amt := slope.dot(right) * PUTT_BREAK_LATERAL * break_scale
 		var along_break := slope.dot(_pin_dir) * PUTT_BREAK_ALONG * break_scale
 		velocity += right * break_amt * delta
@@ -746,7 +744,12 @@ func _process_roll(delta: float) -> void:
 	elif _lie == "Green":
 		velocity += slope * 16.0 * delta
 
-	velocity = velocity.move_toward(Vector2.ZERO, BallPhysics.roll_decel_px(_lie) * delta)
+	var decel := (
+		BallPhysics.putt_decel_px()
+		if _is_putt or _lip_out_leave
+		else BallPhysics.roll_decel_px(_lie)
+	)
+	velocity = velocity.move_toward(Vector2.ZERO, decel * delta)
 
 	if not _is_putt:
 		var roll_right := Vector2(-_launch_dir.y, _launch_dir.x)
