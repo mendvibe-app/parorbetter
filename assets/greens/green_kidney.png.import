@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://db403sgqowq86"
-path="res://.godot/imported/green_oval.png-11d3c95dbe01576c99241ff0d645f108.ctex"
+uid="uid://dtocytpqslwwq"
+path="res://.godot/imported/green_kidney.png-96f5c7cd2bb0af0caded3d6a84f664d4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/greens/green_oval.png"
-dest_files=["res://.godot/imported/green_oval.png-11d3c95dbe01576c99241ff0d645f108.ctex"]
+source_file="res://assets/greens/green_kidney.png"
+dest_files=["res://.godot/imported/green_kidney.png-96f5c7cd2bb0af0caded3d6a84f664d4.ctex"]
 
 [params]
 

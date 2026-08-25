@@ -32,13 +32,21 @@ def main() -> int:
 	assert "LIP_OUT_SPEED_KEEP" not in BALL
 	assert "LIP_OUT_EXIT_SIT" in BALL
 	assert "LIP_OUT_EXIT_MAX" in BALL
+	assert "LIP_OUT_EXIT_CHIP_MAX" in BALL
+	assert "LIP_OUT_CHIP_LEAVE_MAX_YD" in BALL
+	assert "ROLL_SPEED_FLOOR" in BALL
 
 	m_sit = re.search(r"const LIP_OUT_EXIT_SIT\s*:=\s*([0-9.]+)", BALL)
 	m_max = re.search(r"const LIP_OUT_EXIT_MAX\s*:=\s*([0-9.]+)", BALL)
-	assert m_sit and m_max
+	m_chip = re.search(r"const LIP_OUT_EXIT_CHIP_MAX\s*:=\s*([0-9.]+)", BALL)
+	m_floor = re.search(r"const ROLL_SPEED_FLOOR\s*:=\s*([0-9.]+)", BALL)
+	assert m_sit and m_max and m_chip and m_floor
 	# Scaled with PUTT_PACE_SCALE (was 3 / 14).
 	assert 0.7 <= float(m_sit.group(1)) <= 1.5, m_sit.group(1)
 	assert 3.5 <= float(m_max.group(1)) <= 7.0, m_max.group(1)
+	assert float(m_chip.group(1)) <= float(m_sit.group(1)) + 0.2, m_chip.group(1)
+	assert float(m_floor.group(1)) <= 4.0, m_floor.group(1)
+	assert "20.0" not in BALL.split("func _begin_roll")[1].split("func ")[0]
 
 	begin = BALL.split("func _begin_lip_out")[1].split("func ")[0]
 	finish = BALL.split("func _finish_lip_out")[1].split("func ")[0]
@@ -56,8 +64,17 @@ def main() -> int:
 	# Geometry-weighted luck (not bare 0.9×entry).
 	assert "kick_tend" in exit_fn
 	assert "randf()" in exit_fn
+	assert "LIP_OUT_EXIT_CHIP_MAX" in exit_fn
+	assert "not _is_putt" in exit_fn
 	assert "_lip_out_exit_speed()" in finish
 	assert "_lip_out_leave = true" in finish
+	assert "_lip_out_leave_from" in finish
+	PHYS = Path(__file__).resolve().parents[0].joinpath("ball_physics.gd").read_text(encoding="utf-8")
+	assert "putt_decel_px()" in PHYS
+	assert 'putt_decel_px() if lie == "Green"' in PHYS or "putt_decel_px() if lie == 'Green'" in PHYS
+	roll = BALL.split("func _process_roll")[1].split("func ")[0]
+	assert "LIP_OUT_CHIP_LEAVE_MAX_YD" in roll
+	assert '_lie == "Green"' in roll or "_lie == 'Green'" in roll
 
 	# Hot gate + firm-band chance inside make gate (hard putts can lip out on line).
 	assert "CUP_CAPTURE_MAX_SPEED" in capture

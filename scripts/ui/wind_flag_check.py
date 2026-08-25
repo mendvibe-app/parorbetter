@@ -27,7 +27,9 @@ must("paint_flag" in PIN, "course pin uses paint_flag")
 must("CoursePinFlagScr" in CTRL or "course_pin_flag.gd" in CTRL, "controller preloads course pin")
 must("set_wind" in CTRL, "controller sets wind on pin")
 must("stream_rotation" not in CTRL, "controller no longer rotates pin")
-must("PIN_FLAG_H_PX" in CTRL, "course height")
+must("PIN_FLAG_SCREEN_PX" in CTRL, "course pin screen scale")
+must("_park_wind_flag" in CTRL, "wind docked right")
+must("PRESET_CENTER_TOP" not in CTRL.split("_wind_flag")[1].split("wind_banner")[0], "wind not center-top")
 must("PIN_FLAG_POLE_X" not in CTRL, "texture plant offsets gone")
 
 # Strength monotonicity (mirrors draw math).

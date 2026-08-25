@@ -81,6 +81,7 @@ var _air_fraction: float = 0.78
 ## Mean ground speed over hang (air_px/hang); envelope multiplies by flight_speed_scale(t).
 var _mean_air_speed: float = 0.0
 var _is_putt: bool = false
+var _shot_type: String = "full"  ## aim/launch type (visual radius no longer depends on this)
 var _spin_vis: float = 0.0
 ## Sample surface under the ball while rolling (fairway/rough/sand/green).
 var ground_lie_at: Callable = Callable()
@@ -92,10 +93,12 @@ var ground_lie_at: Callable = Callable()
 @onready var area: Area2D = $Area
 
 
-const BALL_R := 3.5
+## Deprecated — was flight exaggerate (3.5). Visual ball is always true-scale now.
+const BALL_R := 0.102
 ## True real-world scale (0.75 world-px/ft, from BallPhysics.PX_PER_YARD).
 ## Real ball radius 0.84" → 0.102 world units through 33/64 sprite fill.
 ## Ratio to CUP_RADIUS held at real 2.53 (see putt-ball-visible-size.md). Visual only.
+## Used for the whole round (tee → putt) — no short-game / flight size belt.
 const BALL_R_PUTT := 0.102
 ## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
 const PUTT_BREAK_LATERAL := 90.0
@@ -130,11 +133,16 @@ const LIP_OUT_REARM_PAD := 0.04  ## world px past capture disc before re-arm
 ## Lip-out leave exit speed (px/s) — scaled with PUTT_PACE_SCALE (was 3 / 14).
 const LIP_OUT_EXIT_SIT := 1.05
 const LIP_OUT_EXIT_MAX := 4.9
+## Chip/pitch rim-out: short hop only (playtest: unpaced leave → ~150 yd rocket).
+const LIP_OUT_EXIT_CHIP_MAX := 1.15  ## PLAYTEST TARGET
+const LIP_OUT_CHIP_LEAVE_MAX_YD := 4.0  ## hard stop from cup for non-putt leave
 ## Firm putts inside the make gate can still lip out (Pelz — speed kills).
 ## Below SPEED_MIN ratio always drops if in disc. Chance rises toward the hard max.
 const LIP_OUT_CHANCE_SPEED_MIN := 0.55  ## fraction of CUP_CAPTURE_MAX_SPEED
 const LIP_OUT_CHANCE_AT_MIN := 0.10  ## just entering firm band
 const LIP_OUT_CHANCE_AT_MAX := 0.42  ## at the capture-max gate — often rattles out
+## _begin_roll fallback floor — was 20 (post true-scale footgun with putt_decel).
+const ROLL_SPEED_FLOOR := 2.0
 ## Lip-in rim-roll arc — PLAYTEST. Short curl for mild lips; half–¾ only when earned.
 ## (Was floor 0.50τ → every non-pour looked like a toilet bowl.)
 const LIP_IN_ARC_MIN := TAU * 0.12
@@ -170,6 +178,7 @@ var _lip_out_playing: bool = false
 var _lip_out_tween: Tween = null
 ## After horseshoe: trickle settle like a putt so ft-scale leaves aren't killed by ROLL_SETTLE=10.
 var _lip_out_leave: bool = false
+var _lip_out_leave_from: Vector2 = Vector2.ZERO  ## cup pos for chip leave governor
 
 func _ready() -> void:
 	_apply_lie_visual()
@@ -335,6 +344,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_mean_air_speed = 0.0
 	_punch_flight = false
 	_is_putt = false
+	_shot_type = "full"
 	_is_perfect_shot = false
 	state = State.IDLE
 	_planned_distance_px = 0.0
@@ -384,7 +394,9 @@ func launch(
 	_height_peak = float(launch_data.get("apex", 0.0))
 	_height_max = 0.0
 	_punch_flight = shot_type == "punch"
+	_shot_type = shot_type
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
+	_apply_lie_visual()
 	if _is_putt:
 		_height_peak = 0.0
 		_punch_flight = false
@@ -515,18 +527,28 @@ func _apply_lie_string(lie: String, force_roll: bool) -> void:
 	# else stay Rough → keep existing severity
 
 
+func set_visual_shot_type(shot_type: String, _pin_yards: float = -1.0) -> void:
+	## Aim picker still reports type; ball draw is always true-scale.
+	_shot_type = shot_type
+	_apply_lie_visual()
+
+
+func _visual_ball_radius() -> float:
+	## Whole round — same world size as the cup ratio (tee speck is honest; escape hatch = screen floor later).
+	return BALL_R_PUTT
+
+
 func _apply_lie_visual() -> void:
-	## Flight stays readable (BALL_R); green shrinks so 18 ft isn't 2 ball-widths.
-	var r := BALL_R_PUTT if _lie == "Green" else BALL_R
+	var r := _visual_ball_radius()
 	var tex_w := float(visual.texture.get_width()) if visual.texture else 961.0
 	_ball_scale = (r * 2.0) / tex_w
 	visual.scale = Vector2.ONE * _ball_scale
 	# Shadow texture holds a wide soft ellipse; size it to a bit over ball width.
 	var sh_w := float(shadow.texture.get_width()) if shadow.texture else 512.0
-	_shadow_scale = ((r + 2.0) * 2.6) / sh_w
+	_shadow_scale = ((r + 0.15) * 2.6) / sh_w
 	shadow.scale = Vector2(_shadow_scale, _shadow_scale)
 	shadow.modulate.a = 0.85
-	# Glow ring ~2.6x ball diameter, spin arcs hug the ball.
+	# Glow / spin hug the ball (world). Trail/land rings stay screen-constant elsewhere.
 	if glow.texture:
 		_glow_scale = (r * 5.2) / float(glow.texture.get_width())
 		glow.scale = Vector2.ONE * _glow_scale
@@ -697,7 +719,7 @@ func _begin_roll() -> void:
 	state = State.ROLL
 	var speed := _landing_speed
 	if speed <= 1.0:
-		speed = maxf(velocity.length() * 0.35, 20.0)
+		speed = maxf(velocity.length() * 0.35, ROLL_SPEED_FLOOR)
 	velocity = _launch_dir * speed
 	# Snap target to actual first bounce and illuminate — tracer tip dries into this.
 	_show_land_mark(global_position, true)
@@ -744,9 +766,10 @@ func _process_roll(delta: float) -> void:
 	elif _lie == "Green":
 		velocity += slope * 16.0 * delta
 
+	# Any green surface uses putt pace (chips used unpaced stimp → hot cup + long coasts).
 	var decel := (
 		BallPhysics.putt_decel_px()
-		if _is_putt or _lip_out_leave
+		if _is_putt or _lip_out_leave or _lie == "Green"
 		else BallPhysics.roll_decel_px(_lie)
 	)
 	velocity = velocity.move_toward(Vector2.ZERO, decel * delta)
@@ -772,6 +795,15 @@ func _process_roll(delta: float) -> void:
 	if along >= _planned_distance_px and not _is_putt and not _lip_out_leave:
 		_finish_settle()
 		return
+	# Chip rim-out: never coast drive-length (leave skips plan clamp).
+	if (
+		_lip_out_leave
+		and not _is_putt
+		and global_position.distance_to(_lip_out_leave_from)
+		> BallPhysics.yards_to_pixels(LIP_OUT_CHIP_LEAVE_MAX_YD)
+	):
+		_finish_settle()
+		return
 	# Putts: stop by speed, allow break past planned if overhit
 	if _is_putt and along >= _planned_distance_px * 1.15:
 		velocity *= 0.92
@@ -790,11 +822,10 @@ func _process_roll(delta: float) -> void:
 	else:
 		AudioBus.set_roll_intensity(0.0)
 
-	# Putts launch well below the old 10 px/s roll floor at real-time green decel.
-	# Lip-out leave: putt settle so sit→15 ft band isn't truncated by ROLL_SETTLE=10.
+	# Putts / green rolls / lip leave: putt settle so sit band isn't truncated by ROLL_SETTLE=10.
 	var settle_spd := (
 		BallPhysics.PUTT_SETTLE_SPEED
-		if _is_putt or _lip_out_leave
+		if _is_putt or _lip_out_leave or _lie == "Green"
 		else BallPhysics.ROLL_SETTLE_SPEED
 	)
 	if velocity.length() < settle_spd:
@@ -969,7 +1000,7 @@ func _begin_lip_out(cup_pos: Vector2) -> void:
 func _lip_out_exit_speed() -> float:
 	## Rim bleeds most energy; exit band is ft-grounded. Heat + offset set kick tendency;
 	## randf stands in for micro-line at the liner (geometry-weighted, not a coin flip).
-	## Heat 0..1 vs capture max (works for in-gate firm lips and over-max rejects).
+	## Never use raw _lip_out_speed (chip entry) — that rocketed leaves ~150 yd.
 	var heat := clampf(_lip_out_speed / CUP_CAPTURE_MAX_SPEED, 0.0, 1.0)
 	var offset_ratio := clampf(_lip_out_offset.length() / CUP_CAPTURE_RADIUS, 0.0, 1.0)
 	# Center-hot rattles harder; high-offset horseshoe usually softer exit. PLAYTEST.
@@ -981,7 +1012,10 @@ func _lip_out_exit_speed() -> float:
 	var leave_t := pow(u, sit_bias)
 	var exit_spd := lerpf(LIP_OUT_EXIT_SIT, LIP_OUT_EXIT_MAX, leave_t)
 	exit_spd *= lerpf(0.45, 1.0, kick_tend)  # cold lips cannot reach hot max
-	return clampf(exit_spd, LIP_OUT_EXIT_SIT, LIP_OUT_EXIT_MAX)
+	exit_spd = clampf(exit_spd, LIP_OUT_EXIT_SIT, LIP_OUT_EXIT_MAX)
+	if not _is_putt:
+		exit_spd = minf(exit_spd, LIP_OUT_EXIT_CHIP_MAX)
+	return exit_spd
 
 
 func _finish_lip_out(exit_ang: float, orbit_r: float, arc_sign: float) -> void:
@@ -993,6 +1027,7 @@ func _finish_lip_out(exit_ang: float, orbit_r: float, arc_sign: float) -> void:
 	visual.position = Vector2.ZERO
 	var exit_tangent := Vector2.from_angle(exit_ang + arc_sign * PI * 0.5)
 	velocity = exit_tangent * _lip_out_exit_speed()
+	_lip_out_leave_from = _lip_out_cup_pos
 	_clear_lip_out_stash()
 	_lip_out_playing = false
 	_lip_out_leave = true

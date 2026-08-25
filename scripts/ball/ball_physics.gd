@@ -999,7 +999,9 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
-		landing_speed = sqrt(2.0 * roll_decel_px(lie) * roll_px)
+		# Green release uses putt pace — chips onto green must not carry unpaced stimp energy.
+		var a_roll := putt_decel_px() if lie == "Green" else roll_decel_px(lie)
+		landing_speed = sqrt(2.0 * a_roll * roll_px)
 
 	return {
 		"velocity": velocity,

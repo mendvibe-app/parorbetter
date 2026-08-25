@@ -161,8 +161,9 @@ def main() -> int:
     assert "CUP_RADIUS := 0.198" in HOLE
     assert "CUP_CAPTURE_RADIUS" in HOLE
     BALL = Path(DIR.parent / "ball/ball.gd").read_text(encoding="utf-8")
-    assert "BALL_R := 3.5" in BALL
     assert "const BALL_R_PUTT" in BALL
+    # Visual ball is always true-scale (legacy BALL_R 3.5 retired).
+    assert "BALL_R := 3.5" not in BALL
     # Visible hole∶ball ≈ real 4.25/1.68. Spans = sprite fill (remeasure if PNG padding changes).
     BALL_OPAQUE = 33.0  # assets/ball/ball.png opaque bbox
     CUP_DARK = 43.0  # cup.png void+rim (luma≤60); matches see=catch
@@ -220,7 +221,7 @@ def main() -> int:
         v = (2.0 * a_green * s) ** 0.5
         assert v > settle, (ft, v, settle, a_green)
     assert "_sync_pin_flag_visible" in HOLE
-    assert "PIN_FLAG_H_PX" in HOLE
+    assert "PIN_FLAG_SCREEN_PX" in HOLE
     assert "course_pin_flag.gd" in HOLE or "CoursePinFlagScr" in HOLE
     assert "get_lie() == \"Green\"" in HOLE or 'get_lie() == "Green"' in HOLE
     # Pin out on green only — not _is_putt_context (28 yd yank).

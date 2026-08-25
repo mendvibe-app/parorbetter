@@ -25,6 +25,7 @@ const CONTROLS_HEIGHT := 480.0
 const CONFIRM_AIM_TOP := -296.0
 const CONFIRM_AIM_BOTTOM := -160.0
 const FEEDBACK_TOP := 220.0
+## Legacy center-top wind slot; hole wind flag now parks right of HoleMap via HoleController.
 const WIND_TOP := 290.0
 const SHOT_RESULT_TOP := 220.0
 ## Top chrome inside ShotPanel (info + meter + hint) — pad fills the rest.

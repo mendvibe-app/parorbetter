@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Densify green_* sprites to 768 — same mow motif, finer stripes. Filter stays Off."""
+"""Densify green_* to 768 — calm mow for putt read (softer stripes). Filter stays Off."""
 from __future__ import annotations
 
 import sys
@@ -11,13 +11,13 @@ ROOT = Path(__file__).resolve().parents[3]
 ASSETS = ROOT / "assets" / "greens"
 OUT_DIR = Path(__file__).resolve().parent
 SIZE = 768
-PERIOD = 3
-
-LIGHT = (108, 137, 70, 255)
-MID = (92, 117, 62, 255)
-DARK = (74, 95, 50, 255)
-FRINGE = (70, 91, 46, 255)
-EDGE = (83, 106, 56, 255)
+# Calmer putt surface (playtest 1686 — zebra fought ball/cup).
+PERIOD = 5
+LIGHT = (98, 124, 66, 255)
+MID = (90, 114, 62, 255)
+DARK = (82, 105, 58, 255)
+FRINGE = (72, 93, 48, 255)
+EDGE = (86, 108, 58, 255)
 FRINGE_PX = 18
 
 DEFAULT_STEMS = (
@@ -67,11 +67,9 @@ def edge_distance(opaque: list[list[bool]]) -> list[list[int]]:
 
 def densify(stem: str) -> Path:
 	src_path = ASSETS / f"{stem}.png"
-	src = Image.open(src_path).convert("RGBA")
-	# Backup 128 only once
+	# Prefer 128 silhouette backup if present (stable alpha across calm re-bakes).
 	bak = OUT_DIR / f"{stem}_128_backup.png"
-	if src.size[0] <= 128 and not bak.exists():
-		src.save(bak)
+	src = Image.open(bak if bak.exists() else src_path).convert("RGBA")
 
 	alpha_big = src.split()[-1].resize((SIZE, SIZE), Image.NEAREST)
 	ga = alpha_big.load()
@@ -86,10 +84,11 @@ def densify(stem: str) -> Path:
 				continue
 			band = (x // PERIOD) % 2
 			jitter = ((x * 17 + y * 31) ^ (x * y)) & 7
+			# Soft dither — mostly MID, light/dark less often.
 			if band == 0:
-				c = LIGHT if jitter < 3 else MID
+				c = LIGHT if jitter < 2 else MID
 			else:
-				c = DARK if jitter < 4 else MID
+				c = DARK if jitter < 2 else MID
 			d = dist[y][x]
 			if d <= FRINGE_PX:
 				t = 1.0 - d / float(FRINGE_PX)
@@ -99,15 +98,14 @@ def densify(stem: str) -> Path:
 					c = EDGE if jitter < 3 else MID
 			px[x, y] = c
 
-	out_path = OUT_DIR / f"{stem}_768.png"
+	out_path = OUT_DIR / f"{stem}_768_calm.png"
 	out.save(out_path)
-	# Promote
 	out.save(src_path)
 	imp = ASSETS / f"{stem}.png.import"
 	if imp.exists():
 		imp.unlink()
 	opaque_n = sum(1 for y in range(SIZE) for x in range(SIZE) if px[x, y][3] > 200)
-	print(f"{stem}: 768 opaque={opaque_n} -> {src_path}")
+	print(f"{stem}: calm 768 opaque={opaque_n} -> {src_path}")
 	return out_path
 
 

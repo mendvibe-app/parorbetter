@@ -31,4 +31,10 @@ Densified remaining shapes with `densify_green.py`:
 - `green_kidney`, `green_tiered`, `green_long`, `green_island` → 768, promoted to `assets/greens/`
 - 128 backups: `*_128_backup.png` in this folder
 
-Reload Godot and spot-check each shape on a large green.
+## Calm pass (playtest 1686 — 44 ft putt)
+
+Softer mow for mid-putt read (less zebra vs ball/cup):
+
+- Period **5** (was 3), closer light/mid/dark, lighter dither
+- Outputs `*_768_calm.png`; silhouettes from `*_128_backup.png`
+- Pair with putt camera: min cup/ball screen 20/12, blend end **72 ft**

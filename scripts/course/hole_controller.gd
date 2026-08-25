@@ -16,8 +16,11 @@ const CUP_RADIUS := 0.198
 ## Dark disc ≈ 43/64 of cup.png → (43/64)*CUP_RADIUS ≈ 0.133. See = catch.
 ## Must match GolfBall.CUP_CAPTURE_RADIUS (plans/putt-true-scale-phase1.md).
 const CUP_CAPTURE_RADIUS := 0.133
-## Course pin height in px (readable from fairway; not survey-true ~7 ft).
-const PIN_FLAG_H_PX := 32.0
+## Course pin: screen-constant height (world px = screen_px / zoom). Fixed 12 was a
+## tower at mid-approach zoom next to true-scale ball (playtest 1684).
+const PIN_FLAG_SCREEN_PX := 36.0  ## PLAYTEST TARGET
+const PIN_FLAG_H_MIN := 5.0
+const PIN_FLAG_H_MAX := 14.0
 ## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
 ## Launch holds aim (1.0) — 0.90 open caused zoom-out-then-in once pin-primary aim got tight.
 const FLIGHT_LAUNCH_FRAC := 1.0  ## hold aim framing at strike
@@ -25,8 +28,20 @@ const FLIGHT_APEX_FRAC := 1.05  ## mild tighten through apex (never open past ai
 const FLIGHT_LAND_FRAC := 1.28  ## ends tighter than aim ("up and in")
 const FLIGHT_ZOOM_IN_START := 0.55  ## air_progress when the tight zoom begins
 ## Non-putt aim: pin-primary through APPROACH_HI, ease to corridor by LONG_HI.
-const APPROACH_ZOOM_HI := 150.0
+## HI lowered so ~112 yd starts opening (was 150 → glued pin framing, playtest 1684).
+const APPROACH_ZOOM_HI := 115.0
 const APPROACH_ZOOM_LONG := 220.0
+## Full tee open (playtest 1685 — 216 yd still felt glued with look-at-ball).
+const APPROACH_TEE_OPEN_YD := 180.0
+const APPROACH_TEE_CORRIDOR_FRAC := 0.80  ## vs mid-blend 0.88 — show more hole
+const TEE_LOOK_PIN_BIAS := 0.42  ## club-select look: bias toward cup so green is on-screen
+## Mid-approach span (ball→pin half) — wider margin than old 0.52/18/48/0.62/7.5.
+const APPROACH_SPAN_COEFF := 0.75
+const APPROACH_SPAN_PAD := 30.0
+const APPROACH_SPAN_FLOOR := 68.0
+const APPROACH_VIEW_FRAC := 0.54
+const APPROACH_ZOOM_MIN := 1.35
+const APPROACH_ZOOM_MAX := 5.2  ## PLAYTEST — was 7.5
 const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 ## Putt roll camera: hold stroke-start frame so the ball rolls through a stable shot
@@ -44,13 +59,27 @@ const PUTT_SPAN_PAD := 2.0
 const PUTT_SPAN_FLOOR := 3.5
 const PUTT_VIEW_FRAC := 0.72
 ## Soft min on-screen sizes (opaque ball / dark cup disc). Blend off on long lags.
-const PUTT_MIN_BALL_SCREEN_PX := 10.0  ## PLAYTEST TARGET
-const PUTT_MIN_CUP_SCREEN_PX := 16.0  ## PLAYTEST TARGET
-const PUTT_OBJ_BLEND_START_FT := 8.0
-const PUTT_OBJ_BLEND_END_FT := 48.0
+## Raised + longer blend so ~44 ft putts stay glanceable (playtest 1686).
+const PUTT_MIN_BALL_SCREEN_PX := 12.0  ## PLAYTEST TARGET
+const PUTT_MIN_CUP_SCREEN_PX := 20.0  ## PLAYTEST TARGET
+const PUTT_OBJ_BLEND_START_FT := 12.0
+const PUTT_OBJ_BLEND_END_FT := 72.0
+## Place putt focus higher than viewport mid so ball/cup clear HUD + swing pad (playtest 23ft).
+const PUTT_SAFE_SCREEN_Y := 0.40  ## PLAYTEST — 0.5=center; lower = action higher on screen
 ## Sprite fill fractions (see putt-ball-visible-size.md) — screen-size floors only.
 const PUTT_BALL_FILL := 33.0 / 64.0
 const PUTT_CUP_FILL := 43.0 / 64.0
+
+## Green book aim framing — fit the putting surface so heat reads as a yardage book.
+## True-scale putt zoom (object floor / PUTT_ZOOM_CAP) stays for stroke; book closes first.
+const GREEN_BOOK_FIT := 1.10  ## PLAYTEST — half-span = max(rx,ry) * this
+const GREEN_BOOK_VIEW_FRAC := 0.72
+const GREEN_BOOK_ZOOM_FLOOR := 4.0
+const GREEN_BOOK_ZOOM_CAP := 36.0  ## PLAYTEST — ≪ PUTT_ZOOM_CAP; whole green readable
+const GREEN_BOOK_LOOK_BALL := 0.20  ## bias look toward ball so stance stays in frame
+## Never green-fit-zoom from far (aim-on-pin used to turn book on at 182 yd — playtest).
+const GREEN_BOOK_ZOOM_MAX_PIN_YD := 90.0
+const GREEN_BOOK_SHOW_MAX_PIN_YD := 80.0
 
 ## Pinch-to-zoom (aim/green-book only) — multiplies _desired_camera_zoom(), then
 ## the result is safety-clamped so a pinch can't push the camera past a readable range.
@@ -111,7 +140,9 @@ const TREE_CANOPY_H: Array[float] = [56.0, 72.0, 61.0, 65.0, 50.0, 63.0, 58.0, 8
 const FIRST_CUT_W := 14.0  ## PLAYTEST TARGET — first-cut halo width (art only)
 const CORRIDOR_PAD := 58.0  ## camera framing pad each side (was SIDE_BELT_W)
 const TREE_LINE_PAD := 20.0  ## was SIDE_BELT_W * 0.35 — tree offset beyond fairway edge
-const CORRIDOR_SCREEN_FRAC := 0.50  ## fairway + pads ≈ this fraction of viewport width
+const CORRIDOR_SCREEN_FRAC := 0.43  ## fairway + pads in view (was 0.50 — long tee felt tight)
+const CORRIDOR_ZOOM_MIN := 1.05
+const CORRIDOR_ZOOM_MAX := 1.55  ## was 1.95
 const GROUND_TILE_PX := 300.0  ## PLAYTEST TARGET — shared ground tile density
 var hole: HoleData
 var strokes: int = 0
@@ -267,16 +298,34 @@ func _setup_hole_map() -> void:
 
 func _apply_safe_area() -> void:
 	UiScale.apply_hole_safe_area(
-		hud, feedback, _wind_flag, shot_routine, confirm_aim_btn, shot_result_panel
+		hud, feedback, null, shot_routine, confirm_aim_btn, shot_result_panel
 	)
 	# ShotRoutine may compact pad chrome (meter hidden on scored shots) after safe-area defaults.
 	if shot_routine and shot_routine.visible and shot_routine.has_method("layout_shot_chrome"):
 		shot_routine.layout_shot_chrome()
 	_park_change_club_btn()
+	_park_wind_flag()
 	if wind_banner:
 		wind_banner.visible = false
 	if _hole_map:
 		_hole_map.park_under_debug(get_viewport())
+
+
+func _park_wind_flag() -> void:
+	## Right chrome, left of HoleMap — avoids overlapping pin at center-top (playtest 1684).
+	if _wind_flag == null:
+		return
+	var m := UiScale.viewport_safe_margins(get_viewport())
+	var top := UiScale.HUD_HEIGHT + m.y + 8.0 + 60.0 + 10.0
+	var right := m.z + 16.0
+	var w := 96.0
+	var h := 128.0
+	var gap := 8.0
+	_wind_flag.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	_wind_flag.offset_right = -right - HoleMap.MAP_W - gap
+	_wind_flag.offset_left = _wind_flag.offset_right - w
+	_wind_flag.offset_top = top
+	_wind_flag.offset_bottom = top + h
 
 
 func _setup_club_select() -> void:
@@ -358,14 +407,9 @@ func _setup_aim_visuals() -> void:
 	_wind_flag = WindFlag.new()
 	_wind_flag.name = "WindFlag"
 	_wind_flag.visible = false
-	_wind_flag.set_anchors_preset(Control.PRESET_CENTER_TOP)
-	_wind_flag.anchor_left = 0.5
-	_wind_flag.anchor_right = 0.5
-	_wind_flag.offset_left = -48.0
-	_wind_flag.offset_right = 48.0
-	_wind_flag.offset_top = UiScale.WIND_TOP
-	_wind_flag.offset_bottom = UiScale.WIND_TOP + 128.0
+	_wind_flag.z_index = 5
 	ui_layer.add_child(_wind_flag)
+	_park_wind_flag()
 	if wind_banner:
 		wind_banner.visible = false
 		wind_banner.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -397,7 +441,9 @@ func load_hole(hole_index: int) -> void:
 	_clear_putt_camera_lock()
 	_build_course()
 	ball.reset_at(_tee_pos, "Tee")
-	camera.global_position = Vector2(_tee_pos.x, _tee_pos.y - 120)
+	_user_zoom_mult = 1.0
+	camera.global_position = _desired_camera_look()
+	camera.zoom = _desired_camera_zoom()
 	if not camera.is_current():
 		camera.make_current()
 	_update_hud()
@@ -420,7 +466,9 @@ func load_range() -> void:
 	_chosen_club.clear()
 	_build_course()
 	ball.reset_at(_tee_pos, "Tee")
-	camera.global_position = Vector2(_tee_pos.x, _tee_pos.y - 120)
+	_user_zoom_mult = 1.0
+	camera.global_position = _desired_camera_look()
+	camera.zoom = _desired_camera_zoom()
 	if not camera.is_current():
 		camera.make_current()
 	_update_hud()
@@ -627,7 +675,7 @@ func _build_course() -> void:
 	var flag_node: Node2D = CoursePinFlagScr.new()
 	flag_node.name = "CoursePinFlag"
 	flag_node.position = _cup_pos
-	flag_node.set("height_px", PIN_FLAG_H_PX)
+	flag_node.set("height_px", PIN_FLAG_H_MAX)
 	course_root.add_child(flag_node)
 	_pin_flag = flag_node
 	_sync_pin_flag_visible()
@@ -1252,15 +1300,20 @@ func _play_corridor_width() -> float:
 
 func _corridor_zoom_level() -> float:
 	var view := get_viewport().get_visible_rect().size
-	return clampf(view.x * CORRIDOR_SCREEN_FRAC / _play_corridor_width(), 1.05, 1.95)
+	return clampf(
+		view.x * CORRIDOR_SCREEN_FRAC / _play_corridor_width(),
+		CORRIDOR_ZOOM_MIN,
+		CORRIDOR_ZOOM_MAX
+	)
 
 
 func _approach_pin_zoom(pin_yd: float, view_min: float) -> float:
-	## Distance-driven zoom for non-putt approaches (higher = closer). Primary
-	## framing through short par-3s; softens only as pin yards grow (pin-primary).
+	## Ball + green/pin with comfortable margin (not glued). Higher = closer.
 	var dist := BallPhysics.yards_to_pixels(maxf(pin_yd, 8.0))
-	var half_span := maxf(dist * 0.52 + 18.0, 48.0)
-	return clampf(view_min * 0.62 / half_span, 1.35, 7.5)
+	var half_span := maxf(dist * APPROACH_SPAN_COEFF + APPROACH_SPAN_PAD, APPROACH_SPAN_FLOOR)
+	return clampf(
+		view_min * APPROACH_VIEW_FRAC / half_span, APPROACH_ZOOM_MIN, APPROACH_ZOOM_MAX
+	)
 
 
 func _flight_z_launch() -> float:
@@ -1472,18 +1525,18 @@ class _GreenBookDraw extends Node2D:
 
 
 func _should_show_green_book() -> bool:
+	## On green or within chip/approach band only — NOT whenever aim sits on the pin
+	## from 180+ yd (that stole green-fit zoom until stroke — playtest 182 yd).
 	if hole == null or ball == null:
 		return false
 	if ball.get_lie() == "Green":
 		return true
-	if _pin_yards() <= 80.0:
-		return true
-	var apron := maxf(hole.green_radius_x, hole.green_radius_y) + 70.0
-	return _aim_target.distance_to(_green_center) <= apron
+	return _pin_yards() <= GREEN_BOOK_SHOW_MAX_PIN_YD
 
 
 func _is_putt_context() -> bool:
-	return ball.get_lie() == "Green" or _pin_yards() <= 28.0
+	## Putt camera / lock only on the putting surface — chips use approach framing.
+	return ball != null and ball.get_lie() == "Green"
 
 
 func _sync_pin_flag_visible() -> void:
@@ -1497,6 +1550,9 @@ func _sync_pin_flag_visible() -> void:
 func _update_pin_flag_wind() -> void:
 	if _pin_flag == null:
 		return
+	var z := maxf(camera.zoom.x, 0.35) if camera else 1.0
+	var h := clampf(PIN_FLAG_SCREEN_PX / z, PIN_FLAG_H_MIN, PIN_FLAG_H_MAX)
+	_pin_flag.set("height_px", h)
 	var wind: Vector2 = Vector2.ZERO
 	if course_root:
 		wind = course_root.get_meta("wind", hole.wind_vector if hole else Vector2.ZERO)
@@ -2259,6 +2315,11 @@ func _effective_shot_type_for_aim() -> String:
 	return _recommended_shot_type(lie, aim_yd, club_max, from, to)
 
 
+func _sync_ball_visual_shot_type() -> void:
+	if ball and ball.has_method("set_visual_shot_type"):
+		ball.call("set_visual_shot_type", _effective_shot_type_for_aim(), _pin_yards())
+
+
 func _sync_shot_type_picker() -> void:
 	if _shot_type_row == null:
 		return
@@ -2271,6 +2332,7 @@ func _sync_shot_type_picker() -> void:
 		_shot_type_row.visible = false
 		if is_putt:
 			_chosen_shot_type = "putt"
+		_sync_ball_visual_shot_type()
 		return
 	var from := ball.global_position
 	var to := _aim_target
@@ -2304,6 +2366,7 @@ func _sync_shot_type_picker() -> void:
 	_shot_type_row.visible = true
 	# Re-park column height for actual n (and under bag when punch hidden).
 	_park_shot_type_row(_shot_type_park_top, _shot_type_park_right, n)
+	_sync_ball_visual_shot_type()
 
 
 func _on_shot_type_toggled(on: bool, st: String) -> void:
@@ -2318,6 +2381,7 @@ func _on_shot_type_toggled(on: bool, st: String) -> void:
 	_chosen_shot_type = st
 	_shot_type_manual = true
 	AudioBus.play_ui()
+	_sync_ball_visual_shot_type()
 	# Short types: pull aim lock back to pin if Full/overclub had expanded it.
 	if _aiming and not BallPhysics.shot_type_uses_full_pocket(st):
 		var from := ball.global_position
@@ -3113,13 +3177,29 @@ func _pin_yards() -> float:
 	return BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
 
 
+func _green_book_aim_zoom(view_min: float) -> float:
+	## Fit putting surface so heat reads as a yardage book (not postage-stamp putt zoom).
+	var rx := hole.green_radius_x if hole else 40.0
+	var ry := hole.green_radius_y if hole else 40.0
+	var half := maxf(rx, ry) * GREEN_BOOK_FIT
+	var z := view_min * GREEN_BOOK_VIEW_FRAC / maxf(half, 1.0)
+	return clampf(z, GREEN_BOOK_ZOOM_FLOOR, GREEN_BOOK_ZOOM_CAP)
+
+
 func _desired_camera_zoom() -> Vector2:
 	## Higher zoom = closer. Fit green into portrait for putts; corridor-owned for full shots.
 	var pin_yd := _pin_yards()
 	var view := get_viewport().get_visible_rect().size
 	var view_min := minf(view.x, view.y)
 	var z: float
-	if _is_putt_context():
+	# Aim + book + near pin: green-fit. Far approaches keep approach/corridor zoom.
+	if (
+		_aiming
+		and _should_show_green_book()
+		and _pin_yards() <= GREEN_BOOK_ZOOM_MAX_PIN_YD
+	):
+		z = _green_book_aim_zoom(view_min)
+	elif _is_putt_context():
 		# True-scale Phase 2: frame ball→cup, but keep cup/ball readable on short/mid.
 		# Span floor 12 + cap 24 left objects at ~2–6 px after Phase 1 shrink.
 		var dist := ball.global_position.distance_to(_cup_pos)
@@ -3143,40 +3223,49 @@ func _desired_camera_zoom() -> Vector2:
 		z = lerpf(maxf(z_fit, z_obj), z_fit, t_long)
 		z = clampf(z, PUTT_ZOOM_FLOOR, PUTT_ZOOM_CAP)
 	else:
-		# Pin-primary: tight ball→pin framing through short par-3s (~150 yd), ease to
-		# corridor only for long tee (150→220). Old band ended at 90 → 109 yd stayed corridor.
+		# Pin-primary mid-irons; long tee opens to corridor (playtest 1685 — 216 yd).
 		var z_cor := _corridor_zoom_level()
-		var z_pin := _approach_pin_zoom(pin_yd, view_min)
-		var t_long := clampf(
-			(pin_yd - APPROACH_ZOOM_HI) / maxf(APPROACH_ZOOM_LONG - APPROACH_ZOOM_HI, 1.0),
-			0.0,
-			1.0
-		)
-		# t=0 pin; t=1 corridor. Long tee slightly open (0.88).
-		z = lerpf(z_pin, z_cor * 0.88, t_long)
-		if _aiming and _should_show_green_book():
-			# Mild widen for book readability — must not wipe pin framing.
-			var book_w := clampf((pin_yd - 28.0) / 52.0, 0.0, 1.0)
-			z *= lerpf(0.98, 0.94, book_w)
+		if pin_yd >= APPROACH_TEE_OPEN_YD:
+			z = z_cor * APPROACH_TEE_CORRIDOR_FRAC
+		else:
+			var z_pin := _approach_pin_zoom(pin_yd, view_min)
+			var t_long := clampf(
+				(pin_yd - APPROACH_ZOOM_HI) / maxf(APPROACH_ZOOM_LONG - APPROACH_ZOOM_HI, 1.0),
+				0.0,
+				1.0
+			)
+			# t=0 pin; t=1 corridor.
+			z = lerpf(z_pin, z_cor * 0.88, t_long)
 	# Pinch-to-zoom override — aim phase only; auto-framing owns zoom everywhere else.
 	if _aiming and _user_zoom_mult != 1.0:
 		z = clampf(z * _user_zoom_mult, PINCH_ABS_ZOOM_MIN, PINCH_ABS_ZOOM_MAX)
 	return Vector2(z, z)
 
 
+func _ui_safe_look(focus: Vector2) -> Vector2:
+	## Shift camera so focus sits at PUTT_SAFE_SCREEN_Y (clears top HUD + bottom ShotPanel).
+	var view := get_viewport().get_visible_rect().size
+	var z := maxf(_desired_camera_zoom().x, 0.35)
+	var dy := (PUTT_SAFE_SCREEN_Y - 0.5) * view.y / z
+	return focus - Vector2(0.0, dy)
+
+
 func _desired_camera_look() -> Vector2:
+	if _aiming and _should_show_green_book():
+		# Near-green book: same UI-safe band so cup isn't under the swing pad.
+		var book_focus := _green_center.lerp(ball.global_position, GREEN_BOOK_LOOK_BALL)
+		if _is_putt_context() or _pin_yards() <= GREEN_BOOK_SHOW_MAX_PIN_YD:
+			return _ui_safe_look(book_focus)
+		return book_focus
 	if _is_putt_context():
 		var focus := ball.global_position.lerp(_cup_pos, 0.55)
 		if _aiming:
 			focus = focus.lerp(_aim_target, 0.2)
-		return focus
-	if _aiming and _should_show_green_book():
-		# Bias toward green so the book is on-screen with the landing circle
-		var mid := ball.global_position.lerp(_aim_target, 0.4)
-		return mid.lerp(_green_center, 0.35)
+		return _ui_safe_look(focus)
 	if _aiming:
 		return ball.global_position.lerp(_aim_target, 0.45)
-	return ball.global_position
+	# Club select / between shots: look down the hole so green isn't behind the camera.
+	return ball.global_position.lerp(_cup_pos, TEE_LOOK_PIN_BIAS)
 
 
 func _flight_camera_zoom() -> Vector2:

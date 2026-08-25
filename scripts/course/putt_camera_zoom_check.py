@@ -57,8 +57,12 @@ def main() -> int:
     assert "PUTT_SPAN_FLOOR" in CTRL
     assert "PUTT_MIN_CUP_SCREEN_PX" in CTRL
     assert "PUTT_MIN_BALL_SCREEN_PX" in CTRL
+    assert "PUTT_SAFE_SCREEN_Y" in CTRL
+    assert "func _ui_safe_look" in CTRL
     assert "lerpf(maxf(z_fit, z_obj), z_fit, t_long)" in CTRL
     assert "PINCH_ABS_ZOOM_MAX" in CTRL
+    safe_y = _const(CTRL, "PUTT_SAFE_SCREEN_Y")
+    assert 0.32 <= safe_y <= 0.48, safe_y  # above mid, clear of swing pad
 
     # Roll lock — no live chase punch.
     assert "func _lock_putt_camera" in CTRL
@@ -101,33 +105,31 @@ def main() -> int:
     )
 
     z_2ft = desired_putt_zoom(2.0, **kw)
-    z_6ft = desired_putt_zoom(6.0, **kw)
     z_10ft = desired_putt_zoom(10.0, **kw)
-    z_15ft = desired_putt_zoom(15.0, **kw)
     z_30ft = desired_putt_zoom(30.0, **kw)
-    z_35ft = desired_putt_zoom(35.0, **kw)
+    z_44ft = desired_putt_zoom(44.0, **kw)  # playtest 1686
     z_60ft = desired_putt_zoom(60.0, **kw)
 
-    # Short putts much closer than pre-Phase-2 (~24) and than long lags.
+    # Short putts much closer than mid/long lags.
     assert z_2ft > 80.0, z_2ft
     assert z_2ft > z_30ft > z_60ft, (z_2ft, z_30ft, z_60ft)
-    assert z_10ft > z_35ft, (z_10ft, z_35ft)
-    assert z_15ft >= z_35ft >= z_60ft, (z_15ft, z_35ft, z_60ft)
+    assert z_10ft > z_44ft > z_60ft, (z_10ft, z_44ft, z_60ft)
 
     vis_cup = CUP_FILL * (cup_r * 2.0)
     vis_ball = BALL_FILL * (ball_r * 2.0)
-    # Short: readable objects (smoke — playtest may nudge mins).
     assert vis_cup * z_2ft >= min_cup * 0.9, (vis_cup * z_2ft, min_cup)
     assert vis_ball * z_2ft >= min_ball * 0.9, (vis_ball * z_2ft, min_ball)
-    # Mid 30 ft: cup findable vs old ~6 px.
-    assert vis_cup * z_30ft >= 8.0, vis_cup * z_30ft
+    # Mid ~44 ft: glanceable (was ~10 px cup / ~4 px ball).
+    assert vis_cup * z_44ft >= 14.0, vis_cup * z_44ft
+    assert vis_ball * z_44ft >= 6.0, vis_ball * z_44ft
+    assert z_44ft >= 50.0, z_44ft
     # Long lags still open vs short.
-    assert z_60ft < z_10ft * 0.55, (z_60ft, z_10ft)
+    assert z_60ft < z_10ft * 0.65, (z_60ft, z_10ft)
 
     print(
         f"putt_camera_zoom_check: ok z(2ft)={z_2ft:.1f} z(10ft)={z_10ft:.1f} "
-        f"z(30ft)={z_30ft:.1f} z(60ft)={z_60ft:.1f} cap={cap:.0f} "
-        f"cup_px@2={vis_cup * z_2ft:.1f} cup_px@30={vis_cup * z_30ft:.1f} (roll locked)"
+        f"z(44ft)={z_44ft:.1f} z(60ft)={z_60ft:.1f} "
+        f"cup_px@44={vis_cup * z_44ft:.1f} ball_px@44={vis_ball * z_44ft:.1f}"
     )
     return 0
 

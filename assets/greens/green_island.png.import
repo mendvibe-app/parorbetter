@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://db403sgqowq86"
-path="res://.godot/imported/green_oval.png-11d3c95dbe01576c99241ff0d645f108.ctex"
+uid="uid://dqetpufg22ks6"
+path="res://.godot/imported/green_island.png-7208e314276cd934abb354b8b7fdc4f3.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/greens/green_oval.png"
-dest_files=["res://.godot/imported/green_oval.png-11d3c95dbe01576c99241ff0d645f108.ctex"]
+source_file="res://assets/greens/green_island.png"
+dest_files=["res://.godot/imported/green_island.png-7208e314276cd934abb354b8b7fdc4f3.ctex"]
 
 [params]
 
