@@ -766,12 +766,14 @@ func _process_roll(delta: float) -> void:
 	elif _lie == "Green":
 		velocity += slope * 16.0 * delta
 
-	# Any green surface uses putt pace (chips used unpaced stimp → hot cup + long coasts).
-	var decel := (
-		BallPhysics.putt_decel_px()
-		if _is_putt or _lip_out_leave or _lie == "Green"
-		else BallPhysics.roll_decel_px(_lie)
-	)
+	# Green → putt pace; chip/pitch/flop off-green → chip pace (playtest: rocket rollout).
+	var decel: float
+	if _is_putt or _lip_out_leave or _lie == "Green":
+		decel = BallPhysics.putt_decel_px()
+	elif BallPhysics.is_short_game_shot(_shot_type):
+		decel = BallPhysics.landing_roll_decel_px(_lie, _shot_type)
+	else:
+		decel = BallPhysics.roll_decel_px(_lie)
 	velocity = velocity.move_toward(Vector2.ZERO, decel * delta)
 
 	if not _is_putt:

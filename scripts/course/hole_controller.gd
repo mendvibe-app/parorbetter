@@ -16,11 +16,11 @@ const CUP_RADIUS := 0.198
 ## Dark disc ≈ 43/64 of cup.png → (43/64)*CUP_RADIUS ≈ 0.133. See = catch.
 ## Must match GolfBall.CUP_CAPTURE_RADIUS (plans/putt-true-scale-phase1.md).
 const CUP_CAPTURE_RADIUS := 0.133
-## Course pin: screen-constant height (world px = screen_px / zoom). Fixed 12 was a
-## tower at mid-approach zoom next to true-scale ball (playtest 1684).
-const PIN_FLAG_SCREEN_PX := 36.0  ## PLAYTEST TARGET
+## Course pin: screen-constant height (world px = screen_px / zoom).
+const PIN_FLAG_SCREEN_PX := 40.0  ## PLAYTEST — putt aim / find the cup
+const PIN_FLAG_SCREEN_PX_APPROACH := 52.0  ## PLAYTEST — greenside chip (was soft/small)
 const PIN_FLAG_H_MIN := 5.0
-const PIN_FLAG_H_MAX := 14.0
+const PIN_FLAG_H_MAX := 16.0
 ## Full-shot "up and in" camera — fractions of pre-shot aim base (not absolute).
 ## Launch holds aim (1.0) — 0.90 open caused zoom-out-then-in once pin-primary aim got tight.
 const FLIGHT_LAUNCH_FRAC := 1.0  ## hold aim framing at strike
@@ -66,6 +66,11 @@ const PUTT_OBJ_BLEND_START_FT := 12.0
 const PUTT_OBJ_BLEND_END_FT := 72.0
 ## Place putt focus higher than viewport mid so ball/cup clear HUD + swing pad (playtest 23ft).
 const PUTT_SAFE_SCREEN_Y := 0.40  ## PLAYTEST — 0.5=center; lower = action higher on screen
+## Phase 0 line-aim prototype (GameState.debug_putt_line_aim) — PLAYTEST TARGETS.
+const PUTT_LINE_SNAP_DEG := 3.0  ## soft-snap to cup line within this angle
+const PUTT_LINE_SNAP_MAX_FT := 8.0  ## only soft-snap on short putts
+## Screen-constant putt aim line (2.6/zoom was a hairline at true-scale zoom).
+const PUTT_AIM_LINE_SCREEN_PX := 5.0  ## PLAYTEST TARGET
 ## Sprite fill fractions (see putt-ball-visible-size.md) — screen-size floors only.
 const PUTT_BALL_FILL := 33.0 / 64.0
 const PUTT_CUP_FILL := 43.0 / 64.0
@@ -1432,14 +1437,17 @@ func _add_fog_band() -> void:
 	course_root.add_child(spr)
 
 
-## Heat cell centers must sit inside this fraction of the putting ellipse so square
-## cells don't bleed past the green (playtest: heatmap into rough flanks).
+## Yardage-book: filtered height wash + fall-line arrows (ref: debug/greenbook2-*.jpg).
 const GREEN_BOOK_ELLIPSE_FRAC := 0.92
+const GREEN_BOOK_TEX_N := 64  ## PLAYTEST — bilinear wash resolution
+const GREEN_BOOK_ARROW_N := 9  ## arrows across green (playtest density)
+const GREEN_BOOK_ARROW_MIN_SLOPE := 0.04  ## skip flat spots
+const GREEN_BOOK_ARROW_LEN_SCREEN := 16.0  ## shaft length in screen px
+const GREEN_BOOK_ARROW_W_SCREEN := 2.0
 
 
 func _build_green_book() -> void:
-	## Yardage-book from the same height field the ball samples. Aim-only.
-	## Clip to painted putting surface (not ideal ellipse alone) so heat matches art.
+	## Continuous wash + downhill arrows (yardage-book language).
 	_green_book = Node2D.new()
 	_green_book.name = "GreenBook"
 	_green_book.z_index = 3
@@ -1448,7 +1456,7 @@ func _build_green_book() -> void:
 
 	var rx := hole.green_radius_x + 14.0
 	var ry := hole.green_radius_y + 14.0
-	var n := 16
+	var n := GREEN_BOOK_TEX_N
 	var h_min := INF
 	var h_max := -INF
 	var grid: PackedFloat32Array = PackedFloat32Array()
@@ -1460,7 +1468,7 @@ func _build_green_book() -> void:
 				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
 			)
 			var ell := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry)
-			var inside := ell <= 1.05
+			var inside := ell <= 1.05 and _on_painted_green(_green_center + local)
 			var h := hole.green_height_at(local) if inside else 0.0
 			grid[iy * n + ix] = h
 			if inside:
@@ -1469,59 +1477,105 @@ func _build_green_book() -> void:
 	if h_max - h_min < 0.001:
 		h_min = -1.0
 		h_max = 1.0
+	var h_span := maxf(h_max - h_min, 0.001)
+	var frac2 := GREEN_BOOK_ELLIPSE_FRAC * GREEN_BOOK_ELLIPSE_FRAC
+
+	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
+	for iy in n:
+		for ix in n:
+			var local := Vector2(
+				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx,
+				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry
+			)
+			var ell := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry)
+			if ell > 1.05 or not _on_painted_green(_green_center + local):
+				img.set_pixel(ix, iy, Color(0, 0, 0, 0))
+				continue
+			var t := clampf((grid[iy * n + ix] - h_min) / h_span, 0.0, 1.0)
+			img.set_pixel(ix, iy, _green_book_wash_color(t))
+	var tex := ImageTexture.create_from_image(img)
+	var wash := Sprite2D.new()
+	wash.name = "GreenBookWash"
+	wash.texture = tex
+	wash.centered = true
+	wash.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	wash.scale = Vector2((2.0 * rx) / float(n), (2.0 * ry) / float(n))
+	wash.position = _green_center
+	wash.z_index = 3
+	_green_book.add_child(wash)
 
 	var drawer := _GreenBookDraw.new()
 	drawer.position = _green_center
+	drawer.z_index = 4
+	drawer.arrow_len_screen = GREEN_BOOK_ARROW_LEN_SCREEN
+	drawer.arrow_w_screen = GREEN_BOOK_ARROW_W_SCREEN
 	_green_book.add_child(drawer)
 
-	var heat_lut := [
-		Color(0.25, 0.55, 0.95, 0.42),
-		Color(0.35, 0.75, 0.85, 0.38),
-		Color(0.55, 0.85, 0.45, 0.34),
-		Color(0.95, 0.75, 0.3, 0.4),
-		Color(0.95, 0.4, 0.25, 0.45),
-	]
-	var cell := Vector2(2.0 * rx / float(n - 1), 2.0 * ry / float(n - 1))
-	# Half-cell small enough that corners stay inside GREEN_BOOK_ELLIPSE_FRAC ellipse.
-	var hx := cell.x * 0.42
-	var hy := cell.y * 0.42
-	var frac2 := GREEN_BOOK_ELLIPSE_FRAC * GREEN_BOOK_ELLIPSE_FRAC
-	for iy in n - 1:
-		for ix in n - 1:
+	# Fall-line arrows: point downhill (same vector physics uses).
+	var an := GREEN_BOOK_ARROW_N
+	for iy in an:
+		for ix in an:
 			var local := Vector2(
-				(float(ix) / float(n - 1) - 0.5) * 2.0 * rx + cell.x * 0.5,
-				(float(iy) / float(n - 1) - 0.5) * 2.0 * ry + cell.y * 0.5
+				(float(ix) / float(an - 1) - 0.5) * 2.0 * rx * 0.82,
+				(float(iy) / float(an - 1) - 0.5) * 2.0 * ry * 0.82
 			)
 			var ell := (local.x * local.x) / (rx * rx) + (local.y * local.y) / (ry * ry)
 			if ell > frac2:
 				continue
-			# Same silhouette as lie — no heat on transparent fringe / cutouts.
 			if not _on_painted_green(_green_center + local):
 				continue
-			var h := (
-				grid[iy * n + ix] + grid[iy * n + ix + 1]
-				+ grid[(iy + 1) * n + ix] + grid[(iy + 1) * n + ix + 1]
-			) * 0.25
-			var t := clampf((h - h_min) / (h_max - h_min), 0.0, 1.0)
-			var ci := mini(int(t * float(heat_lut.size() - 1) + 0.001), heat_lut.size() - 1)
-			drawer.heat.append({
-				"pts": PackedVector2Array([
-					local + Vector2(-hx, -hy),
-					local + Vector2(hx, -hy),
-					local + Vector2(hx, hy),
-					local + Vector2(-hx, hy),
-				]),
-				"color": heat_lut[ci],
-			})
+			var s := hole.green_slope_at(local)
+			var mag := s.length()
+			if mag < GREEN_BOOK_ARROW_MIN_SLOPE:
+				continue
+			drawer.arrows.append({"pos": local, "dir": s / mag, "mag": mag})
 	drawer.queue_redraw()
 
 
+func _green_book_wash_color(t: float) -> Color:
+	## Soft yardage-book ramp (blue/cool = low → red/warm = high).
+	var cold := Color(0.28, 0.58, 0.92, 0.32)
+	var mid := Color(0.55, 0.82, 0.42, 0.26)
+	var hot := Color(0.95, 0.42, 0.28, 0.34)
+	if t < 0.5:
+		return cold.lerp(mid, t * 2.0)
+	return mid.lerp(hot, (t - 0.5) * 2.0)
+
+
 class _GreenBookDraw extends Node2D:
-	var heat: Array = []
+	## Fall-line arrows: {pos, dir, mag} in green-local space.
+	var arrows: Array = []
+	var arrow_len_screen: float = 16.0
+	var arrow_w_screen: float = 2.0
+
+	func _ready() -> void:
+		set_process(true)
+
+	func _process(_delta: float) -> void:
+		if is_visible_in_tree():
+			queue_redraw()
 
 	func _draw() -> void:
-		for h in heat:
-			draw_colored_polygon(h["pts"], h["color"])
+		var z := 1.0
+		var cam := get_viewport().get_camera_2d()
+		if cam:
+			z = maxf(cam.zoom.x, 0.35)
+		var shaft := arrow_len_screen / z
+		var w := arrow_w_screen / z
+		var head := shaft * 0.35
+		var col := Color(0.1, 0.08, 0.06, 0.75)
+		for a in arrows:
+			var pos: Vector2 = a["pos"]
+			var dir: Vector2 = a["dir"]
+			# Scale length mildly by slope strength.
+			var len := shaft * clampf(0.65 + float(a["mag"]) * 1.2, 0.65, 1.25)
+			var tip: Vector2 = pos + dir * len * 0.5
+			var tail: Vector2 = pos - dir * len * 0.5
+			draw_line(tail, tip, col, w, true)
+			var perp := Vector2(-dir.y, dir.x)
+			var left: Vector2 = tip - dir * head + perp * head * 0.45
+			var right: Vector2 = tip - dir * head - perp * head * 0.45
+			draw_colored_polygon(PackedVector2Array([tip, left, right]), col)
 
 
 func _should_show_green_book() -> bool:
@@ -1540,19 +1594,26 @@ func _is_putt_context() -> bool:
 
 
 func _sync_pin_flag_visible() -> void:
-	## Pin out only on the putting surface — not for chips/approaches inside 28 yd.
+	## Aim/read: pin in (incl. on green). Stroke/roll: pin out so the cup is clear.
 	if _pin_flag == null:
 		return
 	var on_green := ball != null and ball.get_lie() == "Green"
-	_pin_flag.visible = not on_green
+	if not on_green:
+		_pin_flag.visible = true
+		return
+	_pin_flag.visible = _aiming and not hole_complete
 
 
 func _update_pin_flag_wind() -> void:
 	if _pin_flag == null:
 		return
 	var z := maxf(camera.zoom.x, 0.35) if camera else 1.0
-	var h := clampf(PIN_FLAG_SCREEN_PX / z, PIN_FLAG_H_MIN, PIN_FLAG_H_MAX)
+	var on_green := ball != null and ball.get_lie() == "Green"
+	var screen_px := PIN_FLAG_SCREEN_PX if on_green else PIN_FLAG_SCREEN_PX_APPROACH
+	var h := clampf(screen_px / z, PIN_FLAG_H_MIN, PIN_FLAG_H_MAX)
 	_pin_flag.set("height_px", h)
+	if _pin_flag.has_method("set_camera_zoom"):
+		_pin_flag.call("set_camera_zoom", z)
 	var wind: Vector2 = Vector2.ZERO
 	if course_root:
 		wind = course_root.get_meta("wind", hole.wind_vector if hole else Vector2.ZERO)
@@ -1565,8 +1626,35 @@ func _update_pin_flag_wind() -> void:
 func _set_green_book_visible(on: bool) -> void:
 	if _green_book:
 		_green_book.visible = on
+	_set_green_book_legend_visible(on)
 	if on:
 		_sync_screen_line_widths()
+
+
+func _set_green_book_legend_visible(on: bool) -> void:
+	## One-glance key: warm = high, cool = low.
+	var leg := ui_layer.get_node_or_null("GreenBookLegend") as Label
+	if not on:
+		if leg:
+			leg.visible = false
+		return
+	if leg == null:
+		leg = Label.new()
+		leg.name = "GreenBookLegend"
+		leg.add_theme_font_size_override("font_size", UiScale.CAPTION)
+		leg.add_theme_color_override("font_color", Color(0.92, 0.95, 0.88, 0.95))
+		leg.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.75))
+		leg.add_theme_constant_override("outline_size", 4)
+		leg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		leg.set_anchors_preset(Control.PRESET_TOP_LEFT)
+		ui_layer.add_child(leg)
+	leg.text = "Cool = low  ·  Warm = high  ·  Arrows = downhill"
+	leg.visible = true
+	var m := UiScale.viewport_safe_margins(get_viewport())
+	leg.offset_left = 16.0 + m.x
+	leg.offset_top = UiScale.HUD_HEIGHT + m.y + 72.0
+	leg.offset_right = leg.offset_left + 420.0
+	leg.offset_bottom = leg.offset_top + 40.0
 
 
 func _sync_screen_line_widths() -> void:
@@ -1921,7 +2009,16 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	_refresh_aim_visuals()
 	var club_bit := String(_chosen_club.get("name", ""))
 	if is_putt:
-		_refresh_putt_pace_feedback()
+		if GameState.debug_putt_line_aim:
+			_aim_lock_yards = maxf(
+				BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos)), 0.5
+			)
+			_aim_target = AimControl.point_along_bearing(
+				ball.global_position, _cup_pos - ball.global_position, _aim_lock_yards
+			)
+			_refresh_putt_line_feedback()
+		else:
+			_refresh_putt_pace_feedback()
 	elif show_book:
 		feedback.text = "%s · AIM + GREEN READ — drag, Confirm" % club_bit
 	else:
@@ -2474,6 +2571,8 @@ func _practice_count_for_current_shot() -> int:
 
 
 func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) -> void:
+	_aiming = false
+	_sync_pin_flag_visible()  # pin out for stroke (cup find during aim only)
 	var wind: Vector2 = course_root.get_meta("wind", hole.wind_vector)
 	var lie := ball.get_lie()
 	var pin_yd := BallPhysics.pixels_to_yards(ball.global_position.distance_to(_cup_pos))
@@ -2790,13 +2889,13 @@ func _refresh_aim_visuals() -> void:
 			len_px = 8.0
 		var tip := from + along.normalized() * (len_px * 0.88)
 		_pin_ref_line.points = PackedVector2Array([from, tip])
-		_pin_ref_line.width = 2.6 / maxf(camera.zoom.x, 0.35)
-		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.55)
+		_pin_ref_line.width = PUTT_AIM_LINE_SCREEN_PX / maxf(camera.zoom.x, 0.35)
+		_pin_ref_line.default_color = Color(1.0, 1.0, 1.0, 0.72)
 		if _pin_ref_line.gradient == null:
 			var fade := Gradient.new()
 			fade.offsets = PackedFloat32Array([0.0, 0.55, 1.0])
 			fade.colors = PackedColorArray([
-				Color(1.0, 1.0, 1.0, 0.55),
+				Color(1.0, 1.0, 1.0, 0.72),
 				Color(1.0, 1.0, 1.0, 0.22),
 				Color(1.0, 1.0, 1.0, 0.0),
 			])
@@ -2938,13 +3037,44 @@ func _accept_mouse() -> bool:
 func _apply_aim_world(world: Vector2) -> void:
 	var from := ball.global_position
 	if ball.get_lie() == "Green":
-		# Putts aim a real point — distance is the pace commit.
-		_aim_target = AimControl.clamp_aim(world)
-		if _aiming:
-			_refresh_putt_pace_feedback()
+		if GameState.debug_putt_line_aim:
+			# Phase 0 prototype: line only — lock yards to cup; drag = bearing.
+			var cup_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
+			_aim_lock_yards = maxf(cup_yd, 0.5)
+			_aim_target = AimControl.retarget_bearing(from, world, _aim_lock_yards)
+			_aim_target = _putt_line_soft_snap(from, _aim_target)
+			if _aiming:
+				_refresh_putt_line_feedback()
+		else:
+			# Default: free point — distance is the pace commit.
+			_aim_target = AimControl.clamp_aim(world)
+			if _aiming:
+				_refresh_putt_pace_feedback()
 	else:
 		_aim_target = AimControl.retarget_bearing(from, world, _aim_lock_yards)
 	_refresh_aim_visuals()
+
+
+func _putt_line_soft_snap(from: Vector2, aim: Vector2) -> Vector2:
+	## Short putts: snap near-cup-line aims so 3 ft isn't twitchy (Phase 0 PLAYTEST).
+	var cup_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
+	var cup_ft := cup_yd * 3.0
+	if cup_ft > PUTT_LINE_SNAP_MAX_FT:
+		return aim
+	var cup_dir := _cup_pos - from
+	var aim_dir := aim - from
+	if cup_dir.length_squared() < 0.01 or aim_dir.length_squared() < 0.01:
+		return aim
+	var ang := absf(cup_dir.angle_to(aim_dir))
+	if rad_to_deg(ang) <= PUTT_LINE_SNAP_DEG:
+		return AimControl.point_along_bearing(from, cup_dir, _aim_lock_yards)
+	return aim
+
+
+func _refresh_putt_line_feedback() -> void:
+	var label := AimControl.aim_offset_label(ball.global_position, _aim_target, _cup_pos)
+	feedback.text = "LINE AIM · %s · Confirm" % label
+	feedback.modulate = Color(0.85, 0.95, 0.75)
 
 
 func _nudge_aim(delta: Vector2) -> void:

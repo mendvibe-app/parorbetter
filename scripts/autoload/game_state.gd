@@ -51,6 +51,9 @@ var debug_tempo_tol: Variant = null
 var debug_balance_tighten: Variant = null
 var force_perfect: bool = false
 var force_mishit: bool = false
+## Phase 0 putt-line prototype (putting-rework-roadmap): bearing drag, distance locked to cup.
+## Off = today's free-point putt aim (distance ≈ pace preview). F1 toggle.
+var debug_putt_line_aim: bool = false
 ## Last tempo verdict (ratio, balance, ms…) for F1 readout
 var last_tempo_metrics: Dictionary = {}
 ## Fadeable tempo guide — shows rhythm only, never widens windows.
@@ -143,6 +146,7 @@ func reset_run(p_stroke_play: bool = false) -> void:
 	debug_tee_set = null
 	force_perfect = false
 	force_mishit = false
+	debug_putt_line_aim = false
 	tempo_guide_forced = false
 	range_mode = false
 	green_mode = false

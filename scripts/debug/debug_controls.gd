@@ -58,12 +58,41 @@ func _ready() -> void:
 		GameState.set_lives(int(lives_spin.value))
 	)
 	_setup_practice_count_row()
+	_setup_putt_line_aim_toggle()
 	_setup_haptic_smoke_btn()
 	_setup_copy_metrics_btn()
 	_setup_elevation_sparkline()
 	GameState.hole_changed.connect(func(_i: int):
 		hole_spin.max_value = GameState.HOLE_COUNT
 	)
+
+
+func _setup_putt_line_aim_toggle() -> void:
+	## Phase 0 prototype — bearing-only putt aim (see plans/putting-rework-roadmap.md).
+	var vbox := $Panel/Margin/Root/Scroll/VBox as VBoxContainer
+	if vbox == null:
+		return
+	var row := HBoxContainer.new()
+	row.name = "PuttLineAimRow"
+	var lab := Label.new()
+	lab.text = "Putt line aim (Phase 0)"
+	lab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var cb := CheckBox.new()
+	cb.name = "PuttLineAimCheck"
+	cb.button_pressed = GameState.debug_putt_line_aim
+	cb.toggled.connect(func(on: bool) -> void:
+		GameState.debug_putt_line_aim = on
+		AudioBus.play_ui()
+	)
+	row.add_child(lab)
+	row.add_child(cb)
+	var insert_at := -1
+	var practice := vbox.get_node_or_null("PracticeCountBlock")
+	if practice:
+		insert_at = practice.get_index() + 1
+	vbox.add_child(row)
+	if insert_at >= 0:
+		vbox.move_child(row, insert_at)
 
 
 func _setup_copy_metrics_btn() -> void:

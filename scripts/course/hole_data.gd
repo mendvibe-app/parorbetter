@@ -102,25 +102,32 @@ static func tee_set_label(set: TeeSet) -> String:
 			return "White"
 
 
+## Planar slant weight — low so local contours (bowl/ridge/tier) dominate the read.
+## Playtest: plane alone made every green one big L↔R ramp.
+const GREEN_PLANE_WEIGHT := 0.42  ## PLAYTEST TARGET
+const GREEN_CONTOUR_AMP_SCALE := 1.55  ## PLAYTEST — boost local highs/lows
+
+
 ## Elevation at local pos (world − green_center). Book heat samples this.
 func green_height_at(local: Vector2) -> float:
-	var h := -green_slope.dot(local)
+	var h := -green_slope.dot(local) * GREEN_PLANE_WEIGHT
 	for inf in _green_slope_influences():
 		var d: Vector2 = local - inf["pos"]
 		var s2: float = inf["sigma"] * inf["sigma"]
-		h += float(inf["amp"]) * exp(-d.length_squared() / (2.0 * s2))
+		h += float(inf["amp"]) * GREEN_CONTOUR_AMP_SCALE * exp(-d.length_squared() / (2.0 * s2))
 	return h
 
 
 ## Downhill pull at local pos (same units as green_slope). Physics samples this live.
+## Along-pin component changes pace (uphill/downhill); lateral bends L/R.
 func green_slope_at(local: Vector2) -> Vector2:
-	var s := green_slope
+	var s := green_slope * GREEN_PLANE_WEIGHT
 	for inf in _green_slope_influences():
 		var d: Vector2 = local - inf["pos"]
 		var s2: float = inf["sigma"] * inf["sigma"]
 		var fall := exp(-d.length_squared() / (2.0 * s2))
 		# −∇(amp·gaussian) → ball pushed off highs / into lows
-		s += d * (float(inf["amp"]) / s2) * fall
+		s += d * (float(inf["amp"]) * GREEN_CONTOUR_AMP_SCALE / s2) * fall
 	return s
 
 

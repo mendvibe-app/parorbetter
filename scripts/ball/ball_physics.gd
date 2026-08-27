@@ -808,12 +808,29 @@ static func roll_decel_px(lie: String) -> float:
 ## On-screen putt pace after true-scale zoom (Phase 2 camera). Distance unchanged:
 ## v' = k v, a' = k² a ⇒ s = v²/(2a) same; duration × 1/k. PLAYTEST TARGET (~30 ft zoom ratio).
 const PUTT_PACE_SCALE := 0.35
+## Chip/pitch/flop rollout on fairway/fringe — same idea (chips are ~70% roll).
+const CHIP_PACE_SCALE := 0.38  ## PLAYTEST TARGET
 
 
 ## Green putt decel with pace scale (use for putt launch + putt roll only).
 static func putt_decel_px() -> float:
 	var k := PUTT_PACE_SCALE
 	return roll_decel_px("Green") * k * k
+
+
+static func is_short_game_shot(shot_type: String) -> bool:
+	return shot_type == "chip" or shot_type == "pitch" or shot_type == "flop"
+
+
+## Roll decel for release: green → putt pace; short-game off-green → chip pace.
+static func landing_roll_decel_px(lie: String, shot_type: String = "full") -> float:
+	if lie == "Green":
+		return putt_decel_px()
+	var a := roll_decel_px(lie)
+	if is_short_game_shot(shot_type):
+		var k := CHIP_PACE_SCALE
+		return a * k * k
+	return a
 
 
 ## Putt break (ball.gd 90/55) was tuned at legacy green decel 1.8*60.
@@ -999,8 +1016,7 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
-		# Green release uses putt pace — chips onto green must not carry unpaced stimp energy.
-		var a_roll := putt_decel_px() if lie == "Green" else roll_decel_px(lie)
+		var a_roll := landing_roll_decel_px(lie, shot_type)
 		landing_speed = sqrt(2.0 * a_roll * roll_px)
 
 	return {

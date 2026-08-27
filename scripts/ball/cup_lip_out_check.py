@@ -71,7 +71,8 @@ def main() -> int:
 	assert "_lip_out_leave_from" in finish
 	PHYS = Path(__file__).resolve().parents[0].joinpath("ball_physics.gd").read_text(encoding="utf-8")
 	assert "putt_decel_px()" in PHYS
-	assert 'putt_decel_px() if lie == "Green"' in PHYS or "putt_decel_px() if lie == 'Green'" in PHYS
+	assert "landing_roll_decel_px" in PHYS
+	assert "CHIP_PACE_SCALE" in PHYS
 	roll = BALL.split("func _process_roll")[1].split("func ")[0]
 	assert "LIP_OUT_CHIP_LEAVE_MAX_YD" in roll
 	assert '_lie == "Green"' in roll or "_lie == 'Green'" in roll

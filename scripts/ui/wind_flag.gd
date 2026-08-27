@@ -41,7 +41,8 @@ static func paint_flag(
 	var pole_h := (POLE_BOTTOM_Y - POLE_TOP_Y) * s
 	var attach_up := (POLE_BOTTOM_Y - ATTACH_Y) * s
 	var cloth_h := FLAG_LOCAL_H * s
-	var pole_w := maxf(POLE_W * s, 1.5)
+	# HUD draws in control px (zoom≈1). Course pin uses CoursePinFlag (own draw).
+	var pole_w := maxf(POLE_W * s, 2.5)
 
 	var foot := origin
 	var top := origin + Vector2(0.0, -pole_h)

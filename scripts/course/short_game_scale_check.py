@@ -23,8 +23,12 @@ def main() -> int:
     assert "28.0" not in putt_ctx and "<= 28" not in putt_ctx
 
     assert "PIN_FLAG_SCREEN_PX" in CTRL
+    assert "PIN_FLAG_SCREEN_PX_APPROACH" in CTRL
     assert "PIN_FLAG_H_MIN" in CTRL and "PIN_FLAG_H_MAX" in CTRL
-    assert 20.0 <= _const(CTRL, "PIN_FLAG_SCREEN_PX") <= 48.0
+    assert 20.0 <= _const(CTRL, "PIN_FLAG_SCREEN_PX") <= 56.0
+    # Pin stays for green aim/read.
+    sync = CTRL.split("func _sync_pin_flag_visible")[1].split("func ")[0]
+    assert "_aiming" in sync
 
     assert "func _visual_ball_radius" in BALL
     vis = BALL.split("func _visual_ball_radius")[1].split("func ")[0]

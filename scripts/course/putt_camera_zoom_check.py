@@ -58,7 +58,9 @@ def main() -> int:
     assert "PUTT_MIN_CUP_SCREEN_PX" in CTRL
     assert "PUTT_MIN_BALL_SCREEN_PX" in CTRL
     assert "PUTT_SAFE_SCREEN_Y" in CTRL
+    assert "PUTT_AIM_LINE_SCREEN_PX" in CTRL
     assert "func _ui_safe_look" in CTRL
+    assert _const(CTRL, "PUTT_AIM_LINE_SCREEN_PX") >= 4.0
     assert "lerpf(maxf(z_fit, z_obj), z_fit, t_long)" in CTRL
     assert "PINCH_ABS_ZOOM_MAX" in CTRL
     safe_y = _const(CTRL, "PUTT_SAFE_SCREEN_Y")

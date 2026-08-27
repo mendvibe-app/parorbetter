@@ -367,17 +367,19 @@ static func generate_hole(
 	wind.x = clampf(wind.x, -60.0, 60.0)
 	wind.y = clampf(wind.y, -60.0, 60.0)
 
+	# Cap planar mag — contours carry local read (was up to 0.48 → one highway slant).
 	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else (
-		lerpf(0.10, 0.48, rng.randf()) * float(mods.get("slope_mult", 1.0))
+		lerpf(0.08, 0.30, rng.randf()) * float(mods.get("slope_mult", 1.0))
 	)
 	var slope := Vector2.ZERO
 	if slope_mag > 0.0:
+		# Prefer some along-green (Y) component so uphill/downhill pace matters, not only L/R.
 		slope = Vector2(
 			rng.randf_range(-1.0, 1.0),
-			rng.randf_range(-1.0, 1.0)
+			rng.randf_range(-1.15, 1.15)
 		).normalized() * slope_mag
 		if slope.length_squared() < 0.0001:
-			slope = Vector2(slope_mag, 0.0)
+			slope = Vector2(slope_mag * 0.6, slope_mag * 0.8).normalized() * slope_mag
 
 	var timing := lerpf(1.18, 0.52, t) + rng.randf_range(-0.03, 0.03)
 	timing = clampf(timing, 0.45, 1.25)

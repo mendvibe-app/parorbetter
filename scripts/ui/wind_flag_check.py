@@ -23,7 +23,9 @@ must("STRENGTH_NORM" in FLAG and "INTO_SCALE_MAX" in FLAG and "DOWN_SCALE_MIN" i
 must("↑ INTO" not in FLAG and "↓ HELP" not in FLAG, "no axis glyph")
 
 must("class_name CoursePinFlag" in PIN, "course pin class")
-must("paint_flag" in PIN, "course pin uses paint_flag")
+# Course pin draws its own screen-scaled stick (paint_flag world floors → white box at putt zoom).
+must("POLE_H_SCREEN" in PIN and "POLE_W_SCREEN" in PIN, "pin uses screen-px pole")
+must("paint_flag" not in PIN, "course pin no longer uses HUD paint_flag")
 must("CoursePinFlagScr" in CTRL or "course_pin_flag.gd" in CTRL, "controller preloads course pin")
 must("set_wind" in CTRL, "controller sets wind on pin")
 must("stream_rotation" not in CTRL, "controller no longer rotates pin")
