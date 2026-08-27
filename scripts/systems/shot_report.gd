@@ -41,24 +41,20 @@ static func from_shot(
 	r.stance = result.stance_stability
 	r.path_error = result.path_error
 	r.contact = result.contact_label()
-	r.contact_mul = BallPhysics.contact_multiplier(result.contact_quality)
+	r.contact_mul = BallPhysics.contact_multiplier(result.contact_quality, p_lie)
 	r.lie_mul = BallPhysics.lie_multiplier(p_lie, p_severity)
-	# Putts skip contact_mul in launch_velocity — don't lie in the planned yards.
-	if p_lie == "Green":
-		r.planned_yards = p_club_max * result.power * r.lie_mul
-	else:
-		# Same owner as launch — Plan matches Actual when force/path/contact agree.
-		var force_p := result.true_power if result.true_power > 0.0 else -1.0
-		r.planned_yards = BallPhysics.resolve_distance(
-			p_club_max,
-			result.power,
-			p_lie,
-			p_severity,
-			result.contact_quality,
-			"full",
-			result.path_error,
-			force_p
-		)
+	# Same owner as launch — Plan matches Actual when force/path/contact agree.
+	var force_p := result.true_power if result.true_power > 0.0 else -1.0
+	r.planned_yards = BallPhysics.resolve_distance(
+		p_club_max,
+		result.power,
+		p_lie,
+		p_severity,
+		result.contact_quality,
+		"full",
+		result.path_error,
+		force_p
+	)
 	r.aim_radius_yd = p_aim_radius_yd
 	r.aim_offset = p_aim_offset
 	r.wind_note = p_wind_note

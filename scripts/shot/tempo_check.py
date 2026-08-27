@@ -276,6 +276,8 @@ def main() -> int:
     layout = ROUTINE.split("func layout_shot_chrome")[1].split("func ")[0]
     assert "SHOT_PAD_TOP_COMPACT if (shot_type == \"putt\"" in layout or "shot_type == \"putt\"" in layout
     assert "pad_top := UiScale.SHOT_PAD_TOP if show_meter" not in layout
+    assert "SHOT_PANEL_H_PUTT" in layout
+    assert "shot_type == \"putt\" else UiScale.SHOT_PANEL_H" in layout
     # Takeaway starts on axis lock (not finger-down) — pitch ghost wait no longer inflates 2:1.
     assert "VEL_TOP_EPS_PITCH" in GESTURE
     begin_fn = GESTURE.split("func _begin")[1].split("func ")[0]
@@ -769,6 +771,8 @@ def main() -> int:
     assert "func _draw_golfer" in GESTURE
     assert "func _draw_golfer_stage" in GESTURE
     assert "GOLFER_MARGIN" in GESTURE
+    assert "GOLFER_DRAW_H_PUTT" in GESTURE
+    assert "lie_preview.visible = lie != \"Green\"" in GESTURE
     assert "GOLFER_SKY" in GESTURE and "GOLFER_GRASS" in GESTURE
     assert "GOLFER_X_FRAC" not in GESTURE
     golfer_draw = GESTURE.split("func _draw_golfer")[1].split("func ")[0]

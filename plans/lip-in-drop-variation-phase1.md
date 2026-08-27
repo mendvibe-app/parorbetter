@@ -1,6 +1,6 @@
 # Plan — Lip-in drop variation (pour vs toilet-bowl)
 
-**Status:** CODE COMPLETE — device playtest pending.  
+**Status:** SHIPPED — pour-band unit bug fixed 2026-08-27 (ratio vs absolute).  
 **Deliverable on approve:** `plans/lip-in-drop-variation-phase1.md`  
 **Scope:** One PR. **Presentation only** — make rate / capture frozen. Horseshoe **lip-out** leave work is separate (do not bundle).  
 **User lock:** Mostly **straight pour** for well-paced center lines; rim-curl only on **clear lips**; real-golf grounding + light variation (not every drop identical).

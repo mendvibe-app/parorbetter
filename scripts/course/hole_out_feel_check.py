@@ -19,8 +19,9 @@ def main() -> int:
     # Capture geometry frozen — Phase 1 presentation only.
     assert "CUP_CAPTURE_RADIUS := 0.133" in BALL or "CUP_CAPTURE_RADIUS:=0.133" in BALL
     # Pour band / orbit at true-scale cup (not pre-scale 1.55 green circle).
-    assert "LIP_CENTER_OFFSET_MAX := 0.048" in BALL or "LIP_CENTER_OFFSET_MAX:=0.048" in BALL
+    assert "LIP_CENTER_OFFSET_MAX := 0.50" in BALL or "LIP_CENTER_OFFSET_MAX:=0.50" in BALL
     assert "LIP_CENTER_SPEED_MAX" in BALL
+    assert "LIP_POUR_PROMOTE_OFFSET := 0.35" in BALL
     # Orbit sits on rim: capture ≤ orbit ≤ ~cup outer.
     assert 0.133 <= 0.175 <= 0.198 * 1.15
     assert "func _cup_drop_params" in BALL

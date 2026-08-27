@@ -27,6 +27,9 @@ const MATCH_TOL := 0.18
 ## Tempo distance bias when smoothness is bad (± playtest knob).
 const TEMPO_BIAS_MAX := 0.08
 const PURE_BALANCE := 0.72
+## Mishit still misses when the stroke stayed in the arc lane. PLAYTEST TARGET.
+const PUTT_CONTACT_LINE_FLOOR := 0.08
+const PUTT_CONTACT_LINE_MISS := 0.14
 ## Display only — physics stays yards; golfers read putts in feet.
 const FT_PER_YD := 3.0
 ## Soft pad scale: spaced for the log curve (linear-pad spacing bunches up on it).
@@ -167,13 +170,24 @@ static func grade(
 	var path := _path_error(sample, actual, chip_arc_scale)
 	if bal < 0.35:
 		path = clampf(path * (1.0 + (0.35 - bal)), -1.0, 1.0)
+	if lie == "Green" and (
+		contact == ShotResult.ContactQuality.THIN
+		or contact == ShotResult.ContactQuality.FAT
+		or contact == ShotResult.ContactQuality.MISS
+	):
+		var floor := (
+			PUTT_CONTACT_LINE_MISS
+			if contact == ShotResult.ContactQuality.MISS
+			else PUTT_CONTACT_LINE_FLOOR
+		)
+		var side := signf(float(sample.get("max_lateral", 0.0)))
+		if side == 0.0:
+			side = 1.0  # ponytail: default right if the stroke was dead-centered
+		path = side * maxf(absf(path), floor)
 
-	# Same product as ShotReport.planned_yards / BallPhysics.launch_velocity total:
-	# putt skips contact_mul; chip multiplies contact (short-game Phase 3).
+	# Same product as ShotReport.planned_yards / BallPhysics.resolve_distance.
 	var lie_mul := BallPhysics.lie_multiplier(lie, severity)
-	var contact_mul := (
-		1.0 if lie == "Green" else BallPhysics.contact_multiplier(contact)
-	)
+	var contact_mul := BallPhysics.contact_multiplier(contact, lie)
 	# Chip overpull: THIN label stays, but don't distance-tax with 0.82 — that cliff
 	# made a bigger pull land shorter than a milder GOOD overpull (Phase 4).
 	# FAT underpull keeps the tax (monotonic + matches decelerated chip).

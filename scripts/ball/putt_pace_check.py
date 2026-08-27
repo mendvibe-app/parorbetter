@@ -64,15 +64,19 @@ def old_linear_frac_for_ft(ft: float, club_max_yd: float = 40.0) -> float:
     return old_min + (old_max - old_min) * u
 
 
+PUTT_CONTACT_MUL = {
+    "PERFECT": 1.0,
+    "GOOD": 1.0,
+    "THIN": 1.06,
+    "FAT": 0.90,
+    "MISS": 0.78,
+}
+
+
 def putt_roll_yards(committed_power: float, tempo_power_mul: float, contact: str) -> float:
-    """Mirror launch_velocity putt distance — amplitude owns pace; no contact dist_err."""
-    # Tempo already applied into result.power = committed * tempo_power_mul
+    """Mirror resolve_distance putt yards — amplitude first, mild Green contact extra."""
     result_power = committed_power * tempo_power_mul
-    # No contact_multiplier and no FAT/THIN dist_err on putt distance
-    power_mul = result_power * 1.0
-    total = PUTTER_MAX_YD * power_mul
-    _ = contact  # line only; distance unchanged
-    return total
+    return PUTTER_MAX_YD * result_power * PUTT_CONTACT_MUL[contact]
 
 
 def main() -> int:
@@ -91,41 +95,68 @@ def main() -> int:
     assert abs(p3 - 0.625) > 0.2
     assert abs(p20 - 0.625) > 0.01
 
-    # Source: resolve_distance putt path skips contact_multiplier on distance
-    assert "if not is_putt:" in PHYS
-    assert "power_mul *= contact_multiplier(contact)" in PHYS
+    # Source: resolve_distance always multiplies contact (putt uses Green curve).
+    assert "power_mul *= contact_multiplier(contact, lie)" in PHYS
     assert "static func resolve_distance" in PHYS
+    assert "static func contact_multiplier" in PHYS
+    assert 'if lie == "Green":' in PHYS.split("static func contact_multiplier")[1].split("static func")[0]
+    assert "return 0.90" in PHYS
+    assert "return 0.78" in PHYS
     # MISS dist_err removed (no 0.65 branch)
-    assert "ShotResult.ContactQuality.MISS:" not in PHYS.split("if is_putt:")[1].split("return {")[0] or \
-        "dist_err = 0.65" not in PHYS
     assert "dist_err = 0.65" not in PHYS
-    # Amplitude owns pace — no FAT/THIN distance stack on putts
-    putt_branch = PHYS.split("if is_putt:")[1].split("return {")[0]
-    assert "dist_err = 1.12" not in putt_branch
-    assert "dist_err = 0.78" not in putt_branch
-    assert "no FAT/THIN distance stack" in putt_branch or "Amplitude owns pace" in putt_branch
+    putt_launch = PHYS.split("if is_putt:")[1].split("return {")[0]
+    assert "dist_err = 1.12" not in putt_launch
+    assert "dist_err = 0.78" not in putt_launch
 
-    # Amplitude owns pace — contact label does not change yards
+    # Mild Green curve at same amplitude: FAT dies, THIN runs, PERFECT == GOOD.
     committed = recommended_power(14.0, PUTTER_MAX_YD)
     intended = PUTTER_MAX_YD * committed
+    good_roll = putt_roll_yards(committed, 0.80, "GOOD")
+    fat_roll = putt_roll_yards(committed, 0.80, "FAT")
+    thin_roll = putt_roll_yards(committed, 0.80, "THIN")
+    perf_roll = putt_roll_yards(committed, 0.80, "PERFECT")
+    assert fat_roll < good_roll, (fat_roll, good_roll)
+    assert thin_roll > good_roll, (thin_roll, good_roll)
+    assert abs(perf_roll - good_roll) < 1e-9, (perf_roll, good_roll)
+    assert fat_roll / good_roll >= 0.85, fat_roll / good_roll  # no 0.68 cliff
     smash_roll = putt_roll_yards(committed, 1.55, "THIN")
     assert smash_roll >= intended * 1.5, smash_roll
     old_stack = intended * 0.50 * 0.4 * 0.65
     assert smash_roll > old_stack * 4.0, (smash_roll, old_stack)
-    # FAT leave = amplitude only (same yards as GOOD at same power_mul)
-    fat_roll = putt_roll_yards(committed, 0.80, "FAT")
-    good_roll = putt_roll_yards(committed, 0.80, "GOOD")
-    assert abs(fat_roll - good_roll) < 1e-9, (fat_roll, good_roll)
 
     # No putt MISS distance floor — stroke length owns pace
     PUTT = DIR.joinpath("../shot/putt_stroke.gd").read_text(encoding="utf-8")
     assert "power_mul = minf(power_mul, 0.50)" not in PUTT
     assert "min(power_mul, 0.50)" not in PUTT
+    assert "PUTT_CONTACT_LINE_FLOOR := 0.08" in PUTT
+    assert "PUTT_CONTACT_LINE_MISS := 0.14" in PUTT
+    assert "contact_multiplier(contact, lie)" in PUTT
+    assert "static func putt_line_miss" in PHYS
+    assert "PUTT_LINE_MISS_SCALE := 0.84" in PHYS
+    # 6 ft THIN floor mishit → ~5 in at the cup (was ~1 in at 0.14).
+    path, scale, cscale, stance_term = 0.08, 0.84, 1.15, 1.25 - 0.5 * 0.7
+    flat_in = path * scale * cscale * stance_term * (6.0 / 3.0) * 36.0
+    assert 4.0 <= flat_in <= 6.0, flat_in
+    assert "_fill_putt_debug" in HOLE
     assert "PuttStroke" in DIR.joinpath("../shot/shot_routine.gd").read_text(encoding="utf-8")
 
-    # Pace UI: aim/stroke stay blind — no live pace/pin numbers on screen
-    assert "_refresh_putt_pace_feedback" in HOLE
-    assert "Putt — set line & pace" in HOLE
+    # Pace UI: aim stays blind of live pace/pin numbers — line only, stroke owns power.
+    assert "_refresh_putt_line_feedback" in HOLE
+    assert "_putt_line_soft_snap" in HOLE
+    assert "PUTT_LINE_SNAP_DEG := 3.0" in HOLE
+    assert "PUTT_LINE_SNAP_MAX_FT := 8.0" in HOLE
+    assert "_refresh_putt_pace_feedback" not in HOLE
+    assert "Putt — set line & pace" not in HOLE
+    assert "debug_putt_line_aim" not in HOLE
+    GS = DIR.joinpath("../autoload/game_state.gd").read_text(encoding="utf-8")
+    DBG = DIR.joinpath("../debug/debug_controls.gd").read_text(encoding="utf-8")
+    assert "debug_putt_line_aim" not in GS
+    assert "PuttLineAim" not in DBG
+    assert "_setup_putt_line_aim_toggle" not in DBG
+    assert "putt_debug" in DBG
+    apply_aim = HOLE.split("func _apply_aim_world")[1].split("func ")[0]
+    assert "retarget_bearing" in apply_aim
+    assert "clamp_aim(world)" not in apply_aim
     assert "Pin %d yd" not in HOLE
     assert "pace %d yd" not in HOLE
     assert 'feedback.text = "Putter"' not in HOLE
@@ -152,11 +183,11 @@ def main() -> int:
     GEN = DIR.joinpath("../course/hole_generator.gd").read_text(encoding="utf-8")
     assert "GREEN_AREA_FLOOR_SQFT" in GEN
     assert "_green_target_radii_px" in GEN
-    assert "lerpf(0.10, 0.48, rng.randf())" in GEN
+    assert "rng.randf_range(0.28, 0.48)" in GEN
     assert "lerpf(0.12, 0.03, t)" in GEN  # less early FLAT
     # Putt camera Phase 2 — true-scale readable framing (see putt_camera_zoom_check).
     assert "PUTT_VIEW_FRAC" in HOLE
-    assert "PUTT_SPAN_COEFF" in HOLE
+    assert "func _putt_frame_zoom" in HOLE
     assert "PUTT_ZOOM_CAP" in HOLE
     assert "CUP_RADIUS := 0.198" in HOLE
     assert "CUP_CAPTURE_RADIUS" in HOLE

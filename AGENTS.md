@@ -22,7 +22,7 @@ Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before 
 Orchestrated by `HoleController` + `ShotRoutine`.
 
 1. **Club select** (`ClubSelect`) — Off green: 3 clubs near `BallPhysics.pick_club` (★), **Full bag** for the rest (sand → wedges only). Green skips to putter. Confirm commits. **Driving range** (start screen → Practice Range): same club pick, then skip aim.
-2. **Aim** (`HoleController` aim phase + `AimControl`) — Drag bearing; yellow dispersion circle = form radius from `GameState.get_aim_radius_yards`. Confirm Aim / Space locks target. Optional **Practice Swing** grades tempo with no stroke. Range mode skips this (fixed center aim). On green: aim-drag is line + pace; short flat putts (`GameState.tap_in_yd` / `tap_in_break`) skip aim and go straight to stroke.
+2. **Aim** (`HoleController` aim phase + `AimControl`) — Drag bearing; yellow dispersion circle = form radius from `GameState.get_aim_radius_yards`. Confirm Aim / Space locks target. Optional **Practice Swing** grades tempo with no stroke. Range mode skips this (fixed center aim). On green: aim-drag is **start line** (distance locked to cup; short putts soft-snap within `PUTT_LINE_SNAP_*`); pace is the stroke. Short flat putts (`GameState.tap_in_yd` / `tap_in_break`) skip aim and go straight to stroke.
 3. **Strike** — Full/pitch/flop/punch: `TempoGesture` + `TempoGrade`; power from pull length (`power_from_amplitude`); `recommended_power` is the pad-tick / aim-preview target, not launch power. Putt/chip: same pad, re-skinned; `PuttStroke` grades **amplitude vs pace marker** (power), **arc path** (line), tempo as miss-explainer. Pure = PERFECT + balance ≥ 0.72.
 4. **Result** — Glance panel (`ShotReport.glance_text`: tempo diagnosis for full; distance/line for putt). Full dump stays in F1. Range: ball resets to tee and loops. Course: settle → next shot / hole-out lives via `Scoring`.
 
@@ -33,6 +33,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Full-swing tempo target | `TempoGrade.TARGET_FULL` (3.0); tol half-width `TOL_FULL` (1.1 → accept ~1.9–4.1 at full balance; 14-hcp miss model) |
 | Chip tempo target | `TempoGrade.TARGET_SHORT` (2.0); `TOL_SHORT` (0.85) |
 | Putt stroke (amplitude) | `PuttStroke` absolute log pad (`marker_frac` / `power_from_frac`, `_power_to_u` / `_u_to_power` + `BEND`); soft ticks `SCALE_LABELED_FT` / `SCALE_TICK_FT`; line via `arc_allowance` |
+| Putt line aim | Bearing drag, distance locked to cup; `PUTT_LINE_SNAP_DEG` 3° / `PUTT_LINE_SNAP_MAX_FT` 8 (`HoleController`) |
 | Putter max | `BallPhysics.PUTTER_MAX_YD` (25.0 → 75 ft); soft scale labels/ticks in `PuttStroke.SCALE_*_FT` |
 | Tap-in fast path | `GameState.tap_in_yd` (4.0) + `tap_in_break` (0.12) |
 | Pure balance gate | `TempoGrade.PURE_BALANCE` / `PuttStroke.PURE_BALANCE` / `ShotRoutine.PURE_BALANCE` (0.72) |

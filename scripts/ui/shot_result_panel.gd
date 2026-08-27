@@ -23,20 +23,6 @@ func _ready() -> void:
 		tempo_mini = get_node_or_null("TempoMini") as TempoMini
 
 
-func show_launch(report: ShotReport) -> void:
-	_waiting = false
-	set_process_input(false)
-	body.text = report.glance_text()
-	strike_map.show_strike(report)
-	if hint:
-		hint.text = ""
-	if tempo_mini and not GameState.last_tempo_metrics.is_empty():
-		tempo_mini.show_verdict(GameState.last_tempo_metrics, report.lie == "Green")
-	visible = true
-	modulate.a = 1.0
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
-
-
 func show_final(report: ShotReport) -> void:
 	body.text = report.glance_text()
 	strike_map.show_strike(report)

@@ -1,7 +1,7 @@
 # Correction — Putt ball visible-size (ball∶cup on-screen ratio)
 
 **Deliverable path (on approve / implement):** `plans/putt-ball-visible-size.md`  
-**Status:** PLAN ONLY — not implemented. Awaiting review.  
+**Status:** SHIPPED — fill fractions in `HoleController` (`PUTT_BALL_FILL` / `PUTT_CUP_FILL`). Absolute scale then moved in `putt-true-scale-phase1.md`.  
 **Track:** correction, found live during playtest (`PUTT_ZOOM_CAP` 24)  
 **Scope:** `BALL_R_PUTT` + check/comment only. Visual. No physics / make-rate change.
 

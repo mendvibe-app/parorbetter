@@ -37,6 +37,28 @@ def main() -> int:
 
     show_fn = CTRL.split("func _should_show_green_book")[1].split("func _is_putt_context")[0]
     assert "aim_target" not in show_fn and "apron" not in show_fn
+    # Phase 3: flag on green only during aim. Book zoom = green ∪ ball (chips + address).
+    assert _const("GREEN_BOOK_ZOOM_CAP") < _const("PUTT_ZOOM_CAP")
+    assert "GREEN_BOOK_LOOK_BALL" not in CTRL
+    assert "func _green_book_frame_rect" in CTRL
+    assert "func _green_book_aim_look" in CTRL
+    assert "func _greenside_book_frame" in CTRL
+    assert "GREEN_BOOK_BALL_PAD" in CTRL
+    zoom_fn = CTRL.split("func _desired_camera_zoom")[1].split("func ")[0]
+    assert "_green_book_aim_zoom" in zoom_fn
+    assert "_greenside_book_frame" in zoom_fn
+    assert "_putt_frame_zoom" in zoom_fn
+    look_fn = CTRL.split("func _desired_camera_look")[1].split("func ")[0]
+    assert "_green_book_aim_look" in look_fn or "_greenside_book_frame" in look_fn
+    frame_fn = CTRL.split("func _green_book_frame_rect")[1].split("func ")[0]
+    assert "ball.global_position" in frame_fn
+    sync = CTRL.split("func _sync_pin_flag_visible")[1].split("func ")[0]
+    assert "_pin_flag.visible = _aiming and not hole_complete" in sync
+    # Short-game follow softens driver punch / look lead.
+    assert "FLIGHT_LAND_FRAC_SHORT" in CTRL
+    assert "FLIGHT_LOOK_LEAD_SHORT_MUL" in CTRL
+    assert "_flight_short_game" in CTRL
+    assert "is_short_game_shot" in CTRL.split("func _follow_ball")[1].split("func ")[0]
 
     # Pin: screen-scaled, flag at tip.
     assert "POLE_H_SCREEN" in PIN

@@ -1,7 +1,7 @@
 # Handoff — Putting / true-scale / green book (2026-08-27)
 
-**Repo:** `main` (commit after this push)  
-**Pick up with:** this file + `plans/putting-rework-roadmap.md` + `plans/putting-phase0-line-interaction.md`
+**Board:** `plans/README.md` (putting rework is Active)  
+**Pick up with:** this file + `plans/putting-rework-roadmap.md`
 
 ---
 
@@ -9,19 +9,22 @@
 
 ### Shipped (recent)
 
-- **True-scale** ball/cup everywhere; putt + chip **pace scales**; lip-out chip leave capped  
-- **Cameras:** mid-approach widen; long-tee open + look-toward-pin; putt UI-safe look; **no green-book zoom from 180+ yd**  
-- **Greens:** densified 768 calm mow; slope plane weakened / contours stronger  
-- **Green book:** filtered height wash (warm=high, cool=low) + **fall-line arrows** (yardage-book style, not topo grid)  
-- **Course pin:** screen-scaled stick; **flag at top of pole**; in for putt **aim**, out for stroke  
-- **Phase 0 putt line:** F1 `Putt line aim (Phase 0)` / `GameState.debug_putt_line_aim` — bearing drag, distance locked to cup  
+- **True-scale** ball/cup everywhere; putt + chip **pace scales**; lip-out chip leave capped
+- **Cameras:** mid-approach widen; long-tee open + look-toward-pin; putt UI-safe look; **no green-book zoom from 180+ yd**
+- **Greens:** densified 768 calm mow; slope plane weakened / contours stronger
+- **Green book:** filtered height wash (warm=high, cool=low) + **fall-line arrows**
+- **Course pin:** screen-scaled stick; flag at tip; in for putt **aim**, out for stroke
+- **Putt line aim (default):** bearing drag, distance locked to cup. F1 flag gone. Spec: `plans/putting-phase0-line-interaction.md` (signed off)
+- **Phase 1 contact:** Green curve in `resolve_distance` (THIN 1.06 / FAT 0.90 / MISS 0.78) + mishit line floor — playtested
+- **Phase 3 read camera:** book zoom + flag during aim; flag out on Confirm
+- **Phase 4 execute panel:** `SHOT_PANEL_H_PUTT` 640 (was 900) — playtest
 
-### Still open / next for a new agent
+### Still open / next
 
-1. **Phase 0 sign-off** — Matt playtests line aim; then promote or tweak snap (`PUTT_LINE_*`)  
-2. **Putting rework roadmap** — Phase 1 `contact_mul` on green; Phase 2 make line aim default; Phases 3–4 read/execute camera (**after** line is stable)  
-3. **Green book polish** — arrow density (`GREEN_BOOK_ARROW_N`), wash alpha; optional PixelLab yardage-book overlay if procedural still feels weak  
-4. **Pin art** — optional PixelLab crisp pin if vector pin isn’t enough at true-scale  
+1. **Phase 4 playtest** — Confirm Aim: more green on screen, pad still usable on a 36-footer. Raise `SHOT_PANEL_H_PUTT` toward 720 if cramped; drop toward 560 if still letterboxed.
+2. **Phase 5** — short-putt glow / green-art bump (parked until 4 ships).
+3. **Green book polish** — arrow density (`GREEN_BOOK_ARROW_N`), wash alpha
+4. **Pin art** — optional PixelLab crisp pin
 
 ---
 
@@ -29,18 +32,10 @@
 
 | Area | Path |
 |------|------|
+| Putt line aim | `hole_controller.gd` `_apply_aim_world`, `_putt_line_soft_snap` |
 | Green book | `hole_controller.gd` `_build_green_book`, `_GreenBookDraw` |
 | Course pin | `course_pin_flag.gd` |
-| Putt line prototype | `GameState.debug_putt_line_aim`, `_apply_aim_world` |
 | Chip/putt pace | `ball_physics.gd` `PUTT_PACE_SCALE` / `CHIP_PACE_SCALE` |
 | Roadmap | `plans/putting-rework-roadmap.md` |
 
----
-
-## Playtest focus after pull
-
-1. Green book: soft wash + **arrows = downhill**; legend text  
-2. Pin: thin pole, **red flag at tip**  
-3. F1 line aim on short + long putts  
-
-**Do not** start camera Phases 3–4 before Phase 0/2 line is signed off.
+**Do not** start Phase 5 polish before Phase 4 panel height is playtested.

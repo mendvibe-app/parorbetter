@@ -82,13 +82,17 @@ def main() -> None:
     assert "const FLIGHT_LAUNCH_FRAC := 1.0" in HOLE
     assert "const FLIGHT_APEX_FRAC := 1.05" in HOLE
     assert "const FLIGHT_LAND_FRAC := 1.28" in HOLE
+    assert "const FLIGHT_LAND_FRAC_SHORT" in HOLE
+    assert "const FLIGHT_LOOK_LEAD_SHORT_MUL" in HOLE
     assert "const FLIGHT_ZOOM_IN_START := 0.55" in HOLE
     assert "func _flight_camera_zoom()" in HOLE
     assert "_flight_zoom_base" in HOLE
+    assert "_flight_short_game" in HOLE
     # Follow seeds from aim zoom, not corridor floor (pin-primary must not pull out).
     follow = HOLE.split("func _follow_ball")[1].split("func ")[0]
-    assert "_desired_camera_zoom()" in follow
+    assert "_desired_camera_zoom()" in follow or "_flight_short_game" in follow
     assert "_corridor_zoom_level() * 0.9" not in follow
+    assert "is_short_game_shot" in follow
     # Pure strike must not yank zoom back to aim framing mid-flight.
     pure = HOLE.split("func _on_pure_strike")[1].split("func ")[0]
     assert 'tween_property(camera, "zoom"' not in pure

@@ -14,8 +14,9 @@ Log of gameplay-affecting decisions, added as they happen.
 - **HUD cleanup:** scorecard header `HOLE n · PAR p · YDS`; AdaptLabel form/○radius/bias text retired (circle + F1 carry form). Wind is a tappable flagstick (lean/wave; advice on tap) plus rim bias arrow on the aim circle — not banner sentences. Lie/club are silhouette icons beside pin yardage; club bag buttons reuse the same club icons.
 - **Putting distance realism:** greens ~60–130 ft diameter (was ~112–208 airport); putt camera zooms out on lags (`view_min * 0.52`, max z 7.5); green ball 1.0 / cup 2.4; putter max 40 yd / 120 ft; soft pad labels 30 ft + ticks 45/60/90.
 - **Putt break readable:** lateral/along gains 90/55 (was 22/14); slope mag 0.10–0.48; early FLAT weight cut so contours move the ball (~2 ball-widths on a mid-slope 40 ft). After real-time pacing: break forces scale by `roll_decel_px("Green") / PUTT_BREAK_CAL_DECEL(108)` so bend stays FRAC-invariant; putt settle uses `PUTT_SETTLE_SPEED=1.5` (roll stays 10) so short putts aren't killed on launch.
-- **Putt pace feel:** absolute linear pad; soft ticks are landmarks (labeled 3–30, ticks 45/60/90) — no aim highlight; feel/guess where THIS putt sits. FAT/THIN no longer stack distance — amplitude owns pace, contact owns line.
-- **Putt line lane:** `ARC_FLOOR` 0.10 / `ARC_SCALE` 0.16 + lane tex 56; putt address/top 0.22–0.92 for finger resolution on 15 vs 30.
+- **Putt pace feel:** absolute linear pad; soft ticks are landmarks (labeled 3–30, ticks 45/60/90) — no aim highlight; feel/guess where THIS putt sits. Amplitude owns the miss; contact is a mild extra (Green THIN 1.06 / FAT 0.90 / MISS 0.78; PERFECT 1.00).
+- **Putt line aim:** bearing drag, distance locked to cup (`PUTT_LINE_SNAP_DEG` 3° / `PUTT_LINE_SNAP_MAX_FT` 8). Pace lives on the stroke, not the aim point.
+- **Putt execute panel:** `SHOT_PANEL_H_PUTT` 640 vs full-swing 900 (Phase 4 reclaim).
 - **Putt distance reads long:** camera frames ball→cup only (no green-radius floor); flag 12 px + hidden while putting (pin out).
 - **Putt follow cue:** drawn finish grows with pace/backswing (pad-capped); grade matches `min(backswing, follow_cap)` — only short-of-cue chops distance. Old fixed 12% stub taught a chop on lags.
 - ~~Relative putt pad~~ (retired): mid-lane = on pace made distance trivial; back to absolute soft scale.

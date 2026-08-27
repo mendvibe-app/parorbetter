@@ -89,14 +89,25 @@ def main() -> int:
     assert "func shot_type_uses_full_pocket" in phys
     assert "func _shot_type_uses_full_pocket" not in phys
 
-    # Putt aim: white fading line, no iron cone / dispersion circle
+    # Putt aim: white fading line scales with hole distance; never past cup.
     refresh = HOLE.split("func _refresh_aim_visuals")[1].split("func ")[0]
     assert 'ball.get_lie() == "Green"' in refresh
-    assert "len_px * 0.88" in refresh
+    assert "PUTT_AIM_LINE_FRAC" in HOLE
+    assert "PUTT_AIM_LINE_MAX_FT" in HOLE
+    assert "cup_px * PUTT_AIM_LINE_FRAC" in refresh
+    assert "cup_along" in refresh
+    assert "len_px * 0.88" not in refresh
     assert "_aim_cone.visible = on and not is_putt" in HOLE
     assert "_aim_circle.visible = on and not is_putt" in HOLE
     assert "Gradient.new()" in HOLE
     assert "_pin_ref_line.gradient = null" in refresh
+    # 6 ft draw < cup; 40 ft capped below full cup distance.
+    max_ft = float(__import__("re").search(r"PUTT_AIM_LINE_MAX_FT := ([0-9.]+)", HOLE).group(1))
+    frac = float(__import__("re").search(r"PUTT_AIM_LINE_FRAC := ([0-9.]+)", HOLE).group(1))
+    assert 0.7 <= frac <= 0.95, frac
+    assert 12.0 <= max_ft <= 30.0, max_ft
+    assert 6.0 * frac < 6.0
+    assert min(40.0 * frac, max_ft) <= max_ft
 
     # Cone is tight at the ball and its flanks run tangent to the dispersion circle
     # (real-golf reasoning: takeoff direction reads easily by eye, landing footprint
@@ -175,6 +186,17 @@ def main() -> int:
         ("putt", 25.0, 10.0),
     ):
         assert abs(preview_yd(pin, club, st, False) - preview_yd(pin, club, st, True)) < 1e-9
+
+    assert "func putt_leave_ft" in AIM
+    # Rest 3 ft right of cup, same depth: x = +3 ft.
+    PX = 2.25
+    lat_px = (3.0 / 3.0) * PX  # 1 yd right
+    # from (0, 10), cup (0, 0), rest (lat_px, 0)
+    pin_len = 10.0
+    right = (1.0, 0.0)
+    d = (lat_px, 0.0)
+    lat_ft = (d[0] * right[0] + d[1] * right[1]) / PX * 3.0
+    assert abs(lat_ft - 3.0) < 1e-6, lat_ft
 
     print("aim_control_check: ok")
     return 0

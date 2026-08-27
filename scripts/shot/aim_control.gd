@@ -193,3 +193,16 @@ static func aim_offset_label(ball_pos: Vector2, aim: Vector2, cup: Vector2) -> S
 	if parts.is_empty():
 		return "on pin line"
 	return ", ".join(parts)
+
+
+## Rest vs cup in feet. x = right of pin line, y = past cup (long).
+static func putt_leave_ft(from: Vector2, rest: Vector2, cup: Vector2) -> Vector2:
+	var pin_dir := (cup - from).normalized()
+	if pin_dir == Vector2.ZERO:
+		pin_dir = Vector2(0, -1)
+	var right := Vector2(-pin_dir.y, pin_dir.x)
+	var d := rest - cup
+	return Vector2(
+		BallPhysics.pixels_to_yards(d.dot(right)) * 3.0,
+		BallPhysics.pixels_to_yards(d.dot(pin_dir)) * 3.0
+	)

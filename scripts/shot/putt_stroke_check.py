@@ -90,6 +90,9 @@ def main() -> int:
     # Phase 3: coaching yards match launch/report product (lie + contact).
     assert "BallPhysics.lie_multiplier" in PUTT
     assert "BallPhysics.contact_multiplier" in PUTT
+    assert "contact_multiplier(contact, lie)" in PUTT
+    assert "PUTT_CONTACT_LINE_FLOOR := 0.08" in PUTT
+    assert "PUTT_CONTACT_LINE_MISS := 0.14" in PUTT
     assert "current_lie" in ROUTINE
     assert "swing_shape" in ROUTINE
     assert "putt_target_frac" in GESTURE
@@ -193,7 +196,7 @@ def main() -> int:
     assert "power_mul = minf(power_mul, 0.50)" not in PUTT
     assert "min(power_mul, 0.50)" not in PUTT
     grade_body = PUTT.split("static func grade(")[1].split("static func ")[0]
-    assert grade_body.count("ContactQuality.MISS") == 1  # incomplete only
+    assert grade_body.count("contact = ShotResult.ContactQuality.MISS") == 1  # incomplete only
     assert "BAND_SHORT_LONG" not in PUTT
     assert "power_from_frac(actual)" in grade_body
     # Phase 4: chip overpull keeps THIN label but drops distance tax (no GOOD→THIN cliff).

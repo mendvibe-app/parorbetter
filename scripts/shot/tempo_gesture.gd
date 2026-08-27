@@ -101,6 +101,7 @@ const CHIP_MARKER_TICK := Color(0.95, 0.85, 0.55, 0.95)
 const BALL_POP_MS := 120.0
 const LANDMARK_DIAM := 36.0
 const GOLFER_DRAW_H := 120.0
+const GOLFER_DRAW_H_PUTT := 64.0  ## PLAYTEST — putt pad chrome; lie widget hidden on Green
 const GOLFER_MARGIN := 12.0
 ## STYLE sky / grass for the mini stage behind the figure.
 const GOLFER_SKY := Color(0.271, 0.478, 0.612, 1.0)  ## #457A9C
@@ -209,6 +210,8 @@ func set_lie_preview(lie: String, severity: String = "") -> void:
 	lie_severity = severity if lie == "Rough" else ""
 	if lie_preview:
 		lie_preview.set_state(lie, severity)
+		# Green is the surface — glance already has the lie icon. Don't burn pad.
+		lie_preview.visible = lie != "Green"
 	queue_redraw()
 
 
@@ -880,9 +883,10 @@ func _draw_golfer() -> void:
 	var b: Texture2D = pair[1]
 	var t: float = float(pair[2])
 	var tex_h := float(a.get_height())
-	var scale := GOLFER_DRAW_H / maxf(tex_h, 1.0)
+	var draw_h := GOLFER_DRAW_H_PUTT if _is_putt() else GOLFER_DRAW_H
+	var scale := draw_h / maxf(tex_h, 1.0)
 	var tw := float(a.get_width()) * scale
-	var th := GOLFER_DRAW_H
+	var th := draw_h
 	var origin := Vector2(GOLFER_MARGIN, GOLFER_MARGIN)
 	# Subtle severity cue on full-swing address (primary read is LiePreview).
 	if (

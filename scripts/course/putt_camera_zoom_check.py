@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Contract: putt setup zoom grades short vs long; roll holds locked frame.
+"""Contract: putt camera frames ball→cup in the HUD+panel-safe rect at every length.
 
-True-scale Phase 2: distance framing + soft object-size floor on short/mid putts.
-Mirrors HoleController._desired_camera_zoom() (putt branch).
+Mirrors HoleController._putt_frame_zoom(). Zoom is span = dist + pad, not a
+per-yardage table and not whole-green / object-size floors.
 """
 from __future__ import annotations
 
@@ -11,12 +11,12 @@ import sys
 from pathlib import Path
 
 CTRL = Path(__file__).with_name("hole_controller.gd").read_text(encoding="utf-8")
-BALL = Path(__file__).resolve().parents[1].joinpath("ball/ball.gd").read_text(encoding="utf-8")
+UI = Path(__file__).resolve().parents[1].joinpath("ui/ui_scale.gd").read_text(encoding="utf-8")
 
 PX_PER_FOOT = 2.25 / 3.0  # BallPhysics.PX_PER_YARD / 3
-VIEW_MIN = 1080.0  # canvas_items stretch normalizes to design width
-BALL_FILL = 33.0 / 64.0
-CUP_FILL = 43.0 / 64.0
+VIEW = (1080.0, 1920.0)
+# Tap-in through putter max (PUTTER_MAX_YD 25 → 75 ft).
+LENGTHS_FT = (3, 6, 8, 12, 17, 25, 36, 50, 75)
 
 
 def _const(src: str, name: str) -> float:
@@ -25,113 +25,87 @@ def _const(src: str, name: str) -> float:
     return float(m.group(1))
 
 
-def desired_putt_zoom(
+def putt_frame_zoom(
     dist_ft: float,
     *,
     cap: float,
     floor: float,
-    span_coeff: float,
     span_pad: float,
+    span_pad_frac: float,
+    span_pad_min: float,
     span_floor: float,
     view_frac: float,
-    min_ball_px: float,
-    min_cup_px: float,
-    blend_start: float,
-    blend_end: float,
-    ball_r: float,
-    cup_r: float,
+    hud_h: float,
+    chrome_h: float,
+    vertical: bool = True,
 ) -> float:
     dist = dist_ft * PX_PER_FOOT
-    half_span = max(dist * span_coeff + span_pad, span_floor)
-    z_fit = VIEW_MIN * view_frac / half_span
-    vis_ball = BALL_FILL * (ball_r * 2.0)
-    vis_cup = CUP_FILL * (cup_r * 2.0)
-    z_obj = max(min_ball_px / vis_ball, min_cup_px / vis_cup)
-    t = min(max((dist_ft - blend_start) / max(blend_end - blend_start, 1.0), 0.0), 1.0)
-    z = (1.0 - t) * max(z_fit, z_obj) + t * z_fit
+    pad = min(max(dist * span_pad_frac, span_pad_min), span_pad)
+    dx = 0.0 if vertical else dist * 0.7071
+    dy = dist if vertical else dist * 0.7071
+    span_x = max(abs(dx) + pad * 2.0, span_floor)
+    span_y = max(abs(dy) + pad * 2.0, span_floor)
+    safe_h = VIEW[1] - hud_h - chrome_h
+    z = min(VIEW[0] * view_frac / span_x, max(safe_h, 1.0) * view_frac / span_y)
     return min(max(z, floor), cap)
 
 
 def main() -> int:
-    assert "PUTT_ZOOM_CAP" in CTRL
-    assert "PUTT_SPAN_FLOOR" in CTRL
-    assert "PUTT_MIN_CUP_SCREEN_PX" in CTRL
-    assert "PUTT_MIN_BALL_SCREEN_PX" in CTRL
-    assert "PUTT_SAFE_SCREEN_Y" in CTRL
-    assert "PUTT_AIM_LINE_SCREEN_PX" in CTRL
-    assert "func _ui_safe_look" in CTRL
-    assert _const(CTRL, "PUTT_AIM_LINE_SCREEN_PX") >= 4.0
-    assert "lerpf(maxf(z_fit, z_obj), z_fit, t_long)" in CTRL
-    assert "PINCH_ABS_ZOOM_MAX" in CTRL
-    safe_y = _const(CTRL, "PUTT_SAFE_SCREEN_Y")
-    assert 0.32 <= safe_y <= 0.48, safe_y  # above mid, clear of swing pad
-
-    # Roll lock — no live chase punch.
-    assert "func _lock_putt_camera" in CTRL
-    assert "func _clear_putt_camera_lock" in CTRL
-    assert "_putt_cam_active" in CTRL
-    assert "PUTT_ROLL_LOOK_LERP" in CTRL
-    assert "PUTT_TIGHTEN_RADIUS" not in CTRL
+    assert "func _putt_frame_zoom" in CTRL
+    assert "PUTT_SPAN_COEFF" not in CTRL
+    assert "SHOT_PANEL_H_PUTT" in CTRL
+    zoom_fn = CTRL.split("func _desired_camera_zoom")[1].split("func ")[0]
+    assert "_greenside_book_frame" in zoom_fn or "not _is_putt_context()" in zoom_fn
+    assert "_putt_frame_zoom" in zoom_fn
+    assert "func _putt_frame_look" in CTRL
+    assert "func _putt_bottom_chrome" in CTRL
+    look = CTRL.split("func _desired_camera_look")[1].split("func ")[0]
+    assert "_putt_frame_look" in look
+    frame_look = CTRL.split("func _putt_frame_look")[1].split("func ")[0]
+    assert "lerp(_cup_pos, 0.5)" in frame_look
+    assert "lerp(_aim_target" not in frame_look
+    zoom_body = CTRL.split("func _putt_frame_zoom")[1].split("func ")[0]
+    assert "_putt_bottom_chrome" in zoom_body
+    assert "span_x" in zoom_body and "span_y" in zoom_body
 
     cap = _const(CTRL, "PUTT_ZOOM_CAP")
-    floor = _const(CTRL, "PUTT_ZOOM_FLOOR")
-    span_coeff = _const(CTRL, "PUTT_SPAN_COEFF")
-    span_pad = _const(CTRL, "PUTT_SPAN_PAD")
-    span_floor = _const(CTRL, "PUTT_SPAN_FLOOR")
-    view_frac = _const(CTRL, "PUTT_VIEW_FRAC")
-    min_ball = _const(CTRL, "PUTT_MIN_BALL_SCREEN_PX")
-    min_cup = _const(CTRL, "PUTT_MIN_CUP_SCREEN_PX")
-    blend_start = _const(CTRL, "PUTT_OBJ_BLEND_START_FT")
-    blend_end = _const(CTRL, "PUTT_OBJ_BLEND_END_FT")
-    pinch_max = _const(CTRL, "PINCH_ABS_ZOOM_MAX")
-    ball_r = _const(BALL, "BALL_R_PUTT")
-    cup_r = _const(CTRL, "CUP_RADIUS")
-
-    assert cap >= 100.0, cap
-    assert span_floor < 8.0, span_floor  # old 12 blocked z>~47
-    assert pinch_max >= cap - 0.01, (pinch_max, cap)
-
     kw = dict(
         cap=cap,
-        floor=floor,
-        span_coeff=span_coeff,
-        span_pad=span_pad,
-        span_floor=span_floor,
-        view_frac=view_frac,
-        min_ball_px=min_ball,
-        min_cup_px=min_cup,
-        blend_start=blend_start,
-        blend_end=blend_end,
-        ball_r=ball_r,
-        cup_r=cup_r,
+        floor=_const(CTRL, "PUTT_ZOOM_FLOOR"),
+        span_pad=_const(CTRL, "PUTT_SPAN_PAD"),
+        span_pad_frac=_const(CTRL, "PUTT_SPAN_PAD_FRAC"),
+        span_pad_min=_const(CTRL, "PUTT_SPAN_PAD_MIN"),
+        span_floor=_const(CTRL, "PUTT_SPAN_FLOOR"),
+        view_frac=_const(CTRL, "PUTT_VIEW_FRAC"),
+        hud_h=_const(UI, "HUD_HEIGHT"),
+        chrome_h=_const(UI, "SHOT_PANEL_H_PUTT"),
     )
+    assert cap >= 100.0, cap
+    assert _const(CTRL, "PINCH_ABS_ZOOM_MAX") >= cap - 0.01
 
-    z_2ft = desired_putt_zoom(2.0, **kw)
-    z_10ft = desired_putt_zoom(10.0, **kw)
-    z_30ft = desired_putt_zoom(30.0, **kw)
-    z_44ft = desired_putt_zoom(44.0, **kw)  # playtest 1686
-    z_60ft = desired_putt_zoom(60.0, **kw)
+    safe_h = VIEW[1] - kw["hud_h"] - kw["chrome_h"]
+    zs = []
+    for ft in LENGTHS_FT:
+        z = putt_frame_zoom(float(ft), **kw)
+        zs.append(z)
+        dist = ft * PX_PER_FOOT
+        # Ball→cup must fit in the execute-safe height at every length.
+        assert dist * z <= safe_h + 1e-6, (ft, dist * z, safe_h)
+        # Short putts tighter than whole-green book zoom (cap 36).
+        if ft <= 17:
+            assert z > 36.0, (ft, z)
 
-    # Short putts much closer than mid/long lags.
-    assert z_2ft > 80.0, z_2ft
-    assert z_2ft > z_30ft > z_60ft, (z_2ft, z_30ft, z_60ft)
-    assert z_10ft > z_44ft > z_60ft, (z_10ft, z_44ft, z_60ft)
+    # Longer putt → more open (or equal at the cap on tap-ins).
+    for a, b, fa, fb in zip(zs, zs[1:], LENGTHS_FT, LENGTHS_FT[1:]):
+        assert a >= b - 1e-6, (fa, a, fb, b)
 
-    vis_cup = CUP_FILL * (cup_r * 2.0)
-    vis_ball = BALL_FILL * (ball_r * 2.0)
-    assert vis_cup * z_2ft >= min_cup * 0.9, (vis_cup * z_2ft, min_cup)
-    assert vis_ball * z_2ft >= min_ball * 0.9, (vis_ball * z_2ft, min_ball)
-    # Mid ~44 ft: glanceable (was ~10 px cup / ~4 px ball).
-    assert vis_cup * z_44ft >= 14.0, vis_cup * z_44ft
-    assert vis_ball * z_44ft >= 6.0, vis_ball * z_44ft
-    assert z_44ft >= 50.0, z_44ft
-    # Long lags still open vs short.
-    assert z_60ft < z_10ft * 0.65, (z_60ft, z_10ft)
-
+    z3, z6, z17, z75 = zs[0], zs[LENGTHS_FT.index(6)], zs[LENGTHS_FT.index(17)], zs[-1]
+    # Short putts pull in; lags stay open. Fixed 2px pad used to frame a 6-footer like ~11 ft.
+    assert z6 > z17 > z75, (z6, z17, z75)
+    assert z6 >= 100.0, z6
     print(
-        f"putt_camera_zoom_check: ok z(2ft)={z_2ft:.1f} z(10ft)={z_10ft:.1f} "
-        f"z(44ft)={z_44ft:.1f} z(60ft)={z_60ft:.1f} "
-        f"cup_px@44={vis_cup * z_44ft:.1f} ball_px@44={vis_ball * z_44ft:.1f}"
+        f"putt_camera_zoom_check: ok z(3ft)={z3:.1f} z(6ft)={z6:.1f} "
+        f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} lengths={len(LENGTHS_FT)}"
     )
     return 0
 

@@ -629,10 +629,9 @@ static func resolve_distance(
 	var is_putt := lie == "Green"
 	var force_p := power if force_power < 0.0 else force_power
 	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie, shot_type)
-	# Putts: tempo already leaked distance into power — don't stack contact.
+	# Distance owner: lie × contact. Putt uses a mild Green curve (see contact_multiplier).
 	var power_mul := power * lie_multiplier(lie, severity)
-	if not is_putt:
-		power_mul *= contact_multiplier(contact)
+	power_mul *= contact_multiplier(contact, lie)
 	# Mash doesn't buy clean extra yards — contact gets jumpy instead.
 	if force > 0.0 and power > POWER_POCKET_HI:
 		power_mul *= lerpf(1.0, 0.94, force)
@@ -765,7 +764,18 @@ static func force_factor(
 	return 0.0
 
 
-static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
+static func contact_multiplier(quality: ShotResult.ContactQuality, lie: String = "") -> float:
+	if lie == "Green":
+		## PLAYTEST TARGET — putt-only; amplitude already owns the big miss.
+		match quality:
+			ShotResult.ContactQuality.THIN:
+				return 1.06  ## skid / runs
+			ShotResult.ContactQuality.FAT:
+				return 0.90  ## dies
+			ShotResult.ContactQuality.MISS:
+				return 0.78
+			_:
+				return 1.0  ## PERFECT/GOOD — no 1.06 make-rate gift
 	match quality:
 		ShotResult.ContactQuality.PERFECT:
 			return 1.06  # pure reads past committed (~15 yd driver / ~5 yd wedge)
@@ -779,6 +789,30 @@ static func contact_multiplier(quality: ShotResult.ContactQuality) -> float:
 			return 0.4
 		_:
 			return 1.0
+
+
+## Putt launch offline scale. PLAYTEST — 0.14 made a 6 ft THIN ~1 in at the cup
+## (still a make). 0.84 → ~5 in on a floor mishit (path 0.08, THIN, bal ~0.5).
+const PUTT_LINE_MISS_SCALE := 0.84
+
+## Putt launch offline (unitless). F1 `flat N in @ cup` is this × pin yards × 36.
+static func putt_line_miss(result: ShotResult) -> float:
+	var contact_scale := 1.0
+	match result.contact_quality:
+		ShotResult.ContactQuality.PERFECT:
+			contact_scale = 0.45
+		ShotResult.ContactQuality.GOOD:
+			contact_scale = 0.70
+		ShotResult.ContactQuality.THIN, ShotResult.ContactQuality.FAT:
+			contact_scale = 1.15
+		_:
+			contact_scale = 1.35
+	return (
+		clampf(result.path_error, -1.0, 1.0)
+		* PUTT_LINE_MISS_SCALE
+		* contact_scale
+		* (1.25 - result.stance_stability * 0.7)
+	)
 
 
 ## Roll friction in ft/s² (real-ish). Green 1.8 is stimpmeter-true; non-green
@@ -919,19 +953,7 @@ static func launch_velocity(
 	var total_px := yards_to_pixels(total_yards)
 
 	if is_putt:
-		# Contact/path scale line; kept milder so tempo testing isn't a line lottery.
-		var contact_scale := 1.0
-		match result.contact_quality:
-			ShotResult.ContactQuality.PERFECT:
-				contact_scale = 0.45
-			ShotResult.ContactQuality.GOOD:
-				contact_scale = 0.70
-			ShotResult.ContactQuality.THIN, ShotResult.ContactQuality.FAT:
-				contact_scale = 1.15
-			_:
-				contact_scale = 1.35
-		var line_miss := clampf(result.path_error, -1.0, 1.0) * 0.14 * contact_scale * (1.25 - result.stance_stability * 0.7)
-		# Amplitude owns pace; contact owns line only (no FAT/THIN distance stack).
+		var line_miss := putt_line_miss(result)
 		var putt_right := Vector2(-dir.y, dir.x)
 		var putt_launch := (dir + putt_right * line_miss).normalized()
 		if putt_launch.dot(dir) < 0.35:
@@ -948,6 +970,7 @@ static func launch_velocity(
 			"airborne_time": 0.0,
 			"air_fraction": 0.0,
 			"launch_dir": putt_launch,
+			"line_miss": line_miss,
 			"is_putt": true,
 		}
 

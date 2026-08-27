@@ -1,7 +1,7 @@
 # Epic — Putting green true-scale (ball, hole, catch radius)
 
 **Deliverable path (on approve):** `plans/putt-true-scale-phase1.md`
-**Status:** PLAN ONLY — not implemented. Awaiting review.
+**Status:** SHIPPED — geometry in build. Camera follow-up: `putt-true-scale-phase2.md`. Next track: `putting-rework-roadmap.md`.
 **Track:** epic, found live during playtest (24 ft putt captured well outside the visible dark disc's real-world footprint)
 **Scope:** `BALL_R_PUTT`, `CUP_RADIUS`, `CUP_CAPTURE_RADIUS` — geometry only. No break/slope, no camera/zoom.
 **Sequencing:** Phase 1 of 2. Phase 2 (camera/zoom rework, tracked separately) must land immediately after — see §6.

@@ -149,12 +149,28 @@ PUNCH_CLAMP_LO, PUNCH_CLAMP_HI = float(_punch_clamp_m.group(1)), float(_punch_cl
 # Sand relative tax: full * (0.55 / 0.68) — keep literals in sync with ball_physics.gd comment.
 SAND_AIR_TAX = 0.55 / 0.68
 
-CONTACT_MUL = {
-    "PERFECT": _f(PHYS, r"ContactQuality\.PERFECT:\s*\n\s*return ([0-9.]+)"),
-    "GOOD": _f(PHYS, r"ContactQuality\.GOOD:\s*\n\s*return ([0-9.]+)"),
-    "THIN": _f(PHYS, r"ContactQuality\.THIN:\s*\n\s*return ([0-9.]+)"),
-    "FAT": _f(PHYS, r"ContactQuality\.FAT:\s*\n\s*return ([0-9.]+)"),
-    "MISS": _f(PHYS, r"ContactQuality\.MISS:\s*\n\s*return ([0-9.]+)"),
+def _contact_returns(quality: str) -> list[float]:
+    return [
+        float(x)
+        for x in re.findall(
+            rf"ContactQuality\.{quality}:\s*\n\s*return ([0-9.]+)", PHYS
+        )
+    ]
+
+
+CONTACT_MUL = {  # full-swing — last match (Green THIN/FAT/MISS sit first)
+    "PERFECT": _contact_returns("PERFECT")[-1],
+    "GOOD": _contact_returns("GOOD")[-1],
+    "THIN": _contact_returns("THIN")[-1],
+    "FAT": _contact_returns("FAT")[-1],
+    "MISS": _contact_returns("MISS")[-1],
+}
+PUTT_CONTACT_MUL = {  # Green branch — PLAYTEST TARGETS
+    "PERFECT": 1.0,
+    "GOOD": 1.0,
+    "THIN": _contact_returns("THIN")[0],
+    "FAT": _contact_returns("FAT")[0],
+    "MISS": _contact_returns("MISS")[0],
 }
 LIE_MUL = {
     "Tee": 1.0,
@@ -320,8 +336,7 @@ def resolve_distance(
     force_p = power if force_power is None else force_power
     force = 0.0 if is_putt else force_factor(force_p, shot_type)
     power_mul = power * LIE_MUL.get(lie, 1.0)
-    if not is_putt:
-        power_mul *= CONTACT_MUL[contact]
+    power_mul *= PUTT_CONTACT_MUL.get(contact, 1.0) if is_putt else CONTACT_MUL[contact]
     if force > 0.0 and power > POWER_POCKET_HI:
         power_mul *= lerp(1.0, MASH_POWER_LERP, force)
     total_yards = club_max * power_mul
@@ -748,6 +763,10 @@ def verify_live_constants_reflected() -> None:
     assert abs(PX_PER_YARD - 2.25) < 1e-9
     assert abs(POWER_POCKET_HI - 0.92) < 1e-9
     assert abs(CONTACT_MUL["PERFECT"] - 1.06) < 1e-9
+    assert abs(CONTACT_MUL["THIN"] - 0.82) < 1e-9
+    assert abs(PUTT_CONTACT_MUL["THIN"] - 1.06) < 1e-9
+    assert abs(PUTT_CONTACT_MUL["FAT"] - 0.90) < 1e-9
+    assert abs(PUTT_CONTACT_MUL["MISS"] - 0.78) < 1e-9
     assert abs(CARRY_FRAC_LONG - 0.91) < 1e-9
     assert abs(CARRY_FRAC_SHORT - 0.98) < 1e-9
     assert abs(PITCH_AIR_FRAC - 0.90) < 1e-9

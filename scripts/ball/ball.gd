@@ -115,12 +115,14 @@ const CUP_CAPTURE_RADIUS := 0.133
 ## Lip-in presentation — PLAYTEST. Orbit on true-scale grey rim (not pre-scale 1.55).
 ## (57/64)*CUP_RADIUS(0.198) ≈ 0.177. Arc angle still carries offset signal.
 const LIP_ORBIT_MAX := 0.175
-## Pour band — PLAYTEST. Fractions of CUP_CAPTURE_RADIUS (was 0.68/0.50 of old 1.9).
-const LIP_CENTER_OFFSET_MAX := 0.048
+## Pour band — PLAYTEST. Compared to offset_ratio (0–1 of CUP_CAPTURE_RADIUS).
+## True-scale bug: 0.048 was absolute world-px but compared as a ratio → only ~5%
+## of the cup poured; everything else toilet-bowled. Plan target = half the disc.
+const LIP_CENTER_OFFSET_MAX := 0.50
 const LIP_CENTER_SPEED_MAX := 1.05  ## unused as a hard gate; kept for arc scaling
 const LIP_DROP_DUR := 0.18
 ## Near-edge pours occasionally catch a hair (short curl). True center always pours.
-const LIP_POUR_PROMOTE_OFFSET := 0.035
+const LIP_POUR_PROMOTE_OFFSET := 0.35
 const LIP_POUR_PROMOTE_CHANCE := 0.10
 ## Lip-out presentation — PLAYTEST. Hot rejects; orbit = rim; make rate frozen.
 ## Arc length is the legibility metric (not orbit). Half→¾+ turn so horseshoe reads.
@@ -558,6 +560,18 @@ func _apply_lie_visual() -> void:
 
 func distance_traveled_yards() -> float:
 	return BallPhysics.pixels_to_yards((global_position - _shot_origin).length())
+
+
+func shot_origin() -> Vector2:
+	return _shot_origin
+
+
+func cup_entry_offset() -> Vector2:
+	return _cup_entry_offset
+
+
+func cup_entry_speed() -> float:
+	return _cup_entry_speed
 
 
 func _physics_process(delta: float) -> void:

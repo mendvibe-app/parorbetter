@@ -1,8 +1,8 @@
 # Plans — board
 
-**Status: clean for free play.** Stack shipped 2026-08-15 (rough + real-time pacing +
-distance-driven greens + Club Coach schema 3). Playtest the whole stack; reopen with a
-new correction if something fails on device.
+**Status: putting rework is the open track.** Pickup:
+`HANDOFF-putting-true-scale.md`. Line + contact signed off. Phase 3 shipped.
+Phase 4 execute panel in build — playtest.
 
 Shipped epic/correction specs live in [`archive/`](archive/).
 
@@ -12,6 +12,7 @@ Shipped epic/correction specs live in [`archive/`](archive/).
 
 | Doc | Status |
 |-----|--------|
+| `putting-rework-roadmap.md` | **ACTIVE** — Phases 0–3 shipped; Phase 4 playtest |
 | `flight-model-rebuild-roadmap.md` | COMPLETE (code) — Phases 0–7; pacing superseded by epic-real-time-pacing |
 | `swing-input-rework-roadmap.md` | COMPLETE (code) — Phases 0–6 |
 | `design-effort-based-swing.md` | Design companion (not an open epic) |
@@ -36,6 +37,14 @@ Order was intentional — do not retune putt pace before green sizing next time.
 
 | Doc | Status |
 |-----|--------|
+| `HANDOFF-putting-true-scale.md` | Pickup — where we left off 2026-08-27 |
+| `putting-rework-roadmap.md` | ACTIVE — line / contact / read-execute camera |
+| `putting-phase0-line-interaction.md` | SHIPPED — line aim is default (signed off 2026-08-27) |
+| `putting-phase1-contact.md` | SHIPPED — playtest 2026-08-27 |
+| `putting-phase3-read-camera.md` | SHIPPED — book zoom + flag during aim |
+| `putting-phase4-execute-camera.md` | CODE COMPLETE — playtest `SHOT_PANEL_H_PUTT` 640 |
+| `putt-true-scale-phase1.md` | SHIPPED — true-scale ball/cup/capture |
+| `putt-true-scale-phase2.md` | SHIPPED — putt camera framing (mins/cap still playtest knobs) |
 | `lip-in-drop-variation-phase1.md` | IMPLEMENTING — pour vs toilet-bowl variation |
 | `lip-out-leave-phase1.md` | CODE COMPLETE — ft-grounded leave + geometry-weighted luck |
 | `short-game-wind-offline-phase1.md` | SHIPPED (`64c76f7`) — wind exposure + path drift |

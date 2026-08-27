@@ -127,8 +127,10 @@ def main() -> int:
 	assert float(m_in_max.group(1)) >= 0.70, m_in_max.group(1)
 	m_off = re.search(r"const LIP_CENTER_OFFSET_MAX\s*:=\s*([0-9.]+)", BALL)
 	assert m_off
-	# True-scale pour band (~0.36 of CUP_CAPTURE_RADIUS 0.133); was 0.68 pre-scale.
-	assert 0.03 <= float(m_off.group(1)) <= 0.08, m_off.group(1)
+	# Ratio of capture disc — half the hole pours. (0.048 was a true-scale unit bug.)
+	assert 0.40 <= float(m_off.group(1)) <= 0.60, m_off.group(1)
+	m_prom = re.search(r"const LIP_POUR_PROMOTE_OFFSET\s*:=\s*([0-9.]+)", BALL)
+	assert m_prom and float(m_prom.group(1)) < float(m_off.group(1))
 	assert "func _cup_drop_params" in BALL
 	# Pour decision is offset-led (speed must not AND-block center makes).
 	params_fn = BALL.split("func _cup_drop_params")[1].split("func ")[0]
