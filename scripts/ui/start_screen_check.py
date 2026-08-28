@@ -56,6 +56,11 @@ def main() -> int:
     assert "func format_score_to_par" in GS
     assert "func _load_records" in GS
     assert "func _save_records" in GS
+    assert "left_handed" in GS
+    assert "func set_left_handed" in GS
+    assert 'cfg.set_value("prefs", "left_handed", left_handed)' in GS
+    assert "_on_hand_pressed" in SS
+    assert "GameState.set_left_handed" in SS
     assert "_update_records_on_end" in GS
     assert "green_mode" in GS
     assert "func in_practice" in GS
@@ -99,11 +104,19 @@ def main() -> int:
     scene = ROOT / "scenes" / "ui" / "start_screen.tscn"
     assert scene.is_file()
     scene_txt = scene.read_text(encoding="utf-8")
-    assert 'name="Buttons" type="VBoxContainer"' in scene_txt
+    assert 'name="Buttons" type="GridContainer"' in scene_txt
+    assert "columns = 2" in scene_txt
     assert "Survival" in scene_txt
     assert "18 Hole Round" in scene_txt
     assert "Practice Green" in scene_txt
     assert "Practice Range" in scene_txt
+    assert "HandPick" in scene_txt
+    assert "Right-handed" in scene_txt
+    assert "TextureButton" in scene_txt
+    assert "HandLabel" in scene_txt
+    assert "HcpLabel" in scene_txt
+    assert 'theme_override_font_sizes/font_size = 104' in scene_txt
+    assert "Vector2(400, 128)" not in scene_txt
     assert 'path="res://scenes/ui/start_screen.tscn"' in (ROOT / "scenes" / "main.tscn").read_text(
         encoding="utf-8"
     )

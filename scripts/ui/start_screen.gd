@@ -7,16 +7,17 @@ signal range_pressed
 signal short_game_pressed
 signal coach_pressed
 
-@onready var score_label: Label = $Panel/RecordBox/Inner/ScoreRow/RecordCol/ScoreLabel
-@onready var deepest_label: Label = $Panel/RecordBox/Inner/DeepestLabel
+@onready var score_label: Label = $Panel/Hero/RecordBox/Inner/ScoreRow/RecordCol/ScoreLabel
+@onready var deepest_label: Label = $Panel/Hero/RecordBox/Inner/DeepestLabel
+@onready var hcp_label: Label = $Panel/Hero/RecordBox/Inner/HcpLabel
 @onready var start_btn: Button = $Panel/Buttons/StartButton
 @onready var stroke_play_btn: Button = $Panel/Buttons/StrokePlayButton
 @onready var green_btn: Button = $Panel/Buttons/GreenButton
 @onready var range_btn: Button = $Panel/Buttons/RangeButton
 @onready var short_game_btn: Button = $Panel/Buttons/ShortGameButton
 @onready var coach_btn: Button = $Panel/Buttons/CoachButton
-
-var _hcp_label: Label
+@onready var golfer_hint: TextureButton = $Panel/Hero/HandPick/GolferHint
+@onready var hand_label: Button = $Panel/Hero/HandPick/HandLabel
 
 
 func _ready() -> void:
@@ -47,28 +48,16 @@ func _ready() -> void:
 		AudioBus.play_ui()
 		coach_pressed.emit()
 	)
-	_setup_hcp_label()
-
-
-func _setup_hcp_label() -> void:
-	## Small line under 18 Hole Round for handicap status.
-	if stroke_play_btn == null:
-		return
-	_hcp_label = Label.new()
-	_hcp_label.name = "HcpLabel"
-	_hcp_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_hcp_label.add_theme_font_size_override("font_size", UiScale.CAPTION)
-	_hcp_label.add_theme_color_override("font_color", UiScale.TEXT_SECONDARY)
-	_hcp_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var buttons := stroke_play_btn.get_parent()
-	if buttons:
-		var idx := stroke_play_btn.get_index()
-		buttons.add_child(_hcp_label)
-		buttons.move_child(_hcp_label, idx + 1)
+	if golfer_hint:
+		golfer_hint.pressed.connect(_on_hand_pressed)
+	if hand_label:
+		hand_label.pressed.connect(_on_hand_pressed)
+	_refresh_hand()
 
 
 func show_screen() -> void:
 	_refresh_record()
+	_refresh_hand()
 	coach_btn.visible = true
 	visible = true
 
@@ -90,5 +79,18 @@ func _refresh_record() -> void:
 	score_label.text = "Survival %s" % surv
 	deepest_label.text = "18 Hole %s" % stroke
 	deepest_label.visible = true
-	if _hcp_label:
-		_hcp_label.text = GameState.handicap_label()
+	if hcp_label:
+		hcp_label.text = GameState.handicap_label()
+
+
+func _on_hand_pressed() -> void:
+	AudioBus.play_ui()
+	GameState.set_left_handed(not GameState.left_handed)
+	_refresh_hand()
+
+
+func _refresh_hand() -> void:
+	if hand_label:
+		hand_label.text = "Left-handed" if GameState.left_handed else "Right-handed"
+	if golfer_hint:
+		golfer_hint.flip_h = GameState.left_handed

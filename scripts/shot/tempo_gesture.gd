@@ -100,8 +100,8 @@ const CHIP_MARKER_BAND := Color(0.7, 0.55, 0.3, 0.35)
 const CHIP_MARKER_TICK := Color(0.95, 0.85, 0.55, 0.95)
 const BALL_POP_MS := 120.0
 const LANDMARK_DIAM := 36.0
-const GOLFER_DRAW_H := 120.0
-const GOLFER_DRAW_H_PUTT := 64.0  ## PLAYTEST — putt pad chrome; lie widget hidden on Green
+## Reserved column beside the swipe lane (RH left / LH right).
+const GOLFER_COL_FRAC := 0.34
 const GOLFER_MARGIN := 12.0
 ## STYLE sky / grass for the mini stage behind the figure.
 const GOLFER_SKY := Color(0.271, 0.478, 0.612, 1.0)  ## #457A9C
@@ -129,7 +129,7 @@ var club_max_yards: float = 40.0
 var peak_pos: Vector2 = Vector2.ZERO
 ## Rough severity cue for address pose offset (Buried/Average/SittingUp); empty = none.
 var lie_severity: String = ""
-## Side-on lie diorama — top-right of the pad, mirrors golfer stage top-left.
+## Side-on lie diorama — opposite top corner from the golfer column.
 var lie_preview: LiePreview
 
 var _touch_index: int = -1
@@ -164,6 +164,7 @@ var _last_pos: Vector2 = Vector2.ZERO
 ## Signed pad-normalized peak lateral (perp to stroke axis).
 ## Geometry: axis down-pad, perp = left; finger RIGHT of lane → lat < 0.
 ## Map: negative = in-to-out pad path = draw/hook (left); positive = out-to-in = fade/slice (right).
+## LH: stored lat is negated so in-to-out still reads as draw toward the body.
 ## Confirmed via axis/perp math (pad-right → −lat → draw); live pad-right smoke on playtest.
 var _max_lateral: float = 0.0
 var _marker_crossed: bool = false
@@ -200,8 +201,9 @@ func _layout_lie_preview() -> void:
 		return
 	var w := 112.0
 	var h := 48.0
-	# Top-right, same margin language as golfer top-left (GOLFER_MARGIN).
-	lie_preview.position = Vector2(size.x - w - GOLFER_MARGIN, GOLFER_MARGIN)
+	# Opposite top corner from the golfer column so the figure's head stays clear.
+	var x := GOLFER_MARGIN if _is_left_handed() else size.x - w - GOLFER_MARGIN
+	lie_preview.position = Vector2(x, GOLFER_MARGIN)
 	lie_preview.size = Vector2(w, h)
 	lie_preview.custom_minimum_size = Vector2(w, h)
 
@@ -241,6 +243,18 @@ func _uses_chip_golfer() -> bool:
 	return shot_type == "chip" or shot_type == "pitch" or shot_type == "flop"
 
 
+func _is_left_handed() -> bool:
+	return GameState.left_handed
+
+
+func _lane_x() -> float:
+	## Center of the leftover pad after the golfer column (not pad-center).
+	var col := size.x * GOLFER_COL_FRAC
+	var leftover := size.x - col
+	var x := leftover * 0.5 if _is_left_handed() else col + leftover * 0.5
+	return floorf(x) + 0.5
+
+
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
 	## Putt: long vertical span for ft resolution. Chip: short amplitude pad.
@@ -253,7 +267,7 @@ func address_hint() -> Vector2:
 		y = 0.20
 	elif _uses_short_lane():
 		y = 0.30
-	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
+	return Vector2(_lane_x(), size.y * y)
 
 
 func top_hint() -> Vector2:
@@ -267,7 +281,7 @@ func top_hint() -> Vector2:
 		y = 0.85
 	elif _uses_short_lane():
 		y = 0.80
-	return Vector2(floorf(size.x * 0.5) + 0.5, size.y * y)
+	return Vector2(_lane_x(), size.y * y)
 
 
 func _lane_peak_pos() -> Vector2:
@@ -404,6 +418,7 @@ func set_enabled(on: bool) -> void:
 	active = on
 	if on:
 		_ghost_t0_ms = Time.get_ticks_msec()
+		_layout_lie_preview()
 	else:
 		dragging = false
 		swinging = false
@@ -668,6 +683,8 @@ func _update(pos: Vector2) -> void:
 	# Lateral (perp to stroke axis) — putt line + full shape. See _max_lateral doc.
 	var perp := Vector2(-_axis.y, _axis.x)  # left of down-pad axis
 	var lat := delta.dot(perp) / maxf(size.y, 1.0)
+	if _is_left_handed():
+		lat = -lat
 	if absf(lat) > absf(_max_lateral):
 		_max_lateral = lat
 
@@ -875,26 +892,32 @@ func _draw_target_tick(pt: Vector2, color: Color) -> void:
 
 
 func _draw_golfer() -> void:
-	## Pose tracks live_stroke_u — top-left stage, does not replace coach.
+	## Pose tracks live_stroke_u — fill + center the column, does not replace coach.
 	if not active and _t_impact < 0.0:
 		return
 	var pair: Array = _golfer_pose_pair()
 	var a: Texture2D = pair[0]
-	var b: Texture2D = pair[1]
-	var t: float = float(pair[2])
 	var tex_h := float(a.get_height())
-	var draw_h := GOLFER_DRAW_H_PUTT if _is_putt() else GOLFER_DRAW_H
-	var scale := draw_h / maxf(tex_h, 1.0)
-	var tw := float(a.get_width()) * scale
-	var th := draw_h
-	var origin := Vector2(GOLFER_MARGIN, GOLFER_MARGIN)
+	var tex_w := float(a.get_width())
+	var col_w := size.x * GOLFER_COL_FRAC
+	var col_x := size.x - col_w if _is_left_handed() else 0.0
+	var inner := Rect2(
+		col_x + GOLFER_MARGIN,
+		GOLFER_MARGIN,
+		maxf(col_w - GOLFER_MARGIN * 2.0, 8.0),
+		maxf(size.y - GOLFER_MARGIN * 2.0, 8.0)
+	)
+	var fit := minf(inner.size.x / maxf(tex_w, 1.0), inner.size.y / maxf(tex_h, 1.0))
+	var tw := tex_w * fit
+	var th := tex_h * fit
+	var origin := inner.position + (inner.size - Vector2(tw, th)) * 0.5
 	# Subtle severity cue on full-swing address (primary read is LiePreview).
 	if (
 		not _is_putt()
 		and not _uses_chip_golfer()
 		and GameState.rough_severity_enabled
 		and lie_severity != ""
-		and t < 0.15
+		and float(pair[2]) < 0.15
 		and not had_top
 	):
 		match lie_severity:
@@ -902,14 +925,12 @@ func _draw_golfer() -> void:
 				origin.y += 4.0  # crouch into buried lie
 			BallPhysics.ROUGH_SEV_SITTING:
 				origin.y -= 3.0  # more upright over a sitting-up ball
-	var pad := 6.0
-	var stage := Rect2(origin - Vector2(pad, pad), Vector2(tw + pad * 2.0, th + pad * 2.0))
+	var stage := Rect2(Vector2(col_x + 4.0, 4.0), Vector2(col_w - 8.0, size.y - 8.0))
 	_draw_golfer_stage(stage)
-	var col_a := Color(1, 1, 1, 1.0 - t * 0.85)
-	var col_b := Color(1, 1, 1, t)
-	draw_texture_rect(a, Rect2(origin, Vector2(tw, th)), false, col_a)
-	if t > 0.02:
-		draw_texture_rect(b, Rect2(origin, Vector2(tw, th)), false, col_b)
+	var dest := Rect2(origin, Vector2(tw, th))
+	if _is_left_handed():
+		dest = Rect2(Vector2(origin.x + tw, origin.y), Vector2(-tw, th))
+	draw_texture_rect(a, dest, false)
 
 
 func _draw_golfer_stage(stage: Rect2) -> void:
@@ -958,29 +979,27 @@ func _golfer_keyframes() -> Array:
 
 
 func _golfer_blend_strip(frames: Array, t01: float) -> Array:
-	## Crossfade along frames for t in [0,1]. Returns [tex_a, tex_b, blend].
+	## Snap to nearest frame — large draw makes crossfade look like two bodies.
 	var n: int = frames.size()
 	if n <= 1:
 		return [frames[0], frames[0], 0.0]
 	var x := clampf(t01, 0.0, 1.0) * float(n - 1)
-	var i := clampi(int(floor(x)), 0, n - 2)
-	var t := clampf(x - float(i), 0.0, 1.0)
-	return [frames[i], frames[i + 1], t]
+	var i := clampi(int(round(x)), 0, n - 1)
+	return [frames[i], frames[i], 0.0]
 
 
 func _golfer_pose_pair() -> Array:
-	## Returns [tex_a, tex_b, blend 0..1]. 8 keyframes + crossfade for smoother stroke.
+	## Returns [tex_a, tex_b, blend 0..1]. Blend unused (snap); pair shape kept for callers.
 	var frames: Array = _golfer_keyframes()
 	var addr: Texture2D = frames[0]
-	var top: Texture2D = frames[4]
 	var impact: Texture2D = frames[6]
 	var follow: Texture2D = frames[7]
 	var u := live_stroke_u()
 	## Idle sentinel -1 (no takeaway yet) → address. Post-top negatives → follow.
 	if u < 0.0:
 		if had_top or _t_impact >= 0.0:
-			var f := clampf(-u, 0.0, 1.0)
-			return [impact, follow, f]
+			var tex: Texture2D = follow if clampf(-u, 0.0, 1.0) >= 0.5 else impact
+			return [tex, tex, 0.0]
 		return [addr, addr, 0.0]
 	if not had_top:
 		## Backswing 0→1: address → takeaway → mid → late → top (indices 0..4).

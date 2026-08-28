@@ -62,7 +62,7 @@ Same palette language as fills. Silhouette-first.
 
 1. **Pad golfer is kit-authored modular sprites** (flat blocks matching STYLE). PL `create_character` tends RPG/chibi — research only unless style-locked to kit base.
 2. Lock identity (cap, dotted shirt, pants, pivot) before multi-pose expansion.
-3. Pad frames: **128×192**, facing right, transparent BG (see `golfer.md`).
+3. Pad frames: **128×192**, facing right, transparent BG (see `golfer.md`). LH is `flip_h`.
 4. Full / putt / chip: **same character**; club length differs (putt short, chip wedge, full long).
 
 Do not freeform a new person per pose.

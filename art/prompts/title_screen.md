@@ -9,7 +9,7 @@
 |--|--|
 | Plate | `assets/background/title_dusk.png` (kit procedural) |
 | Gen | `art/generated/wave_D/gen_title_bg.py` |
-| Shell | `scenes/ui/start_screen.tscn` — square kit buttons, golfer accent |
+| Shell | `scenes/ui/start_screen.tscn` — 2×3 kit tile grid, golfer accent |
 
 ## Constraints
 

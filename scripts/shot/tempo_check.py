@@ -2,6 +2,7 @@
 """Contract check for tempo-ratio swing — fails if the anti-arcade rules drift."""
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 
@@ -674,7 +675,12 @@ def main() -> int:
     assert "top_hint() - address_hint()" in GESTURE
     assert "_axis = delta.normalized()" not in GESTURE, "finger axis desyncs progress from impact mark"
     assert "func _lane_peak_pos" in GESTURE
-    assert "floorf(size.x * 0.5) + 0.5" in GESTURE
+    assert "func _lane_x" in GESTURE
+    assert "GOLFER_COL_FRAC" in GESTURE
+    assert "floorf(size.x * 0.5) + 0.5" not in GESTURE
+    addr_x = GESTURE.split("func address_hint")[1].split("func ")[0]
+    top_x = GESTURE.split("func top_hint")[1].split("func ")[0]
+    assert "_lane_x()" in addr_x and "_lane_x()" in top_x
     active_lm = GESTURE.split("func _draw_active_landmarks")[1].split("func ")[0]
     assert "address_hint() if _axis_locked" in active_lm
     assert "_lane_peak_pos()" in active_lm
@@ -766,18 +772,43 @@ def main() -> int:
     assert not screen_x_ok(20.0, 400.0)  # inside floor margin
     assert screen_x_ok(30.0, 400.0)
 
-    # Pad golfer: spatial stroke API + full + putt pose frames + top-left stage
+    # Pad golfer: spatial stroke API + full + putt pose frames + column stage
     assert "func live_stroke_u" in GESTURE
     assert "func _draw_golfer" in GESTURE
     assert "func _draw_golfer_stage" in GESTURE
     assert "GOLFER_MARGIN" in GESTURE
-    assert "GOLFER_DRAW_H_PUTT" in GESTURE
+    assert "GOLFER_COL_FRAC" in GESTURE
+    assert "GOLFER_DRAW_H_FRAC" not in GESTURE
     assert "lie_preview.visible = lie != \"Green\"" in GESTURE
     assert "GOLFER_SKY" in GESTURE and "GOLFER_GRASS" in GESTURE
     assert "GOLFER_X_FRAC" not in GESTURE
     golfer_draw = GESTURE.split("func _draw_golfer")[1].split("func ")[0]
-    assert "address_hint()" not in golfer_draw  # top-left, not mid-lane
+    assert "address_hint()" not in golfer_draw  # column, not mid-lane
+    assert "_is_left_handed()" in golfer_draw
+    assert "size.y - th - GOLFER_MARGIN" not in golfer_draw  # centered, not bottom-planted
+    assert "* 0.5" in golfer_draw
     assert "_draw_golfer()" in GESTURE.split("func _draw()")[1].split("func ")[0]
+    blend = GESTURE.split("func _golfer_blend_strip")[1].split("func ")[0]
+    assert "round(x)" in blend
+    assert "frames[i + 1]" not in blend  # snap, not crossfade
+    assert "func _is_left_handed" in GESTURE
+    assert "lat = -lat" in GESTURE
+    # Lane sits in leftover after golfer column (RH left / LH right).
+    col_m = re.search(r"GOLFER_COL_FRAC := ([0-9.]+)", GESTURE)
+    assert col_m, "GOLFER_COL_FRAC literal"
+    COL = float(col_m.group(1))
+
+    def lane_x(w: float, left_handed: bool) -> float:
+        col = w * COL
+        leftover = w - col
+        x = leftover * 0.5 if left_handed else col + leftover * 0.5
+        return float(int(x)) + 0.5  # floor toward +inf for these positives
+
+    rh = lane_x(1000.0, False)
+    lh = lane_x(1000.0, True)
+    assert rh == float(int(COL * 1000.0 + (1000.0 - COL * 1000.0) * 0.5)) + 0.5
+    assert lh == float(int((1000.0 - COL * 1000.0) * 0.5)) + 0.5
+    assert lh < 500.5 < rh
     # Pose frames branch: putt / chip+pitch / full — pitch shares chip set.
     keyframes = GESTURE.split("func _golfer_keyframes")[1].split("func ")[0]
     assert "_is_putt()" in keyframes

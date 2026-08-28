@@ -1,0 +1,45 @@
+{
+  "character": {
+    "id": "e820f735-c9fb-46be-b623-9f5271614fd1",
+    "name": "Idle",
+    "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+    "size": {
+      "width": 112,
+      "height": 168
+    },
+    "directions": 8,
+    "view": "side"
+  },
+  "spritesheet": {
+    "path": "Pad_Golfer_Wave_E-Idle.png",
+    "cell_size": {
+      "width": 112,
+      "height": 168
+    },
+    "sheet_size": {
+      "width": 896,
+      "height": 168
+    },
+    "columns": 8,
+    "pivot": "cell-center",
+    "rows": [
+      {
+        "row": 0,
+        "type": "rotations",
+        "frame_count": 8,
+        "directions": [
+          "south",
+          "south-east",
+          "east",
+          "north-east",
+          "north",
+          "north-west",
+          "west",
+          "south-west"
+        ]
+      }
+    ]
+  },
+  "export_version": "1.0",
+  "export_date": "2026-08-27T21:07:25.039504+00:00"
+}

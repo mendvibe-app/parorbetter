@@ -1,0 +1,36 @@
+{
+  "group_id": "7bb314ee-ac35-49b4-a7d5-781e982d1959",
+  "states": [
+    {
+      "character": {
+        "id": "e820f735-c9fb-46be-b623-9f5271614fd1",
+        "name": "Idle",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:03:32.086434+00:00"
+      },
+      "folder": "Idle",
+      "frames": {
+        "rotations": {
+          "south": "Idle/rotations/south.png",
+          "south-east": "Idle/rotations/south-east.png",
+          "east": "Idle/rotations/east.png",
+          "north-east": "Idle/rotations/north-east.png",
+          "north": "Idle/rotations/north.png",
+          "north-west": "Idle/rotations/north-west.png",
+          "west": "Idle/rotations/west.png",
+          "south-west": "Idle/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-08-27T21:07:22.195462"
+}

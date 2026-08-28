@@ -1,0 +1,282 @@
+{
+  "group_id": "7bb314ee-ac35-49b4-a7d5-781e982d1959",
+  "states": [
+    {
+      "character": {
+        "id": "e820f735-c9fb-46be-b623-9f5271614fd1",
+        "name": "Idle",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:03:32.086434+00:00"
+      },
+      "folder": "Idle",
+      "frames": {
+        "rotations": {
+          "south": "Idle/rotations/south.png",
+          "south-east": "Idle/rotations/south-east.png",
+          "east": "Idle/rotations/east.png",
+          "north-east": "Idle/rotations/north-east.png",
+          "north": "Idle/rotations/north.png",
+          "north-west": "Idle/rotations/north-west.png",
+          "west": "Idle/rotations/west.png",
+          "south-west": "Idle/rotations/south-west.png"
+        },
+        "animations": {
+          "full_swing": {
+            "south": [
+              "Idle/animations/full_swing/south/frame_000.png",
+              "Idle/animations/full_swing/south/frame_001.png",
+              "Idle/animations/full_swing/south/frame_002.png",
+              "Idle/animations/full_swing/south/frame_003.png",
+              "Idle/animations/full_swing/south/frame_004.png",
+              "Idle/animations/full_swing/south/frame_005.png",
+              "Idle/animations/full_swing/south/frame_006.png",
+              "Idle/animations/full_swing/south/frame_007.png",
+              "Idle/animations/full_swing/south/frame_008.png"
+            ]
+          }
+        }
+      }
+    },
+    {
+      "character": {
+        "id": "66e0e681-f7a3-4714-bf6a-3abada4d71cb",
+        "name": "swing_impact",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:15:37.492371+00:00"
+      },
+      "folder": "swing_impact",
+      "frames": {
+        "rotations": {
+          "south": "swing_impact/rotations/south.png",
+          "south-east": "swing_impact/rotations/south-east.png",
+          "east": "swing_impact/rotations/east.png",
+          "north-east": "swing_impact/rotations/north-east.png",
+          "north": "swing_impact/rotations/north.png",
+          "north-west": "swing_impact/rotations/north-west.png",
+          "west": "swing_impact/rotations/west.png",
+          "south-west": "swing_impact/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "7d1f2799-62e4-48fb-a638-3806bb4d1d27",
+        "name": "swing_top",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:15:37.507747+00:00"
+      },
+      "folder": "swing_top",
+      "frames": {
+        "rotations": {
+          "south": "swing_top/rotations/south.png",
+          "south-east": "swing_top/rotations/south-east.png",
+          "east": "swing_top/rotations/east.png",
+          "north-east": "swing_top/rotations/north-east.png",
+          "north": "swing_top/rotations/north.png",
+          "north-west": "swing_top/rotations/north-west.png",
+          "west": "swing_top/rotations/west.png",
+          "south-west": "swing_top/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "775b6c1c-8541-4fd7-a4a7-8ff3af5b8f80",
+        "name": "swing_takeaway",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:19:27.580331+00:00"
+      },
+      "folder": "swing_takeaway",
+      "frames": {
+        "rotations": {
+          "south": "swing_takeaway/rotations/south.png",
+          "south-east": "swing_takeaway/rotations/south-east.png",
+          "east": "swing_takeaway/rotations/east.png",
+          "north-east": "swing_takeaway/rotations/north-east.png",
+          "north": "swing_takeaway/rotations/north.png",
+          "north-west": "swing_takeaway/rotations/north-west.png",
+          "west": "swing_takeaway/rotations/west.png",
+          "south-west": "swing_takeaway/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "2e2b6327-3256-495c-8417-8711b5b2076c",
+        "name": "swing_mid",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:19:28.669849+00:00"
+      },
+      "folder": "swing_mid",
+      "frames": {
+        "rotations": {
+          "south": "swing_mid/rotations/south.png",
+          "south-east": "swing_mid/rotations/south-east.png",
+          "east": "swing_mid/rotations/east.png",
+          "north-east": "swing_mid/rotations/north-east.png",
+          "north": "swing_mid/rotations/north.png",
+          "north-west": "swing_mid/rotations/north-west.png",
+          "west": "swing_mid/rotations/west.png",
+          "south-west": "swing_mid/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "3695a8db-ac3c-4180-aa76-d8cf8225385c",
+        "name": "swing_late",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:19:29.507214+00:00"
+      },
+      "folder": "swing_late",
+      "frames": {
+        "rotations": {
+          "south": "swing_late/rotations/south.png",
+          "south-east": "swing_late/rotations/south-east.png",
+          "east": "swing_late/rotations/east.png",
+          "north-east": "swing_late/rotations/north-east.png",
+          "north": "swing_late/rotations/north.png",
+          "north-west": "swing_late/rotations/north-west.png",
+          "west": "swing_late/rotations/west.png",
+          "south-west": "swing_late/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "bacd71f4-6d5c-4e09-b0d4-96e3c84baeb6",
+        "name": "swing_early_down",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:19:30.771054+00:00"
+      },
+      "folder": "swing_early_down",
+      "frames": {
+        "rotations": {
+          "south": "swing_early_down/rotations/south.png",
+          "south-east": "swing_early_down/rotations/south-east.png",
+          "east": "swing_early_down/rotations/east.png",
+          "north-east": "swing_early_down/rotations/north-east.png",
+          "north": "swing_early_down/rotations/north.png",
+          "north-west": "swing_early_down/rotations/north-west.png",
+          "west": "swing_early_down/rotations/west.png",
+          "south-west": "swing_early_down/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "c684328c-7b8c-415f-805a-c868d3070026",
+        "name": "swing_follow",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:19:34.346554+00:00"
+      },
+      "folder": "swing_follow",
+      "frames": {
+        "rotations": {
+          "south": "swing_follow/rotations/south.png",
+          "south-east": "swing_follow/rotations/south-east.png",
+          "east": "swing_follow/rotations/east.png",
+          "north-east": "swing_follow/rotations/north-east.png",
+          "north": "swing_follow/rotations/north.png",
+          "north-west": "swing_follow/rotations/north-west.png",
+          "west": "swing_follow/rotations/west.png",
+          "south-west": "swing_follow/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    },
+    {
+      "character": {
+        "id": "38cac8c4-b493-49a4-aadb-808bd1aa242c",
+        "name": "swing_address",
+        "prompt": "male golfer pixel kit character, olive green cap with right brim, no hair showing, simple block face with two dot eyes, tan skin, cream white polo shirt with sparse dark dots, dark pants, holding a golf driver at address, side view facing right, hard black outline, flat shading",
+        "size": {
+          "width": 112,
+          "height": 168
+        },
+        "template_id": "mannequin",
+        "directions": 8,
+        "view": "side",
+        "created_at": "2026-08-27T21:42:04.489709+00:00"
+      },
+      "folder": "swing_address",
+      "frames": {
+        "rotations": {
+          "south": "swing_address/rotations/south.png",
+          "south-east": "swing_address/rotations/south-east.png",
+          "east": "swing_address/rotations/east.png",
+          "north-east": "swing_address/rotations/north-east.png",
+          "north": "swing_address/rotations/north.png",
+          "north-west": "swing_address/rotations/north-west.png",
+          "west": "swing_address/rotations/west.png",
+          "south-west": "swing_address/rotations/south-west.png"
+        },
+        "animations": {}
+      }
+    }
+  ],
+  "export_version": "3.1",
+  "export_date": "2026-08-27T21:46:17.562955"
+}

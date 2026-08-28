@@ -111,6 +111,8 @@ var sharp_dogleg_enabled: bool = true
 var rough_severity_enabled: bool = true
 ## Force tee set (null = progress-based Red→White→Blue). HoleData.TeeSet or null.
 var debug_tee_set: Variant = null
+## Pad golfer / swipe mapping — false = right-handed (column left). Persisted.
+var left_handed: bool = false
 
 
 func _ready() -> void:
@@ -533,6 +535,7 @@ func _load_records() -> void:
 			stroke_differentials.append(float(v))
 	_load_practice_reps(cfg)
 	_load_shot_type_reps(cfg)
+	left_handed = bool(cfg.get_value("prefs", "left_handed", false))
 
 
 func _load_practice_reps(cfg: ConfigFile) -> void:
@@ -574,7 +577,15 @@ func _save_records() -> void:
 	cfg.set_value("records", "stroke_differentials", diffs)
 	cfg.set_value("prefs", "practice_reps", practice_reps.duplicate())
 	cfg.set_value("prefs", "shot_type_reps", shot_type_reps.duplicate())
+	cfg.set_value("prefs", "left_handed", left_handed)
 	cfg.save(RECORDS_PATH)
+
+
+func set_left_handed(on: bool) -> void:
+	if left_handed == on:
+		return
+	left_handed = on
+	_save_records()
 
 
 func jump_to_hole(hole_index: int) -> void:

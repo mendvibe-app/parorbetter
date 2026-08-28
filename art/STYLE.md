@@ -131,7 +131,7 @@ Preferred source: PixelLab topdown tileset / tiles_pro → extract fills → 64�
 ### Characters (pad golfer)
 - Flat kit silhouette (not PL RPG/chibi): green cap, dotted light shirt, dark pants, hard outline
 - Discrete poses for stroke sync — same identity across full / putt / chip sets
-- Specs: `art/prompts/golfer.md`; Wave B baseline in `art/generated/wave_B/`
+- Pad column beside the swipe lane (RH left / LH flip); specs: `art/prompts/golfer.md`; Wave B baseline in `art/generated/wave_B/`
 - Hard outline, limited palette, transparent BG 128×192, Filter Off
 
 ---
