@@ -32,6 +32,7 @@ func _ready() -> void:
 	debug_panel.jump_hole.connect(_on_jump)
 	debug_panel.force_perfect.connect(func(): hole_controller.debug_force_shot(true))
 	debug_panel.force_mishit.connect(func(): hole_controller.debug_force_shot(false))
+	debug_panel.hole_out.connect(func(ace: bool): hole_controller.debug_hole_out(ace))
 	debug_panel.reload_hole.connect(_on_debug_reload)
 	if hole_controller.hud and hole_controller.hud.has_signal("menu_pressed"):
 		hole_controller.hud.menu_pressed.connect(_return_to_start)

@@ -203,6 +203,16 @@ layout_mode = 2
 size_flags_horizontal = 3
 text = "Jump Hole"
 
+[node name="HoleOutBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Hole Out"
+
+[node name="AceBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Ace"
+
 [node name="PerfectBtn" type="Button" parent="Panel/Margin/Root/Scroll/VBox/Buttons"]
 layout_mode = 2
 text = "Force Perfect"

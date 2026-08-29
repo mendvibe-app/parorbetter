@@ -5,6 +5,9 @@ signal jump_hole(index: int)
 signal force_perfect
 signal force_mishit
 signal reload_hole
+signal hole_out(ace: bool)
+
+const _HOLE_CTRL := preload("res://scripts/course/hole_controller.gd")
 
 @onready var panel: PanelContainer = $Panel
 @onready var panel_margin: MarginContainer = $Panel/Margin
@@ -43,6 +46,14 @@ func _ready() -> void:
 	)
 	$Panel/Margin/Root/Scroll/VBox/Buttons/SkipBtn.pressed.connect(func(): skip_hole.emit())
 	$Panel/Margin/Root/Scroll/VBox/Buttons/JumpBtn.pressed.connect(func(): jump_hole.emit(int(hole_spin.value)))
+	$Panel/Margin/Root/Scroll/VBox/Buttons/HoleOutBtn.pressed.connect(func():
+		panel.visible = false
+		hole_out.emit(false)
+	)
+	$Panel/Margin/Root/Scroll/VBox/Buttons/AceBtn.pressed.connect(func():
+		panel.visible = false
+		hole_out.emit(true)
+	)
 	$Panel/Margin/Root/Scroll/VBox/Buttons/PerfectBtn.pressed.connect(func():
 		GameState.force_perfect = true
 		force_perfect.emit()
@@ -300,7 +311,7 @@ func _process(_delta: float) -> void:
 		var height_line := "Apex —"
 		if not is_putt and (h_peak >= 0.0 or h_max >= 0.0):
 			# Indices: airy=4 (lowest), oak=3 (mid), tall=7 (wall) — single source TREE_CANOPY_H.
-			var ch: Array = HoleController.TREE_CANOPY_H
+			var ch: Array = _HOLE_CTRL.TREE_CANOPY_H
 			var airy_h := float(ch[4]) if ch.size() > 4 else 55.0
 			var oak_h := float(ch[3]) if ch.size() > 3 else 72.0
 			var tall_h := float(ch[7]) if ch.size() > 7 else 92.0
@@ -455,6 +466,7 @@ func _setup_elevation_sparkline() -> void:
 
 ## Side-elevation profile of the last shot (schematic sin arc, not a live trace).
 class ElevationSparkline extends Control:
+	const _HC := preload("res://scripts/course/hole_controller.gd")
 	var _carry_px: float = 0.0
 	var _apex: float = 0.0
 	var _planned_px: float = 0.0
@@ -484,7 +496,7 @@ class ElevationSparkline extends Control:
 		var pad := 8.0
 		var plot := Rect2(pad, pad, maxf(size.x - pad * 2.0, 4.0), maxf(size.y - pad * 2.0, 4.0))
 		# Ref lines from production table (airy / oak / tall) — no second hardcoded scale.
-		var ch: Array = HoleController.TREE_CANOPY_H
+		var ch: Array = _HC.TREE_CANOPY_H
 		var canopies: Array = []
 		var labels: Array = []
 		if ch.size() > 4:

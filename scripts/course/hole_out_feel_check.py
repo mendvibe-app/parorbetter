@@ -47,6 +47,15 @@ def main() -> int:
     assert "_show_hole_result_banner" in holed
     # Banner after curl budget (drop_hold), not mid-lip.
     assert "drop_hold" in holed
+    assert "Scoring.is_ace" in holed
+    assert "_show_ace_overlay" in HOLE
+    assert "play_splash" in holed
+    assert "HOLE IN ONE" in HOLE
+    assert "func debug_hole_out" in HOLE
+    assert "hole_out.emit" in Path(__file__).resolve().parents[1].joinpath("debug/debug_controls.gd").read_text(encoding="utf-8")
+    hole_tscn = Path(__file__).resolve().parents[2].joinpath("scenes/hole.tscn").read_text(encoding="utf-8")
+    assert "AcePond" in hole_tscn and "ui_ace_pond.png" in hole_tscn
+    assert Path(__file__).resolve().parents[2].joinpath("assets/ui/ui_ace_pond.png").is_file()
 
     assert "func _show_hole_result_banner" in HOLE
     # Practice green: drop, no zoom punch

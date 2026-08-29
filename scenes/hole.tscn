@@ -1,4 +1,4 @@
-[gd_scene load_steps=8 format=3 uid="uid://hole001"]
+[gd_scene load_steps=9 format=3 uid="uid://hole001"]
 
 [ext_resource type="Script" path="res://scripts/course/hole_controller.gd" id="1"]
 [ext_resource type="PackedScene" uid="uid://ball001" path="res://scenes/ball.tscn" id="2"]
@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" uid="uid://shotresult001" path="res://scenes/ui/shot_result_panel.tscn" id="5"]
 [ext_resource type="Texture2D" path="res://assets/ui/confirm_aim_button.png" id="6"]
 [ext_resource type="Texture2D" path="res://assets/ui/confirm_aim_button_pressed.png" id="7"]
+[ext_resource type="Texture2D" uid="uid://cepond01" path="res://assets/ui/ui_ace_pond.png" id="8"]
 
 [node name="Hole" type="Node2D"]
 script = ExtResource("1")
@@ -80,6 +81,22 @@ offset_bottom = -160.0
 texture_normal = ExtResource("6")
 texture_pressed = ExtResource("7")
 ignore_texture_size = true
+stretch_mode = 5
+
+[node name="AcePond" type="TextureRect" parent="UILayer"]
+visible = false
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -280.0
+offset_top = -420.0
+offset_right = 280.0
+offset_bottom = -40.0
+mouse_filter = 2
+texture = ExtResource("8")
+expand_mode = 1
 stretch_mode = 5
 
 [node name="BirdieBanner" type="Label" parent="UILayer"]

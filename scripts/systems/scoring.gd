@@ -36,3 +36,13 @@ static func label(result: Result) -> String:
 
 static func is_birdie_or_better(result: Result) -> bool:
 	return result == Result.ALBATROSS or result == Result.EAGLE or result == Result.BIRDIE
+
+
+static func is_ace(strokes: int) -> bool:
+	return strokes == 1
+
+
+static func hole_label(result: Result, strokes: int) -> String:
+	if is_ace(strokes):
+		return "Hole in One"
+	return label(result)

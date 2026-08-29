@@ -439,6 +439,21 @@ POSES = {
             "If the wedge is on the left or up by the cap you failed. One wedge, no ball."
         ),
     },
+    "ace_pond": {
+        "refs": ["lock_address.png"],
+        "prompt": (
+            "Keep this EXACT person from IMAGE_0: olive cap ON HIS HEAD, bald tan head, "
+            "two black square eyes, cream polo with dark square dots, dark pants, black shoes. "
+            "Chest toward camera, FACE in profile looking RIGHT. Same chunky pixel kit, hard 1px outline. "
+            "Do NOT redraw a new person. Do NOT show his back.\n"
+            "New scene: HOLE-IN-ONE celebration. He is mid-CANNONBALL jumping into a golf-course POND. "
+            "Body tucked, knees up, about to hit the water. Cap stays on. "
+            "Pond water in STYLE colors: mid #457A9C, deep #2A4A5C, small splash highlights #86C2CD. "
+            "Chunky pixel splash, not photo water. Grass bank optional. "
+            "ONE golfer only. No ball, no flag, no photo, no text, no second person. "
+            "Transparent or white background OK. Square composition, golfer large in frame."
+        ),
+    },
 }
 
 

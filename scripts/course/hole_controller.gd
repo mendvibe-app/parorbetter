@@ -251,6 +251,7 @@ const _HOLE_MAP_SCR := preload("res://scripts/ui/hole_map.gd")
 const TEX_CLUB_BAG: Texture2D = preload("res://assets/ui/ui_club_bag.png")
 const CHANGE_CLUB_ICON := 88.0
 var _hole_map: Control  ## HoleMap instance
+var ace_pond: TextureRect
 
 
 func _ready() -> void:
@@ -263,6 +264,9 @@ func _ready() -> void:
 	if shot_routine.has_signal("pure_strike"):
 		shot_routine.pure_strike.connect(_on_pure_strike)
 	birdie_label.visible = false
+	ace_pond = get_node_or_null("UILayer/AcePond") as TextureRect
+	if ace_pond:
+		ace_pond.visible = false
 	flash_rect.modulate.a = 0.0
 	GameState.run_ended.connect(_on_run_ended)
 	_setup_aim_visuals()
@@ -3992,20 +3996,27 @@ func _on_holed_out() -> void:
 		scorecard.reveal_hole(GameState.hole_scores.size() - 1, diff)
 	var life_delta := GameState.apply_hole_result_lives(result)
 	_update_hud()
-	feedback.text = _hole_result_feedback(result, diff, life_delta)
+	feedback.text = _hole_result_feedback(result, diff, life_delta, strokes)
 	feedback.modulate = Color(1.0, 0.95, 0.5)
 	# Banner after rim curl so "Birdie" isn't mid-lip.
 	await get_tree().create_timer(drop_hold).timeout
-	_show_hole_result_banner(result, diff, life_delta)
-	if Scoring.is_birdie_or_better(result) or result == Scoring.Result.PAR:
+	var ace := Scoring.is_ace(strokes)
+	_show_hole_result_banner(result, diff, life_delta, strokes)
+	if ace:
+		_show_ace_overlay()
+		AudioBus.play_golf_clap()
+		AudioBus.play_splash()
+	elif Scoring.is_birdie_or_better(result) or result == Scoring.Result.PAR:
 		AudioBus.play_golf_clap()
 	# Survival: death sting on lives out / finish. Stroke play: only soft finish on 18.
 	var died := GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0)
 	var finished := GameState.current_hole >= GameState.HOLE_COUNT
 	if died:
 		AudioBus.play_water_hazard()
-	# Remaining hold for banner fade (0.15+0.65+0.25≈1.05).
-	await get_tree().create_timer(maxf(1.55 - drop_hold, 0.85)).timeout
+	# Ace overlay ~2.2s; else remaining hold for banner fade (0.15+0.65+0.25≈1.05).
+	var hold := 2.2 if ace else maxf(1.55 - drop_hold, 0.85)
+	await get_tree().create_timer(hold).timeout
+	_hide_ace_overlay()
 	if GameState.is_survival() and (not GameState.run_active or GameState.lives <= 0):
 		request_game_over.emit()
 		return
@@ -4016,8 +4027,10 @@ func _on_holed_out() -> void:
 	request_next_hole.emit()
 
 
-func _hole_result_feedback(result: Scoring.Result, diff: int, life_delta: int) -> String:
-	var label := Scoring.label(result)
+func _hole_result_feedback(
+	result: Scoring.Result, diff: int, life_delta: int, p_strokes: int = 0
+) -> String:
+	var label := Scoring.hole_label(result, p_strokes)
 	if GameState.is_stroke_play():
 		return "IN THE HOLE  ·  %s (%+d)" % [label, diff]
 	var life_txt := ""
@@ -4029,22 +4042,43 @@ func _hole_result_feedback(result: Scoring.Result, diff: int, life_delta: int) -
 
 
 func _show_hole_result_banner(
-	result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1, life_delta: int = 0
+	result: Scoring.Result = Scoring.Result.BIRDIE,
+	diff: int = -1,
+	life_delta: int = 0,
+	p_strokes: int = 0
 ) -> void:
 	## Fade result on BirdieBanner — all makes, not only birdie+ (replaces zoom punch read).
 	birdie_label.visible = true
 	birdie_label.modulate.a = 0.0
-	if GameState.is_stroke_play():
-		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
+	if Scoring.is_ace(p_strokes):
+		birdie_label.text = "HOLE IN ONE"
+	elif GameState.is_stroke_play():
+		birdie_label.text = "%s (%+d)" % [Scoring.hole_label(result, p_strokes).to_upper(), diff]
 	elif Scoring.is_birdie_or_better(result) and life_delta > 0:
 		birdie_label.text = "BIRDIE MOMENTUM  +1 LIFE"
 	else:
-		birdie_label.text = "%s (%+d)" % [Scoring.label(result).to_upper(), diff]
+		birdie_label.text = "%s (%+d)" % [Scoring.hole_label(result, p_strokes).to_upper(), diff]
+	var hold := 1.8 if Scoring.is_ace(p_strokes) else 0.65
 	var tw := create_tween()
 	tw.tween_property(birdie_label, "modulate:a", 1.0, 0.15)
-	tw.tween_interval(0.65)
+	tw.tween_interval(hold)
 	tw.tween_property(birdie_label, "modulate:a", 0.0, 0.25)
 	tw.tween_callback(func(): birdie_label.visible = false)
+
+
+func _show_ace_overlay() -> void:
+	if ace_pond == null:
+		return
+	ace_pond.flip_h = GameState.left_handed
+	ace_pond.visible = true
+	ace_pond.modulate.a = 0.0
+	var tw := create_tween()
+	tw.tween_property(ace_pond, "modulate:a", 1.0, 0.15)
+
+
+func _hide_ace_overlay() -> void:
+	if ace_pond:
+		ace_pond.visible = false
 
 
 func _show_birdie(result: Scoring.Result = Scoring.Result.BIRDIE, diff: int = -1) -> void:
@@ -4089,6 +4123,21 @@ func skip_hole() -> void:
 	_end_aim_phase()
 	strokes = hole.par
 	GameState.strokes_this_hole = hole.par
+	_on_holed_out()
+
+
+func debug_hole_out(ace: bool) -> void:
+	## F1: drop in the cup. Ace forces 1 stroke so the pond beat plays.
+	if GameState.in_practice():
+		return
+	if hole_complete:
+		return
+	_end_aim_phase()
+	if ace:
+		strokes = 1
+	elif strokes < 1:
+		strokes = hole.par
+	GameState.strokes_this_hole = strokes
 	_on_holed_out()
 
 
