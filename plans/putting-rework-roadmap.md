@@ -102,3 +102,5 @@ execute view, versus the single always-tight view they fight today.
   design principle everything else on this project is anchored to.
 - Not drawing the ball/hole larger than true scale as a shortcut — last-resort only, not in
   scope here now that line/contact give the camera work a smaller, better-defined job.
+- Not retuning green slope / break in this track — parked since true-scale Phase 1. Pickup:
+  `plans/green-slope-align-roadmap.md` (field + gravity; includes chip/pitch/flop on-green roll).

@@ -4,6 +4,10 @@
 `HANDOFF-putting-true-scale.md`. Line + contact signed off. Phase 3 shipped.
 Phase 4 execute panel in build — playtest.
 
+**New track (plan only):** green slope align — `green-slope-align-roadmap.md`.
+True-scale made stored grades look like ski slopes; putt/chip/pitch/flop
+on-green roll still use three different slope models. No code until Phase 1 spec.
+
 Shipped epic/correction specs live in [`archive/`](archive/).
 
 ---
@@ -13,6 +17,7 @@ Shipped epic/correction specs live in [`archive/`](archive/).
 | Doc | Status |
 |-----|--------|
 | `putting-rework-roadmap.md` | **ACTIVE** — Phases 0–3 shipped; Phase 4 playtest |
+| `green-slope-align-roadmap.md` | **PLAN** — field + gravity; putt and short-game on-green roll |
 | `flight-model-rebuild-roadmap.md` | COMPLETE (code) — Phases 0–7; pacing superseded by epic-real-time-pacing |
 | `swing-input-rework-roadmap.md` | COMPLETE (code) — Phases 0–6 |
 | `design-effort-based-swing.md` | Design companion (not an open epic) |
@@ -50,6 +55,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `short-game-wind-offline-phase1.md` | SHIPPED (`64c76f7`) — wind exposure + path drift |
 | `short-game-landing-circle-phase1.md` | SHIPPED (`5703bb3`) — chip/pitch/flop aim circle by rest yards |
 | `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
+| `green-slope-align-roadmap.md` | PLAN — USGA/Pelz grade + one on-green gravity owner (putt+chip+pitch+flop) |
 
 ---
 
