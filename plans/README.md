@@ -49,7 +49,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `putting-phase4-execute-camera.md` | CODE COMPLETE — playtest `SHOT_PANEL_H_PUTT` 640 |
 | `putt-true-scale-phase1.md` | SHIPPED — true-scale ball/cup/capture |
 | `putt-true-scale-phase2.md` | SHIPPED — putt camera framing (mins/cap still playtest knobs) |
-| `lip-in-drop-variation-phase1.md` | IMPLEMENTING — pour vs toilet-bowl variation |
+| `lip-in-drop-variation-phase1.md` | SHIPPED — pour vs toilet-bowl (unit bug 2026-08-27) |
 | `lip-out-leave-phase1.md` | CODE COMPLETE — ft-grounded leave + geometry-weighted luck |
 | `short-game-wind-offline-phase1.md` | SHIPPED (`64c76f7`) — wind exposure + path drift |
 | `short-game-landing-circle-phase1.md` | SHIPPED (`5703bb3`) — chip/pitch/flop aim circle by rest yards |

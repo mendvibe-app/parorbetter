@@ -890,6 +890,27 @@ const PUTT_SETTLE_SPEED := 0.525  ## was 1.5 × PUTT_PACE_SCALE
 const ROLL_SETTLE_SPEED := 10.0
 
 
+## Aim-preview rest after on-green roll. slope_at(world) → grade; ZERO off green.
+## ponytail: coarse Euler, 8s cap. Live roll stays in GolfBall._process_roll.
+static func preview_green_roll(
+	land: Vector2, dir: Vector2, roll_px: float, slope_at: Callable
+) -> Vector2:
+	if roll_px < 2.0 or dir.length_squared() < 0.0001:
+		return land
+	var decel := putt_decel_px()
+	var vel := dir.normalized() * sqrt(2.0 * decel * roll_px)
+	var pos := land
+	var dt := 1.0 / 30.0
+	for _i in 240:
+		if vel.length() < PUTT_SETTLE_SPEED:
+			break
+		if slope_at.is_valid():
+			vel += green_slope_accel(slope_at.call(pos)) * dt
+		vel = vel.move_toward(Vector2.ZERO, decel * dt)
+		pos += vel * dt
+	return pos
+
+
 ## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not
 ## re-derive resolve_distance / air_frac. Callers supply air_px and air_time.
 ## This is the **mean** ground speed over hang (distance-preserving). Peak at impact

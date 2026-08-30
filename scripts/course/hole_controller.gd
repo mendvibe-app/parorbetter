@@ -2852,15 +2852,24 @@ func _aim_planned_total_yd(
 	return BallPhysics.estimate_carry_yards(power, club_max, lie, severity, shot_type)
 
 
+func _preview_green_slope(pos: Vector2) -> Vector2:
+	if hole == null or not _on_painted_green(pos):
+		return Vector2.ZERO
+	return hole.green_slope_at(pos - _green_center)
+
+
 func _aim_rest_point(
 	from: Vector2, to: Vector2, club_max: float, lie: String, shot_type: String
 ) -> Vector2:
-	## Rest position along aim bearing at planned total (past drag when Full floors).
+	## Rest = carry land + on-green slope rundown (flat remainder if off the paint).
+	var land := _aim_carry_land_point(from, to, club_max, lie, shot_type)
 	var total_yd := _aim_planned_total_yd(from, to, club_max, lie, shot_type)
+	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
+	var roll_px := BallPhysics.yards_to_pixels(total_yd * (1.0 - air_frac))
 	var bearing := to - from
 	if bearing.length_squared() < 1.0:
 		bearing = Vector2(0, -1)
-	return from + bearing.normalized() * BallPhysics.yards_to_pixels(total_yd)
+	return BallPhysics.preview_green_roll(land, bearing.normalized(), roll_px, _preview_green_slope)
 
 
 func _aim_carry_land_point(

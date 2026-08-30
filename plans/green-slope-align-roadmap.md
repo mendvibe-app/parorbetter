@@ -154,7 +154,7 @@ Intensity was `randf()` every hole; FLAT was cut so break would “show up.” A
 
 - Putt line / contact / camera / cup capture (putting rework + true-scale, shipped).
 - Pad marker slope compensation (player reads pace).
-- Rest-circle / landing preview including slope rundown (advice UI; flag if Phase 1 makes the white land marker lie).
+- Rest-circle slope rundown — **SHIPPED** (`BallPhysics.preview_green_roll`; yellow rest walks on-green grade). White carry ring stays first-bounce.
 - Fairway/rough contour fields.
 - Stimp as a player-facing setting (friction stays 1.8).
 - New contour profiles, designer meshes (existing `ponytail:` on `_green_slope_influences`).
