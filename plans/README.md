@@ -4,6 +4,9 @@
 `HANDOFF-putting-true-scale.md`. Line + contact signed off. Phase 3 shipped.
 Phase 4 execute panel in build — playtest.
 
+**New track:** green slope align — `green-slope-align-roadmap.md` / `green-slope-align-phase1.md`.
+Field is 1–3% grade; putt and on-green short-game roll share `green_slope_accel`.
+
 Shipped epic/correction specs live in [`archive/`](archive/).
 
 ---
@@ -13,6 +16,7 @@ Shipped epic/correction specs live in [`archive/`](archive/).
 | Doc | Status |
 |-----|--------|
 | `putting-rework-roadmap.md` | **ACTIVE** — Phases 0–3 shipped; Phase 4 playtest |
+| `green-slope-align-roadmap.md` | **SHIPPED** — Phases 1–3 (device playtest skipped) |
 | `flight-model-rebuild-roadmap.md` | COMPLETE (code) — Phases 0–7; pacing superseded by epic-real-time-pacing |
 | `swing-input-rework-roadmap.md` | COMPLETE (code) — Phases 0–6 |
 | `design-effort-based-swing.md` | Design companion (not an open epic) |
@@ -45,11 +49,13 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `putting-phase4-execute-camera.md` | CODE COMPLETE — playtest `SHOT_PANEL_H_PUTT` 640 |
 | `putt-true-scale-phase1.md` | SHIPPED — true-scale ball/cup/capture |
 | `putt-true-scale-phase2.md` | SHIPPED — putt camera framing (mins/cap still playtest knobs) |
-| `lip-in-drop-variation-phase1.md` | IMPLEMENTING — pour vs toilet-bowl variation |
+| `lip-in-drop-variation-phase1.md` | SHIPPED — pour vs toilet-bowl (unit bug 2026-08-27) |
 | `lip-out-leave-phase1.md` | CODE COMPLETE — ft-grounded leave + geometry-weighted luck |
 | `short-game-wind-offline-phase1.md` | SHIPPED (`64c76f7`) — wind exposure + path drift |
 | `short-game-landing-circle-phase1.md` | SHIPPED (`5703bb3`) — chip/pitch/flop aim circle by rest yards |
 | `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
+| `green-slope-align-roadmap.md` | SHIPPED — 1–3% field, shared gravity, book ±2 ft, mag×t |
+| `green-slope-align-phase1.md` | SHIPPED — literals (playtest skipped) |
 
 ---
 

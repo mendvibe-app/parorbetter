@@ -11,7 +11,10 @@ const WATER_BASE_CHANCE := 0.30
 const PIN_EDGE_MARGIN_YD := 5.0
 ## ~3 ft cup shelf for uniform grade around the hole.
 const PIN_SHELF_YD := 1.0
-const PIN_MAX_LOCAL_SLOPE := 0.18
+const PIN_MAX_LOCAL_SLOPE := 0.03  ## USGA: ≥3% too steep for a pin at stimp 10
+const PIN_SHELF_UNIFORM := 0.015  ## max grade spread across the 3 ft shelf
+const PIN_STEEP_PENALTY := 16.0
+const PIN_UNEVEN_PENALTY := 8.0
 ## PLAYTEST TARGET — expected shot lengths used to derive approach for green sizing.
 const EXPECTED_DRIVE_YD := 235.0  ## solid but not maxed Driver
 const EXPECTED_LAYUP_YD := 210.0  ## Hybrid second on a par 5
@@ -367,9 +370,12 @@ static func generate_hole(
 	wind.x = clampf(wind.x, -60.0, 60.0)
 	wind.y = clampf(wind.y, -60.0, 60.0)
 
-	# Cap planar mag — contours carry local read (was up to 0.48 → one highway slant).
-	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else (
-		lerpf(0.08, 0.30, rng.randf()) * float(mods.get("slope_mult", 1.0))
+	# Mag ramps with hole: early 1–2% plane, late 2–3%. Cap so plane ≤ PIN_MAX (theme slope_mult cannot overshoot).
+	var mag_ceil := PIN_MAX_LOCAL_SLOPE / HoleData.GREEN_PLANE_WEIGHT
+	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else minf(
+		lerpf(lerpf(0.024, 0.048, t), lerpf(0.048, mag_ceil, t), rng.randf())
+		* float(mods.get("slope_mult", 1.0)),
+		mag_ceil
 	)
 	var slope := Vector2.ZERO
 	if slope_mag > 0.0:
@@ -767,12 +773,12 @@ static func _pick_contour(
 		HoleData.ContourProfile.FALSE_FRONT,
 		HoleData.ContourProfile.BI_TIER,
 	]
-	# Early: side/bowl over flat so break shows up in testing; late unlock false-front / bi-tier.
+	# Early FLAT is visible now (1% reads). Late unlocks false-front / bi-tier.
 	var weights: Array[float] = [
-		lerpf(0.12, 0.03, t),
-		lerpf(0.55, 0.28, t),
-		lerpf(0.18, 0.22, t),
-		lerpf(0.10, 0.15, t),
+		lerpf(0.28, 0.08, t),
+		lerpf(0.40, 0.26, t),
+		lerpf(0.16, 0.18, t),
+		lerpf(0.10, 0.14, t),
 		0.0 if t < 0.2 else lerpf(0.1, 0.2, t),
 		0.0 if t < 0.25 else lerpf(0.08, 0.18, t),
 	]
@@ -1133,9 +1139,9 @@ static func _pin_shelf_score(probe: HoleData, pin: Vector2, shelf: float) -> flo
 		mn = minf(mn, s)
 	var score := mx
 	if mx > PIN_MAX_LOCAL_SLOPE:
-		score += (mx - PIN_MAX_LOCAL_SLOPE) * 4.0
-	if mx - mn > 0.12:
-		score += (mx - mn) * 2.0
+		score += (mx - PIN_MAX_LOCAL_SLOPE) * PIN_STEEP_PENALTY
+	if mx - mn > PIN_SHELF_UNIFORM:
+		score += (mx - mn) * PIN_UNEVEN_PENALTY
 	return score
 
 

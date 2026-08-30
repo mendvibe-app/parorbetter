@@ -571,7 +571,7 @@ func _make_practice_green_hole() -> HoleData:
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
 	d.wind_vector = Vector2.ZERO
-	d.green_slope = Vector2(0.28, 0.0)
+	d.green_slope = Vector2(0.048, 0.0)  ## 2% plane (× GREEN_PLANE_WEIGHT 0.42)
 	d.timing_window_scale = 1.0
 	d.hazards = []
 	d.hazard_bias = HoleData.HazardBias.NONE
@@ -594,7 +594,7 @@ func _make_short_game_hole() -> HoleData:
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
 	d.wind_vector = Vector2.ZERO
-	d.green_slope = Vector2(0.18, 0.0)
+	d.green_slope = Vector2.ZERO
 	d.timing_window_scale = 1.0
 	# One greenside bunker for sand stations (lie still forced on reset).
 	d.hazards = [
@@ -1470,9 +1470,10 @@ func _add_fog_band() -> void:
 const GREEN_BOOK_ELLIPSE_FRAC := 0.92
 const GREEN_BOOK_TEX_N := 64  ## PLAYTEST — bilinear wash resolution
 const GREEN_BOOK_ARROW_N := 9  ## arrows across green (playtest density)
-const GREEN_BOOK_ARROW_MIN_SLOPE := 0.04  ## skip flat spots
+const GREEN_BOOK_ARROW_MIN_SLOPE := 0.01  ## 1% fall lines show (was 0.04, hid AimPoint-1)
 const GREEN_BOOK_ARROW_LEN_SCREEN := 16.0  ## shaft length in screen px
 const GREEN_BOOK_ARROW_W_SCREEN := 2.0
+const GREEN_BOOK_WASH_HALF_FT := 2.0  ## PLAYTEST — full cold→hot is ±this, not per-green min–max
 
 
 func _build_green_book() -> void:
@@ -1503,10 +1504,8 @@ func _build_green_book() -> void:
 			if inside:
 				h_min = minf(h_min, h)
 				h_max = maxf(h_max, h)
-	if h_max - h_min < 0.001:
-		h_min = -1.0
-		h_max = 1.0
-	var h_span := maxf(h_max - h_min, 0.001)
+	var h_mid := (h_min + h_max) * 0.5 if h_max > -INF else 0.0
+	var half_px := GREEN_BOOK_WASH_HALF_FT * (BallPhysics.PX_PER_YARD / 3.0)
 	var frac2 := GREEN_BOOK_ELLIPSE_FRAC * GREEN_BOOK_ELLIPSE_FRAC
 
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
@@ -1520,7 +1519,7 @@ func _build_green_book() -> void:
 			if ell > 1.05 or not _on_painted_green(_green_center + local):
 				img.set_pixel(ix, iy, Color(0, 0, 0, 0))
 				continue
-			var t := clampf((grid[iy * n + ix] - h_min) / h_span, 0.0, 1.0)
+			var t := clampf(0.5 + (grid[iy * n + ix] - h_mid) / maxf(2.0 * half_px, 0.001), 0.0, 1.0)
 			img.set_pixel(ix, iy, _green_book_wash_color(t))
 	var tex := ImageTexture.create_from_image(img)
 	var wash := Sprite2D.new()
@@ -2852,15 +2851,24 @@ func _aim_planned_total_yd(
 	return BallPhysics.estimate_carry_yards(power, club_max, lie, severity, shot_type)
 
 
+func _preview_green_slope(pos: Vector2) -> Vector2:
+	if hole == null or not _on_painted_green(pos):
+		return Vector2.ZERO
+	return hole.green_slope_at(pos - _green_center)
+
+
 func _aim_rest_point(
 	from: Vector2, to: Vector2, club_max: float, lie: String, shot_type: String
 ) -> Vector2:
-	## Rest position along aim bearing at planned total (past drag when Full floors).
+	## Rest = carry land + on-green slope rundown (flat remainder if off the paint).
+	var land := _aim_carry_land_point(from, to, club_max, lie, shot_type)
 	var total_yd := _aim_planned_total_yd(from, to, club_max, lie, shot_type)
+	var air_frac := BallPhysics.air_distance_fraction(club_max, shot_type)
+	var roll_px := BallPhysics.yards_to_pixels(total_yd * (1.0 - air_frac))
 	var bearing := to - from
 	if bearing.length_squared() < 1.0:
 		bearing = Vector2(0, -1)
-	return from + bearing.normalized() * BallPhysics.yards_to_pixels(total_yd)
+	return BallPhysics.preview_green_roll(land, bearing.normalized(), roll_px, _preview_green_slope)
 
 
 func _aim_carry_land_point(

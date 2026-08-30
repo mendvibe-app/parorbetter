@@ -867,12 +867,48 @@ static func landing_roll_decel_px(lie: String, shot_type: String = "full") -> fl
 	return a
 
 
-## Putt break (ball.gd 90/55) was tuned at legacy green decel 1.8*60.
-## Scale break forces by putt_decel_px() / this so bend stays FRAC-invariant.
-const PUTT_BREAK_CAL_DECEL := 108.0
+## Real g (ft/s²). Apex uses GRAVITY_REAL_PX (× APEX_SCALE); green roll uses this.
+const GREEN_GRAVITY_FT := 32.174
+## Sliding g over-breaks vs Pelz/AimPoint (rolling ball + grass). PLAYTEST TARGET.
+## 0.45 ≈ 19 in break on a dying 20-ft 2% putt (Pelz 20 in). Full 1.0 if gyro later.
+const GREEN_GRAVITY_SCALE := 0.45
+
+
+static func green_gravity_px(pace_k: float = PUTT_PACE_SCALE) -> float:
+	## px/s² per unit grade. Same FRAC²·k² as putt_decel so path stays yard-correct.
+	var f := ROLL_DURATION_FRAC
+	return GREEN_GRAVITY_FT * GREEN_GRAVITY_SCALE * FT_TO_PX / maxf(f * f, 0.01) * pace_k * pace_k
+
+
+static func green_slope_accel(slope: Vector2, pace_k: float = PUTT_PACE_SCALE) -> Vector2:
+	## Downhill accel. slope is percent grade (0.02 = 2%). One owner for putt + on-green roll.
+	return slope * green_gravity_px(pace_k)
+
+
 ## Putts launch slower under PUTT_PACE_SCALE; settle must sit under that band.
 const PUTT_SETTLE_SPEED := 0.525  ## was 1.5 × PUTT_PACE_SCALE
 const ROLL_SETTLE_SPEED := 10.0
+
+
+## Aim-preview rest after on-green roll. slope_at(world) → grade; ZERO off green.
+## ponytail: coarse Euler, 8s cap. Live roll stays in GolfBall._process_roll.
+static func preview_green_roll(
+	land: Vector2, dir: Vector2, roll_px: float, slope_at: Callable
+) -> Vector2:
+	if roll_px < 2.0 or dir.length_squared() < 0.0001:
+		return land
+	var decel := putt_decel_px()
+	var vel := dir.normalized() * sqrt(2.0 * decel * roll_px)
+	var pos := land
+	var dt := 1.0 / 30.0
+	for _i in 240:
+		if vel.length() < PUTT_SETTLE_SPEED:
+			break
+		if slope_at.is_valid():
+			vel += green_slope_accel(slope_at.call(pos)) * dt
+		vel = vel.move_toward(Vector2.ZERO, decel * dt)
+		pos += vel * dt
+	return pos
 
 
 ## Launch speed in px/s from already-resolved carry px + hang. Thin owner — does not

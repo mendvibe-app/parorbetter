@@ -103,13 +103,15 @@ static func tee_set_label(set: TeeSet) -> String:
 
 
 ## Planar slant weight — low so local contours (bowl/ridge/tier) dominate the read.
-## Playtest: plane alone made every green one big L↔R ramp.
+## Stored mag 0.024–0.071 × 0.42 → 1–3% plane grade (hi = PIN_MAX / GREEN_PLANE_WEIGHT).
 const GREEN_PLANE_WEIGHT := 0.42  ## PLAYTEST TARGET
-const GREEN_CONTOUR_AMP_SCALE := 1.55  ## PLAYTEST — boost local highs/lows
+const GREEN_CONTOUR_AMP_SCALE := 1.0  ## PLAYTEST — 1.0 after true-scale (was 1.55 ski-slopes)
 
 
 ## Elevation at local pos (world − green_center). Book heat samples this.
 func green_height_at(local: Vector2) -> float:
+	if contour_profile == ContourProfile.FLAT:
+		return 0.0
 	var h := -green_slope.dot(local) * GREEN_PLANE_WEIGHT
 	for inf in _green_slope_influences():
 		var d: Vector2 = local - inf["pos"]
@@ -118,9 +120,10 @@ func green_height_at(local: Vector2) -> float:
 	return h
 
 
-## Downhill pull at local pos (same units as green_slope). Physics samples this live.
-## Along-pin component changes pace (uphill/downhill); lateral bends L/R.
+## Downhill pull as percent grade (0.02 = 2%). Physics samples this live.
 func green_slope_at(local: Vector2) -> Vector2:
+	if contour_profile == ContourProfile.FLAT:
+		return Vector2.ZERO
 	var s := green_slope * GREEN_PLANE_WEIGHT
 	for inf in _green_slope_influences():
 		var d: Vector2 = local - inf["pos"]
@@ -147,7 +150,7 @@ func _green_slope_influences() -> Array:
 		ContourProfile.RIDGE:
 			return _influences_ridge(base_len, rmin, across)
 		ContourProfile.FALSE_FRONT:
-			return _influences_false_front(base_len, rx, ry, down, across)
+			return _influences_false_front(base_len, rx, ry)
 		ContourProfile.BI_TIER:
 			return _influences_bi_tier(base_len, rx, ry, down, across)
 		_:
@@ -162,12 +165,6 @@ func _influences_side_slope(base_len: float, rx: float, ry: float, down: Vector2
 		"pos": -down * ry * 0.32 + across * clampf(pin_offset.dot(across), -rx * 0.4, rx * 0.4) * 0.2,
 		"amp": base_len * sigma_crown * 0.7,
 		"sigma": sigma_crown,
-	})
-	var sigma_pin := rmin * 0.36
-	out.append({
-		"pos": pin_offset * 0.85,
-		"amp": -base_len * sigma_pin * 0.55,
-		"sigma": sigma_pin,
 	})
 	var side := across * clampf(pin_offset.dot(across), -rx * 0.55, rx * 0.55)
 	if side.length() > 6.0:
@@ -196,23 +193,14 @@ func _influences_ridge(base_len: float, rmin: float, across: Vector2) -> Array:
 	}]
 
 
-func _influences_false_front(
-	base_len: float, rx: float, ry: float, _down: Vector2, across: Vector2
-) -> Array:
+func _influences_false_front(base_len: float, rx: float, ry: float) -> Array:
 	var rmin := minf(rx, ry)
-	var out: Array = []
-	# High face short of the hole (toward tee = +Y local).
-	out.append({
-		"pos": Vector2(0.0, ry * 0.42) + across * clampf(pin_offset.x, -rx * 0.3, rx * 0.3) * 0.3,
-		"amp": base_len * rmin * 0.8,
-		"sigma": rmin * 0.38,
-	})
-	out.append({
-		"pos": pin_offset * 0.9 - Vector2(0.0, ry * 0.08),
-		"amp": -base_len * rmin * 0.4,
-		"sigma": rmin * 0.32,
-	})
-	return out
+	# Narrow tee-side face only; pin-side stays the plane (≤ PIN_MAX).
+	return [{
+		"pos": Vector2(0.0, ry * 0.55),
+		"amp": base_len * rmin * 0.45,
+		"sigma": rmin * 0.18,
+	}]
 
 
 func _influences_bi_tier(
@@ -230,10 +218,5 @@ func _influences_bi_tier(
 		"pos": Vector2(0.0, ry * 0.3),
 		"amp": -base_len * rmin * 0.35,
 		"sigma": rmin * 0.4,
-	})
-	out.append({
-		"pos": pin_offset * 0.8,
-		"amp": -base_len * rmin * 0.25,
-		"sigma": rmin * 0.28,
 	})
 	return out
