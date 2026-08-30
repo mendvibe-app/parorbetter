@@ -47,13 +47,17 @@ def main() -> None:
     assert "TRACER_TIP_GAP_SCREEN" in BALL  # deliberate air between ball and tip
     # Caps high enough that normal hang should not mid-chop the arc.
     assert "TRACER_CAP := 280" in BALL or "TRACER_CAP := 256" in BALL or "const TRACER_CAP" in BALL
-    # No flight tracer on putts — the ball never leaves the ground, nothing to trace.
-    # Structure: outer `if not _is_putt:` then FLIGHT (draw) / ROLL (wet-marker dry).
+    # Flight: outer `if not _is_putt:` then FLIGHT (draw) / ROLL (wet-marker dry).
+    # Putt: same Line2D, ground sample, no loft, wet until settle fade.
     assert "if not _is_putt:" in BALL
     assert "if state == State.FLIGHT:" in BALL
     assert "elif state == State.ROLL:" in BALL
     assert "TRACER_DRY_RATE" in BALL
-    assert "elif state == State.ROLL and _is_putt:" not in BALL
+    assert "func _sample_putt_trail()" in BALL
+    assert "TRACER_LIFT" not in BALL.split("func _sample_putt_trail()")[1].split("func ")[0]
+    settle = BALL.split("func _finish_settle()")[1].split("func ")[0]
+    assert "tween_method(_set_trail_dry" in settle
+    assert "if not _is_putt and (_trail" not in settle
     # Soft white land target: faint in flight; flash only on bounce, fades on roll.
     assert "func _show_land_mark" in BALL
     assert "func _planned_land_pos" in BALL

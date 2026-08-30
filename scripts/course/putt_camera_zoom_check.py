@@ -103,9 +103,21 @@ def main() -> int:
     # Short putts pull in; lags stay open. Fixed 2px pad used to frame a 6-footer like ~11 ft.
     assert z6 > z17 > z75, (z6, z17, z75)
     assert z6 >= 100.0, z6
+
+    # Roll zoom-in: slight closer from locked frame, not remaining-distance chase.
+    zin = _const(CTRL, "PUTT_ROLL_ZOOM_IN")
+    assert 1.05 <= zin <= 1.35, zin
+    assert min(z6 * zin, cap) == cap  # tap-ins already at cap — no punch
+    z50 = putt_frame_zoom(50.0, **kw)
+    z50_in = min(z50 * zin, cap)
+    assert z50_in > z50 + 0.5, (z50, z50_in)
+    assert z50_in < cap
+    proc = CTRL.split("func _process(_delta: float) -> void:")[-1].split("\nfunc ")[0]
+    assert "PUTT_ROLL_ZOOM_IN" in proc
+    assert "_putt_frame_zoom" not in proc  # no live remaining-distance chase
     print(
         f"putt_camera_zoom_check: ok z(3ft)={z3:.1f} z(6ft)={z6:.1f} "
-        f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} lengths={len(LENGTHS_FT)}"
+        f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} roll_in={zin} lengths={len(LENGTHS_FT)}"
     )
     return 0
 

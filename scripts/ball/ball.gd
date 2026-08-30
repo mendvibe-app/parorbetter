@@ -586,7 +586,8 @@ func _physics_process(delta: float) -> void:
 	# Tip glued to the ball every frame. Body keeps screen-up loft, then every point
 	# is clamped so nothing sits past the tip along launch (apex loft was leading
 	# the ribbon past the ball on driver — playtest screenshot 2026-08-17).
-	# Roll: freeze points and dry the ribbon (wet marker) into the land circle.
+	# Roll (full/chip): freeze points and dry the ribbon (wet marker) into the land circle.
+	# Putt: same Line2D, ground-follow, stays wet until settle fade.
 	if not _is_putt:
 		if state == State.FLIGHT:
 			_sync_trail_visual()
@@ -637,6 +638,8 @@ func _physics_process(delta: float) -> void:
 					if _land_mark.modulate.a <= 0.02:
 						_hide_land_mark()
 			_sync_trail_visual()
+	elif state == State.ROLL:
+		_sample_putt_trail()
 	# Putt speeds are low (~5–20 px/s); 0.002 was nearly invisible. Visual only.
 	var roll_spin := 0.018 if _is_putt else 0.002  ## PLAYTEST TARGET — putt roll read
 	_spin_vis += spin * delta * 4.0 + velocity.length() * roll_spin
@@ -859,8 +862,9 @@ func _finish_settle() -> void:
 	state = State.SETTLED
 	set_physics_process(false)
 	AudioBus.set_roll_intensity(0.0)
-	# Finish drying the marker into the land circle after stop (linger under result glance).
-	if not _is_putt and (_trail.get_point_count() > 0 or (_land_mark and _land_mark.visible)):
+	# Finish drying the marker after stop (linger under result glance). Putts use the
+	# same tween — they stay wet for the whole roll, then fade here.
+	if _trail.get_point_count() > 0 or (_land_mark and _land_mark.visible):
 		var tw := create_tween()
 		tw.tween_method(_set_trail_dry, _trail_dry, 1.0, 0.85)
 		tw.parallel().tween_property(_trail, "modulate:a", 0.0, 1.1)
@@ -1096,6 +1100,32 @@ func _try_cup_capture() -> bool:
 		settled.emit(global_position, _lie)
 		return true
 	return false
+
+
+func _sample_putt_trail() -> void:
+	## Ground ribbon — no loft. Wet for the whole roll; settle tween dries it.
+	if _trail == null:
+		return
+	_sync_trail_visual()
+	var z := maxf(_camera_zoom(), 0.35)
+	var half_w := _trail.width * 0.5
+	var tip_gap := TRACER_TIP_GAP_SCREEN / z
+	var along := _launch_dir if _launch_dir.length_squared() > 0.0001 else Vector2(0, -1)
+	var tip_pt := global_position - along * (half_w + tip_gap)
+	var n := _trail.get_point_count()
+	var min_sp := TRACER_MIN_SPACING
+	if n == 0:
+		_trail.add_point(tip_pt)
+		return
+	_trail.set_point_position(n - 1, tip_pt)
+	var prev := _shot_origin if n == 1 else _trail.get_point_position(n - 2)
+	if tip_pt.distance_to(prev) < min_sp:
+		return
+	_trail.set_point_position(n - 1, global_position)
+	_trail.add_point(tip_pt)
+	var cap := TRACER_CAP_PURE if _is_perfect_shot else TRACER_CAP
+	if _trail.get_point_count() > cap:
+		_trail.remove_point(0)
 
 
 func _set_trail_dry(v: float) -> void:
