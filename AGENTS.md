@@ -35,13 +35,13 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Putt stroke (amplitude) | `PuttStroke` absolute log pad (`marker_frac` / `power_from_frac`, `_power_to_u` / `_u_to_power` + `BEND`); soft ticks `SCALE_LABELED_FT` / `SCALE_TICK_FT`; line via `arc_allowance` |
 | Putt line aim | Bearing drag, distance locked to cup; `PUTT_LINE_SNAP_DEG` 3° / `PUTT_LINE_SNAP_MAX_FT` 8 (`HoleController`) |
 | Putter max | `BallPhysics.PUTTER_MAX_YD` (25.0 → 75 ft); soft scale labels/ticks in `PuttStroke.SCALE_*_FT` |
-| Tap-in fast path | `GameState.tap_in_yd` (4.0) + `tap_in_break` (0.12) |
+| Tap-in fast path | `GameState.tap_in_yd` (4.0) + `tap_in_break` (0.01 = 1% grade) |
 | Pure balance gate | `TempoGrade.PURE_BALANCE` / `PuttStroke.PURE_BALANCE` / `ShotRoutine.PURE_BALANCE` (0.72) |
 | Dispersion circle (full shot) | `GameState.AIM_RADIUS_WEAK_YD/MID/PRO` (40 / 22 / 10 yd); `get_aim_radius_yards()` |
 | Dispersion circle (putt) | `GameState.PUTT_RADIUS_WEAK_YD/PRO` (2.7 / 1.0 yd) |
 | Form history window | `GameState.FORM_HISTORY_MAX` (8) |
 | Cup / ball visual | True-scale: `CUP_RADIUS` / `CUP_CAPTURE_RADIUS` / `BALL_R_PUTT` (0.102 always — whole round); see `plans/putt-true-scale-phase1.md` |
-| Putt break | `GolfBall.PUTT_BREAK_LATERAL/ALONG` (90 / 55); green radii `HoleGenerator._green_radii` base 22–48 px (~60–130 ft) |
+| Putt break | `BallPhysics.green_slope_accel` (`GREEN_GRAVITY_SCALE` 0.45 × g); field mag `0.024–0.08` → 1–3% plane (`GREEN_PLANE_WEIGHT` 0.42); pin shelf `PIN_MAX_LOCAL_SLOPE` 0.03 |
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |

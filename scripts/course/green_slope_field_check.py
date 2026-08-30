@@ -78,23 +78,23 @@ def influences_false_front(slope, rx, ry, pin):
 
 
 def height_at(local, slope, infs):
-    h = -(slope[0] * local[0] + slope[1] * local[1])
+    h = -(slope[0] * local[0] + slope[1] * local[1]) * 0.42
     for inf in infs:
         dx = local[0] - inf["pos"][0]
         dy = local[1] - inf["pos"][1]
         s2 = inf["sigma"] ** 2
-        h += inf["amp"] * math.exp(-(dx * dx + dy * dy) / (2.0 * s2))
+        h += inf["amp"] * 1.0 * math.exp(-(dx * dx + dy * dy) / (2.0 * s2))
     return h
 
 
 def slope_at(local, slope, infs):
-    sx, sy = slope
+    sx, sy = slope[0] * 0.42, slope[1] * 0.42
     for inf in infs:
         dx = local[0] - inf["pos"][0]
         dy = local[1] - inf["pos"][1]
         s2 = inf["sigma"] ** 2
         fall = math.exp(-(dx * dx + dy * dy) / (2.0 * s2))
-        k = (inf["amp"] / s2) * fall
+        k = (inf["amp"] * 1.0 / s2) * fall
         sx += dx * k
         sy += dy * k
     return (sx, sy)
@@ -105,8 +105,13 @@ def main() -> int:
     assert "_pick_contour" in GEN
     assert "lerpf(0.04, 0.42, t)" not in GEN
     assert "lerpf(0.04, 0.42, rng.randf())" not in GEN
-    assert "lerpf(0.10, 0.48, rng.randf())" in GEN
+    assert "lerpf(0.10, 0.48, rng.randf())" not in GEN
+    assert "lerpf(0.08, 0.30, rng.randf())" not in GEN
+    assert "lerpf(0.024, 0.08, rng.randf())" in GEN
     assert "lerpf(0.12, 0.03, t)" in GEN  # early FLAT weight cut
+    assert "GREEN_CONTOUR_AMP_SCALE := 1.0" in DATA
+    assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
+    assert "ContourProfile.FLAT" in DATA.split("func green_slope_at")[1].split("func ")[0]
 
     slope = (0.3, 0.1)
     rx, ry = 50.0, 40.0
@@ -145,6 +150,22 @@ def main() -> int:
     h_front = height_at((0.0, ry * 0.42), flat, ff)
     h_back = height_at((0.0, -ry * 0.2), flat, ff)
     assert h_front > h_back, f"false front face should be high, {h_front} vs {h_back}"
+
+    # Honest field: 2% plane, SIDE_SLOPE span is feet not ski-slope.
+    ft_per_px = 3.0 / 2.25
+    mid = (0.048, 0.0)  # practice-green mag → 2.0% plane
+    assert abs(math.hypot(*slope_at((0.0, 0.0), mid, [])) * 100 - 2.016) < 0.05
+    mid_infs = influences_side_slope(mid, 28.0, 34.0, (8.0, -6.0))
+    hs = []
+    for iy in range(16):
+        for ix in range(16):
+            x = (ix / 15.0 - 0.5) * 2.0 * 28.0
+            y = (iy / 15.0 - 0.5) * 2.0 * 34.0
+            if (x / 28.0) ** 2 + (y / 34.0) ** 2 > 1.0:
+                continue
+            hs.append(height_at((x, y), mid, mid_infs))
+    span_ft = (max(hs) - min(hs)) * ft_per_px
+    assert span_ft < 3.5, f"SIDE_SLOPE 2% span too tall: {span_ft:.2f} ft"
 
     print("green_slope_field_check: ok")
     return 0

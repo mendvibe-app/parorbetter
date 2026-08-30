@@ -103,13 +103,15 @@ static func tee_set_label(set: TeeSet) -> String:
 
 
 ## Planar slant weight — low so local contours (bowl/ridge/tier) dominate the read.
-## Playtest: plane alone made every green one big L↔R ramp.
+## Stored mag 0.024–0.08 × 0.42 → 1–3% plane grade.
 const GREEN_PLANE_WEIGHT := 0.42  ## PLAYTEST TARGET
-const GREEN_CONTOUR_AMP_SCALE := 1.55  ## PLAYTEST — boost local highs/lows
+const GREEN_CONTOUR_AMP_SCALE := 1.0  ## PLAYTEST — 1.0 after true-scale (was 1.55 ski-slopes)
 
 
 ## Elevation at local pos (world − green_center). Book heat samples this.
 func green_height_at(local: Vector2) -> float:
+	if contour_profile == ContourProfile.FLAT:
+		return 0.0
 	var h := -green_slope.dot(local) * GREEN_PLANE_WEIGHT
 	for inf in _green_slope_influences():
 		var d: Vector2 = local - inf["pos"]
@@ -118,9 +120,10 @@ func green_height_at(local: Vector2) -> float:
 	return h
 
 
-## Downhill pull at local pos (same units as green_slope). Physics samples this live.
-## Along-pin component changes pace (uphill/downhill); lateral bends L/R.
+## Downhill pull as percent grade (0.02 = 2%). Physics samples this live.
 func green_slope_at(local: Vector2) -> Vector2:
+	if contour_profile == ContourProfile.FLAT:
+		return Vector2.ZERO
 	var s := green_slope * GREEN_PLANE_WEIGHT
 	for inf in _green_slope_influences():
 		var d: Vector2 = local - inf["pos"]

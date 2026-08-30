@@ -1,6 +1,6 @@
 # Green slope align — Roadmap
 
-**Status:** PLAN — no code until Phase 1 spec is picked up.
+**Status:** Phase 1 implementing. Spec: `plans/green-slope-align-phase1.md`.
 **Owner:** Matt (playtest) → coding agent (one phase per PR)
 **Origin:** Recon 2026-08-30. True-scale greens made stored slope look like ski slopes; break/pace still from the giant-ball era. Short-game roll on the green uses a third, unrelated constant.
 **Board:** `plans/README.md`

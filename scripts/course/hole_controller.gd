@@ -572,7 +572,7 @@ func _make_practice_green_hole() -> HoleData:
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
 	d.wind_vector = Vector2.ZERO
-	d.green_slope = Vector2(0.28, 0.0)
+	d.green_slope = Vector2(0.048, 0.0)  ## 2% plane (× GREEN_PLANE_WEIGHT 0.42)
 	d.timing_window_scale = 1.0
 	d.hazards = []
 	d.hazard_bias = HoleData.HazardBias.NONE
@@ -595,7 +595,7 @@ func _make_short_game_hole() -> HoleData:
 	d.tee_offset_x = 0.0
 	d.fairway_bend = 0.0
 	d.wind_vector = Vector2.ZERO
-	d.green_slope = Vector2(0.18, 0.0)
+	d.green_slope = Vector2.ZERO
 	d.timing_window_scale = 1.0
 	# One greenside bunker for sand stations (lie still forced on reset).
 	d.hazards = [

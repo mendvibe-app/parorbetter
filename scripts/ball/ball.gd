@@ -100,9 +100,7 @@ const BALL_R := 0.102
 ## Ratio to CUP_RADIUS held at real 2.53 (see putt-ball-visible-size.md). Visual only.
 ## Used for the whole round (tee → putt) — no short-game / flight size belt.
 const BALL_R_PUTT := 0.102
-## Side / along break accel scale (px/s² per unit slope). Tuned so mid-slope 40 ft bends ~2 ball-widths.
-const PUTT_BREAK_LATERAL := 90.0
-const PUTT_BREAK_ALONG := 55.0
+## Green break: BallPhysics.green_slope_accel (g·sinθ × GREEN_GRAVITY_SCALE).
 ## Max roll speed (px/s) to drop in the cup. Faster → lip out / roll over (no teleport make).
 ## Scaled with BallPhysics.PUTT_PACE_SCALE (was 32). Settle sits below this.
 const CUP_CAPTURE_MAX_SPEED := 11.2
@@ -768,17 +766,8 @@ func _process_roll(delta: float) -> void:
 	_sync_ground_lie()
 	_height = move_toward(_height, 0.0, delta * 80.0)
 	var slope := _slope_at_ball()
-	if _is_putt:
-		# Break pulls offline; can fight aim (skill reads matter).
-		# Scale with putt decel (includes PUTT_PACE_SCALE²) so bend stays yard-correct.
-		var right := Vector2(-_pin_dir.y, _pin_dir.x)
-		var break_scale := BallPhysics.putt_decel_px() / BallPhysics.PUTT_BREAK_CAL_DECEL
-		var break_amt := slope.dot(right) * PUTT_BREAK_LATERAL * break_scale
-		var along_break := slope.dot(_pin_dir) * PUTT_BREAK_ALONG * break_scale
-		velocity += right * break_amt * delta
-		velocity += _pin_dir * along_break * delta
-	elif _lie == "Green":
-		velocity += slope * 16.0 * delta
+	if _is_putt or _lie == "Green":
+		velocity += BallPhysics.green_slope_accel(slope) * delta
 
 	# Green → putt pace; chip/pitch/flop off-green → chip pace (playtest: rocket rollout).
 	var decel: float
@@ -796,8 +785,12 @@ func _process_roll(delta: float) -> void:
 		var roll_spin_scale := clampf(roll_along / 120.0, 0.08, 1.0)
 		velocity += roll_right * spin * 8.0 * delta * roll_spin_scale
 		spin = move_toward(spin, 0.0, delta * 1.8)
-		# Keep roll from walking backwards off a short miss.
-		if velocity.dot(_pin_dir) < -20.0 and _planned_distance_px < BallPhysics.yards_to_pixels(50.0):
+		# Keep roll from walking backwards off a short miss (off-green only — slope owns trickle).
+		if (
+			_lie != "Green"
+			and velocity.dot(_pin_dir) < -20.0
+			and _planned_distance_px < BallPhysics.yards_to_pixels(50.0)
+		):
 			velocity += _pin_dir * 40.0 * delta
 	else:
 		# Mild anti-teleport only — break can still pull offline / slightly against aim
@@ -808,7 +801,7 @@ func _process_roll(delta: float) -> void:
 	var along := _traveled_along()
 	# Phase 5 CP6: remain<40 speed clamp removed. Hard settle at plan kept.
 	# Lip-out leave skips plan clamp — sideways trickle must coast on speed, not freeze at pin.
-	if along >= _planned_distance_px and not _is_putt and not _lip_out_leave:
+	if along >= _planned_distance_px and not _is_putt and not _lip_out_leave and _lie != "Green":
 		_finish_settle()
 		return
 	# Chip rim-out: never coast drive-length (leave skips plan clamp).

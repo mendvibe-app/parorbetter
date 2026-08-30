@@ -205,11 +205,12 @@ def main() -> int:
     vis_cup = (CUP_DARK / 64.0) * (float(m_cup_r.group(1)) * 2.0)
     ball_cup_ratio = vis_cup / vis_ball
     assert abs(ball_cup_ratio - 2.53) < 0.06, (ball_cup_ratio, vis_cup, vis_ball)
-    assert "PUTT_BREAK_LATERAL := 90.0" in BALL
-    assert "PUTT_BREAK_ALONG := 55.0" in BALL
-    # Break scales with green decel so FRAC changes don't nuclear-bend putts.
-    assert "PUTT_BREAK_CAL_DECEL" in PHYS
-    assert "break_scale" in BALL
+    assert "PUTT_BREAK_LATERAL" not in BALL
+    assert "PUTT_BREAK_ALONG" not in BALL
+    # Gravity accel uses the same FRAC²·k² as putt_decel so FRAC changes don't nuclear-bend.
+    assert "green_gravity_px" in PHYS
+    assert "GREEN_GRAVITY_SCALE" in PHYS
+    assert "green_slope_accel" in BALL
     assert "PUTT_SETTLE_SPEED" in PHYS
     assert "PUTT_PACE_SCALE" in PHYS
     assert "putt_decel_px" in PHYS
@@ -231,21 +232,14 @@ def main() -> int:
     assert "CUP_CAPTURE_RADIUS" in HOLE.split("_add_circle(course_root, _cup_pos")[1].split("\n")[0]
     # Settle-in make uses the same disc (not full CUP_RADIUS shelf).
     assert "distance_to(_cup_pos) < CUP_CAPTURE_RADIUS" in HOLE
-    # Mid-slope 40 ft bend ~2 ball-widths after break_scale (tuned at a=108).
+    # Break/pace-on-slope: scripts/ball/green_slope_physics_check.py (Pelz band).
+    # Short putts must launch above putt settle (old 10 px/s floor killed 3–8 ft).
     px_per_yd = 2.25
     ft_to_px = px_per_yd / 3.0
     m_frac = re.search(r"const FLIGHT_DURATION_FRAC\s*:=\s*([0-9.]+)", PHYS)
     assert m_frac, "FLIGHT_DURATION_FRAC missing"
     roll_frac = float(m_frac.group(1))
     a_green = 1.8 * ft_to_px / (roll_frac * roll_frac)
-    cal_decel = 108.0
-    break_scale = a_green / cal_decel
-    travel_px = (40.0 / 3.0) * px_per_yd
-    t_roll = (2.0 * a_green * travel_px) ** 0.5 / a_green
-    bend = 0.5 * (0.22 * 90.0 * break_scale) * t_roll * t_roll
-    assert 4.0 <= bend <= 12.0, bend  # band: readable, not nuclear
-    assert bend / (1.0 * 2.0) >= 1.8, bend  # ≥ ~1.8 ball diameters
-    # Short putts must launch above putt settle (old 10 px/s floor killed 3–8 ft).
     settle = 1.5
     for ft in (3.0, 6.0, 8.0):
         s = (ft / 3.0) * px_per_yd

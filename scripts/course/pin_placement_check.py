@@ -13,7 +13,7 @@ GEN = DIR.joinpath("hole_generator.gd").read_text(encoding="utf-8")
 PX_PER_YARD = 2.25
 MARGIN_YD = 5.0  # 15 ft / ~4 paces
 MARGIN = MARGIN_YD * PX_PER_YARD
-MAX_SLOPE = 0.18
+MAX_SLOPE = 0.03
 
 
 def inside_ellipse(p, rx, ry) -> bool:
@@ -91,10 +91,10 @@ def main() -> int:
         assert clr >= MARGIN * 0.85, f"pin too close to edge: {p} clr={clr}"
 
     # Slope shelf: steep local slope fails soft cap.
-    assert MAX_SLOPE == 0.18
-    assert "PIN_MAX_LOCAL_SLOPE := 0.18" in GEN
-    steep = 0.35
-    flat = 0.05
+    assert MAX_SLOPE == 0.03
+    assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
+    steep = 0.08
+    flat = 0.02
     assert steep > MAX_SLOPE
     assert flat <= MAX_SLOPE
 

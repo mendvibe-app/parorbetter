@@ -64,7 +64,7 @@ var practice_reps: Dictionary = {"full": 1, "pitch": 1, "chip": 0, "putt": 0, "f
 var shot_type_reps: Dictionary = {}
 ## Tap-in fast path (putt ceremony skip). Playtest knobs via F1.
 var tap_in_yd: float = 4.0
-var tap_in_break: float = 0.12
+var tap_in_break: float = 0.01  ## ≤1% grade counts as flat (was 0.12 = 12%)
 ## Driving range — infinite tee practice, no lives / hole advance.
 var range_mode: bool = false
 ## Practice green — infinite putt practice, no lives / hole advance.
