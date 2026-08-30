@@ -107,8 +107,11 @@ def main() -> int:
     assert "lerpf(0.04, 0.42, rng.randf())" not in GEN
     assert "lerpf(0.10, 0.48, rng.randf())" not in GEN
     assert "lerpf(0.08, 0.30, rng.randf())" not in GEN
-    assert "lerpf(0.024, 0.08, rng.randf())" in GEN
-    assert "lerpf(0.12, 0.03, t)" in GEN  # early FLAT weight cut
+    assert "lerpf(0.024, 0.08, rng.randf())" not in GEN
+    assert "lerpf(0.024, 0.048, t)" in GEN  # mag lo ramps with hole
+    assert "lerpf(0.048, 0.08, t)" in GEN
+    assert "lerpf(0.28, 0.08, t)" in GEN  # early FLAT restored
+    assert "lerpf(0.12, 0.03, t)" not in GEN
     assert "GREEN_CONTOUR_AMP_SCALE := 1.0" in DATA
     assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
     assert "ContourProfile.FLAT" in DATA.split("func green_slope_at")[1].split("func ")[0]

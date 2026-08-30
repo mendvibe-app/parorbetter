@@ -1,7 +1,7 @@
 # Green slope align — Phase 1
 
 **Epic:** `plans/green-slope-align-roadmap.md`
-**Status:** IMPLEMENTING
+**Status:** SHIPPED (device playtest skipped)
 **Scope lock:** Honest field + one on-green gravity owner. No book wash. No contour-weight ramp.
 
 ## Literals

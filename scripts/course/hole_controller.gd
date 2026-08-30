@@ -1471,9 +1471,10 @@ func _add_fog_band() -> void:
 const GREEN_BOOK_ELLIPSE_FRAC := 0.92
 const GREEN_BOOK_TEX_N := 64  ## PLAYTEST — bilinear wash resolution
 const GREEN_BOOK_ARROW_N := 9  ## arrows across green (playtest density)
-const GREEN_BOOK_ARROW_MIN_SLOPE := 0.04  ## skip flat spots
+const GREEN_BOOK_ARROW_MIN_SLOPE := 0.01  ## 1% fall lines show (was 0.04, hid AimPoint-1)
 const GREEN_BOOK_ARROW_LEN_SCREEN := 16.0  ## shaft length in screen px
 const GREEN_BOOK_ARROW_W_SCREEN := 2.0
+const GREEN_BOOK_WASH_HALF_FT := 2.0  ## PLAYTEST — full cold→hot is ±this, not per-green min–max
 
 
 func _build_green_book() -> void:
@@ -1504,10 +1505,8 @@ func _build_green_book() -> void:
 			if inside:
 				h_min = minf(h_min, h)
 				h_max = maxf(h_max, h)
-	if h_max - h_min < 0.001:
-		h_min = -1.0
-		h_max = 1.0
-	var h_span := maxf(h_max - h_min, 0.001)
+	var h_mid := (h_min + h_max) * 0.5 if h_max > -INF else 0.0
+	var half_px := GREEN_BOOK_WASH_HALF_FT * (BallPhysics.PX_PER_YARD / 3.0)
 	var frac2 := GREEN_BOOK_ELLIPSE_FRAC * GREEN_BOOK_ELLIPSE_FRAC
 
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
@@ -1521,7 +1520,7 @@ func _build_green_book() -> void:
 			if ell > 1.05 or not _on_painted_green(_green_center + local):
 				img.set_pixel(ix, iy, Color(0, 0, 0, 0))
 				continue
-			var t := clampf((grid[iy * n + ix] - h_min) / h_span, 0.0, 1.0)
+			var t := clampf(0.5 + (grid[iy * n + ix] - h_mid) / maxf(2.0 * half_px, 0.001), 0.0, 1.0)
 			img.set_pixel(ix, iy, _green_book_wash_color(t))
 	var tex := ImageTexture.create_from_image(img)
 	var wash := Sprite2D.new()

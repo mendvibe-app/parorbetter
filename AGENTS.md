@@ -45,7 +45,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |
-| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at` (shared by putt physics + green book) |
+| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book wash ±2 ft, arrows from 1% |
 | Hazards | `HoleData.hazards` role specs (`greenside` / `landing` / `carry` / `edge` / `island_ring`); placed by `HoleController._place_hazards` |
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
 | Lives (Survival) | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |

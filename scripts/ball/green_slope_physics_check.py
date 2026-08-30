@@ -89,7 +89,8 @@ def main() -> int:
     assert "green_slope_accel" in roll
     assert "_lie != \"Green\"" in roll  # anti-backup + plan clamp skip on green
     assert "ContourProfile.FLAT" in DATA.split("func green_slope_at")[1].split("func ")[0]
-    assert "lerpf(0.024, 0.08, rng.randf())" in GEN
+    assert "lerpf(0.024, 0.048, t)" in GEN
+    assert "lerpf(0.048, 0.08, t)" in GEN
     assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
     assert "GREEN_CONTOUR_AMP_SCALE := 1.0" in DATA
     assert "tap_in_break: float = 0.01" in GS

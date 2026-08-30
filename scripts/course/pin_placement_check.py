@@ -93,6 +93,8 @@ def main() -> int:
     # Slope shelf: steep local slope fails soft cap.
     assert MAX_SLOPE == 0.03
     assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
+    assert "PIN_SHELF_UNIFORM := 0.015" in GEN
+    assert "PIN_STEEP_PENALTY := 16.0" in GEN
     steep = 0.08
     flat = 0.02
     assert steep > MAX_SLOPE

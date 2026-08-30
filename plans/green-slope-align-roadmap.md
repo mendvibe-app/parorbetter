@@ -1,6 +1,6 @@
 # Green slope align — Roadmap
 
-**Status:** Phase 1 implementing. Spec: `plans/green-slope-align-phase1.md`.
+**Status:** Phase 1–3 in tree. Device playtest skipped — Phase 2 book + Phase 3 variety shipped on the Phase 1 field. Spec: `plans/green-slope-align-phase1.md`.
 **Owner:** Matt (playtest) → coding agent (one phase per PR)
 **Origin:** Recon 2026-08-30. True-scale greens made stored slope look like ski slopes; break/pace still from the giant-ball era. Short-game roll on the green uses a third, unrelated constant.
 **Board:** `plans/README.md`
@@ -123,7 +123,9 @@ Checks (ponytail: one new file for the non-trivial physics, plus patch the stale
 
 **Expected:** early-round SIDE_SLOPE still dominates mix (Phase 3). Book still stretches contrast (Phase 2).
 
-### Phase 2 — Read: book, arrows, pin shelf honesty
+### Phase 2 — Read: book, arrows, pin shelf honesty — SHIPPED
+
+Device playtest skipped; shipped on the Phase 1 field.
 
 Only after Phase 1 feel is signed off (otherwise we paint a field we are about to retune).
 
@@ -134,7 +136,9 @@ Only after Phase 1 feel is signed off (otherwise we paint a field we are about t
 
 **Playtest:** a 1% green looks calm; a 3% + ridge looks like a book. Pins are holeable without looking like they sit in a drain.
 
-### Phase 3 — Variety without fake steepness
+### Phase 3 — Variety without fake steepness — SHIPPED
+
+False-front face localization skipped (optional, no playtest). Mag ramps with `t`; early FLAT restored.
 
 Intensity was `randf()` every hole; FLAT was cut so break would “show up.” After physics is real, 1–2% is visible.
 

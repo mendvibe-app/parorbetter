@@ -184,7 +184,7 @@ def main() -> int:
     assert "GREEN_AREA_FLOOR_SQFT" in GEN
     assert "_green_target_radii_px" in GEN
     assert "rng.randf_range(0.28, 0.48)" in GEN
-    assert "lerpf(0.12, 0.03, t)" in GEN  # less early FLAT
+    assert "lerpf(0.28, 0.08, t)" in GEN  # early FLAT restored
     # Putt camera Phase 2 — true-scale readable framing (see putt_camera_zoom_check).
     assert "PUTT_VIEW_FRAC" in HOLE
     assert "func _putt_frame_zoom" in HOLE
