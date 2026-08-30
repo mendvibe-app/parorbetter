@@ -41,7 +41,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Dispersion circle (putt) | `GameState.PUTT_RADIUS_WEAK_YD/PRO` (2.7 / 1.0 yd) |
 | Form history window | `GameState.FORM_HISTORY_MAX` (8) |
 | Cup / ball visual | True-scale: `CUP_RADIUS` / `CUP_CAPTURE_RADIUS` / `BALL_R_PUTT` (0.102 always — whole round); see `plans/putt-true-scale-phase1.md` |
-| Putt break | `BallPhysics.green_slope_accel` (`GREEN_GRAVITY_SCALE` 0.45 × g); field mag `0.024–0.08` → 1–3% plane (`GREEN_PLANE_WEIGHT` 0.42); pin shelf `PIN_MAX_LOCAL_SLOPE` 0.03 |
+| Putt break | `BallPhysics.green_slope_accel` (`GREEN_GRAVITY_SCALE` 0.45 × g); field mag `0.024–0.071` → 1–3% plane (`GREEN_PLANE_WEIGHT` 0.42, hi = `PIN_MAX / 0.42`); pin shelf `PIN_MAX_LOCAL_SLOPE` 0.03 |
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |

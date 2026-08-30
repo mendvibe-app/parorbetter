@@ -138,13 +138,13 @@ Only after Phase 1 feel is signed off (otherwise we paint a field we are about t
 
 ### Phase 3 — Variety without fake steepness — SHIPPED
 
-False-front face localization skipped (optional, no playtest). Mag ramps with `t`; early FLAT restored.
+False-front face localization **SHIPPED** (narrow tee-side bump, no pin dip). Mag hi capped at `PIN_MAX / GREEN_PLANE_WEIGHT` so the plane cannot exceed the cup shelf. Pin-following dips removed on SIDE_SLOPE / BI_TIER / FALSE_FRONT.
 
 Intensity was `randf()` every hole; FLAT was cut so break would “show up.” After physics is real, 1–2% is visible.
 
 - Restore early FLAT / gentle side-slope weight; keep false-front / bi-tier as late unlocks.
 - Ramp **mag** with `difficulty_t` (easy 1–2%, late 2–3% with rare 4%). Theme `slope_mult` stays.
-- Optional: localize false-front amp so the **face** is the steep band, pin-side shelf stays ≤3%. Only if Phase 1 playtest still reads false-front as “whole green is a cliff.”
+- Optional: localize false-front amp so the **face** is the steep band, pin-side shelf stays ≤3%. **Done** — face at `+Y·0.55`, σ=`rmin·0.18`, amp=`base·rmin·0.45`; pin dips deleted.
 
 **Playtest:** hole 1 can be a straight putt; hole 18 can be a 3% bi-tier with a back pin. Chip/pitch into a late false front is the hard short-game exam.
 

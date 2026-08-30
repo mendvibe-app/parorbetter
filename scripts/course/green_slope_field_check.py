@@ -32,14 +32,6 @@ def influences_side_slope(slope, rx, ry, pin):
             "sigma": sigma_crown,
         }
     )
-    sigma_pin = rmin * 0.36
-    out.append(
-        {
-            "pos": (pin[0] * 0.85, pin[1] * 0.85),
-            "amp": -base_len * sigma_pin * 0.55,
-            "sigma": sigma_pin,
-        }
-    )
     side_amt = max(-rx * 0.55, min(rx * 0.55, pin[0] * across[0] + pin[1] * across[1]))
     side = (across[0] * side_amt, across[1] * side_amt)
     if math.hypot(*side) > 6.0:
@@ -60,19 +52,14 @@ def influences_bowl(slope, rx, ry, pin):
     return [{"pos": (pin[0] * 0.35, pin[1] * 0.35), "amp": -base_len * rmin * 0.85, "sigma": rmin * 0.55}]
 
 
-def influences_false_front(slope, rx, ry, pin):
+def influences_false_front(slope, rx, ry, _pin):
     base_len = math.hypot(*slope)
     rmin = min(max(rx, 20.0), max(ry, 20.0))
     return [
         {
-            "pos": (0.0, ry * 0.42),
-            "amp": base_len * rmin * 0.8,
-            "sigma": rmin * 0.38,
-        },
-        {
-            "pos": (pin[0] * 0.9, pin[1] * 0.9 - ry * 0.08),
-            "amp": -base_len * rmin * 0.4,
-            "sigma": rmin * 0.32,
+            "pos": (0.0, ry * 0.55),
+            "amp": base_len * rmin * 0.45,
+            "sigma": rmin * 0.18,
         },
     ]
 
@@ -109,12 +96,18 @@ def main() -> int:
     assert "lerpf(0.08, 0.30, rng.randf())" not in GEN
     assert "lerpf(0.024, 0.08, rng.randf())" not in GEN
     assert "lerpf(0.024, 0.048, t)" in GEN  # mag lo ramps with hole
-    assert "lerpf(0.048, 0.08, t)" in GEN
+    assert "lerpf(0.048, mag_ceil, t)" in GEN
+    assert "PIN_MAX_LOCAL_SLOPE / HoleData.GREEN_PLANE_WEIGHT" in GEN
+    assert "lerpf(0.048, 0.08, t)" not in GEN
     assert "lerpf(0.28, 0.08, t)" in GEN  # early FLAT restored
     assert "lerpf(0.12, 0.03, t)" not in GEN
     assert "GREEN_CONTOUR_AMP_SCALE := 1.0" in DATA
     assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
     assert "ContourProfile.FLAT" in DATA.split("func green_slope_at")[1].split("func ")[0]
+    assert "pin_offset * 0.85" not in DATA  # SIDE_SLOPE pin dip gone
+    assert "pin_offset * 0.8" not in DATA  # BI_TIER pin dip gone
+    assert "ry * 0.55" in DATA  # FF face
+    assert "rmin * 0.18" in DATA
 
     slope = (0.3, 0.1)
     rx, ry = 50.0, 40.0
@@ -150,9 +143,21 @@ def main() -> int:
 
     # False front: high face short of pin (positive Y).
     ff = influences_false_front((0.3, 0.0), rx, ry, pin)
-    h_front = height_at((0.0, ry * 0.42), flat, ff)
+    h_front = height_at((0.0, ry * 0.55), flat, ff)
     h_back = height_at((0.0, -ry * 0.2), flat, ff)
     assert h_front > h_back, f"false front face should be high, {h_front} vs {h_back}"
+
+    # Localized face: back pin + mid stay ≤3% on a 3% plane; tee-side flank is steep.
+    mag_hi = 0.03 / 0.42
+    slope_hi = (0.0, mag_hi)
+    pin_back = (0.0, -ry * 0.45)
+    ff_hi = influences_false_front(slope_hi, rx, ry, pin_back)
+    g_pin = math.hypot(*slope_at(pin_back, slope_hi, ff_hi))
+    g_mid = math.hypot(*slope_at((0.0, 0.0), slope_hi, ff_hi))
+    g_face = math.hypot(*slope_at((0.0, ry * 0.70), slope_hi, ff_hi))
+    assert g_pin <= 0.031, f"FF pin shelf {g_pin*100:.2f}%"
+    assert g_mid <= 0.035, f"FF mid {g_mid*100:.2f}%"
+    assert g_face >= 0.08, f"FF face too mild {g_face*100:.2f}%"
 
     # Honest field: 2% plane, SIDE_SLOPE span is feet not ski-slope.
     ft_per_px = 3.0 / 2.25

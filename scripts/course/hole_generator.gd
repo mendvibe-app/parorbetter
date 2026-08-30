@@ -370,10 +370,12 @@ static func generate_hole(
 	wind.x = clampf(wind.x, -60.0, 60.0)
 	wind.y = clampf(wind.y, -60.0, 60.0)
 
-	# Mag ramps with hole difficulty: early 1–2% plane, late 2–3% (hi 0.08 × 0.42).
-	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else (
-		lerpf(lerpf(0.024, 0.048, t), lerpf(0.048, 0.08, t), rng.randf())
-		* float(mods.get("slope_mult", 1.0))
+	# Mag ramps with hole: early 1–2% plane, late 2–3%. Cap so plane ≤ PIN_MAX (theme slope_mult cannot overshoot).
+	var mag_ceil := PIN_MAX_LOCAL_SLOPE / HoleData.GREEN_PLANE_WEIGHT
+	var slope_mag := 0.0 if contour == HoleData.ContourProfile.FLAT else minf(
+		lerpf(lerpf(0.024, 0.048, t), lerpf(0.048, mag_ceil, t), rng.randf())
+		* float(mods.get("slope_mult", 1.0)),
+		mag_ceil
 	)
 	var slope := Vector2.ZERO
 	if slope_mag > 0.0:
