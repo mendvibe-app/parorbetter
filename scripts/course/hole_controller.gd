@@ -48,12 +48,10 @@ const FLIGHT_LOOK_LEAD_WIDE := 120.0
 const FLIGHT_LOOK_LEAD_TIGHT := 45.0
 ## Chip/pitch/flop look lead vs full (driver lead overshoots a fringe chip).
 const FLIGHT_LOOK_LEAD_SHORT_MUL := 0.22  ## PLAYTEST
-## Putt roll camera: hold stroke-start look (soft ball drift). Slight zoom-in from
-## the locked frame — not a remaining-distance chase (that yanked short putts).
-const PUTT_ROLL_LOOK_LERP := 0.07
-const PUTT_ROLL_BALL_WEIGHT := 0.15  ## soft drift toward ball from locked mid-frame
-const PUTT_ROLL_ZOOM_IN := 1.18  ## PLAYTEST — modest closer; cap still wins on tap-ins
-const PUTT_ROLL_ZOOM_LERP := 0.04  ## slower than settle 0.08
+## Putt roll camera: same ball→cup frame as settle, eased from impact so the
+## zoom finishes as the ball dies (not a punch after rest). Cap still wins on tap-ins.
+const PUTT_ROLL_LOOK_LERP := 0.08  ## match settle
+const PUTT_ROLL_ZOOM_LERP := 0.08  ## match settle
 ## Max putt aim zoom (higher = closer). Raised for true-scale ball/cup (Phase 2).
 ## Was 24 — Phase 1 geometry made objects ~few px; span floor 12 also blocked closer.
 const PUTT_ZOOM_CAP := 130.0  ## PLAYTEST TARGET
@@ -3474,8 +3472,7 @@ func _flight_camera_zoom() -> Vector2:
 
 
 func _lock_putt_camera() -> void:
-	## Capture ball→cup framing before the ball moves. Look holds mid-frame;
-	## zoom eases slightly in during roll (PUTT_ROLL_ZOOM_IN).
+	## Seed the impact tween from the stroke frame. Roll then eases toward live remaining.
 	_putt_cam_active = true
 	_putt_cam_zoom = _desired_camera_zoom()
 	_putt_cam_look = _desired_camera_look()
@@ -3544,11 +3541,11 @@ func _process(_delta: float) -> void:
 		_hole_map.set_ball(ball.global_position)
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
 		if _is_putt_context() and _putt_cam_active:
-			# Soft drift toward the ball; slight zoom-in from the locked frame.
-			var look := _putt_cam_look.lerp(ball.global_position, PUTT_ROLL_BALL_WEIGHT)
-			camera.global_position = camera.global_position.lerp(look, PUTT_ROLL_LOOK_LERP)
-			var z_in := minf(_putt_cam_zoom.x * PUTT_ROLL_ZOOM_IN, PUTT_ZOOM_CAP)
-			camera.zoom = camera.zoom.lerp(Vector2(z_in, z_in), PUTT_ROLL_ZOOM_LERP)
+			# Live remaining ball→cup — same target settle uses, so rest isn't a zoom punch.
+			camera.global_position = camera.global_position.lerp(
+				_desired_camera_look(), PUTT_ROLL_LOOK_LERP
+			)
+			camera.zoom = camera.zoom.lerp(_desired_camera_zoom(), PUTT_ROLL_ZOOM_LERP)
 		else:
 			var look := ball.global_position
 			if ball.velocity.length() > 20.0:

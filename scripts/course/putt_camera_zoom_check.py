@@ -104,20 +104,17 @@ def main() -> int:
     assert z6 > z17 > z75, (z6, z17, z75)
     assert z6 >= 100.0, z6
 
-    # Roll zoom-in: slight closer from locked frame, not remaining-distance chase.
-    zin = _const(CTRL, "PUTT_ROLL_ZOOM_IN")
-    assert 1.05 <= zin <= 1.35, zin
-    assert min(z6 * zin, cap) == cap  # tap-ins already at cap — no punch
-    z50 = putt_frame_zoom(50.0, **kw)
-    z50_in = min(z50 * zin, cap)
-    assert z50_in > z50 + 0.5, (z50, z50_in)
-    assert z50_in < cap
+    # Roll eases toward live remaining (same as settle), not a locked 18% bump.
+    assert "PUTT_ROLL_ZOOM_IN" not in CTRL
     proc = CTRL.split("func _process(_delta: float) -> void:")[-1].split("\nfunc ")[0]
-    assert "PUTT_ROLL_ZOOM_IN" in proc
-    assert "_putt_frame_zoom" not in proc  # no live remaining-distance chase
+    putt_roll = proc.split("if _is_putt_context() and _putt_cam_active:")[1].split("else:")[0]
+    assert "_desired_camera_zoom()" in putt_roll
+    assert "_desired_camera_look()" in putt_roll
+    lerp_z = _const(CTRL, "PUTT_ROLL_ZOOM_LERP")
+    assert abs(lerp_z - 0.08) < 1e-6, lerp_z  # match settle so rest isn't a second punch
     print(
         f"putt_camera_zoom_check: ok z(3ft)={z3:.1f} z(6ft)={z6:.1f} "
-        f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} roll_in={zin} lengths={len(LENGTHS_FT)}"
+        f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} lengths={len(LENGTHS_FT)}"
     )
     return 0
 
