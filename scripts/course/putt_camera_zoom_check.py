@@ -103,6 +103,15 @@ def main() -> int:
     # Short putts pull in; lags stay open. Fixed 2px pad used to frame a 6-footer like ~11 ft.
     assert z6 > z17 > z75, (z6, z17, z75)
     assert z6 >= 100.0, z6
+
+    # Roll eases toward live remaining (same as settle), not a locked 18% bump.
+    assert "PUTT_ROLL_ZOOM_IN" not in CTRL
+    proc = CTRL.split("func _process(_delta: float) -> void:")[-1].split("\nfunc ")[0]
+    putt_roll = proc.split("if _is_putt_context() and _putt_cam_active:")[1].split("else:")[0]
+    assert "_desired_camera_zoom()" in putt_roll
+    assert "_desired_camera_look()" in putt_roll
+    lerp_z = _const(CTRL, "PUTT_ROLL_ZOOM_LERP")
+    assert abs(lerp_z - 0.08) < 1e-6, lerp_z  # match settle so rest isn't a second punch
     print(
         f"putt_camera_zoom_check: ok z(3ft)={z3:.1f} z(6ft)={z6:.1f} "
         f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} lengths={len(LENGTHS_FT)}"
