@@ -19,6 +19,8 @@ const TRACER_LIFT := 0.35
 ## Target on-screen trail thickness (px). World width = screen / zoom.
 const TRACER_SCREEN_W := 3.2
 const TRACER_SCREEN_W_PURE := 4.0
+## Raster floor — sw/zoom at PUTT_ZOOM_CAP (130) is ~0.025 and drops out on llvmpipe/short putts.
+const TRACER_MIN_WORLD_W := 0.10
 ## Hard cap only as safety; flight prefers space sampling and never trims mid-air.
 const TRACER_CAP := 280
 const TRACER_CAP_PURE := 320
@@ -65,6 +67,7 @@ var _lie_severity: String = ""
 var _trail: Line2D
 var _trail_grad: Gradient
 var _trail_dry: float = 0.0  ## 0 wet … 1 dry (fade from launch toward ball)
+var _trail_fade_tween: Tween = null
 var _land_mark: Node2D
 var _land_fill: Polygon2D
 var _land_ring: Line2D
@@ -238,7 +241,16 @@ func _mount_trail() -> void:
 ## Clears the flight tracer independent of a full ball reset — call this as soon as
 ## the previous shot's result is dismissed, so the old tracer doesn't linger through
 ## the next shot's read/club/aim routine.
+func _kill_trail_fade() -> void:
+	## Settle fade owns modulate:a + _set_trail_dry; next launch/clear must drop it
+	## or a course putt after an approach ribbon-fades during the roll.
+	if _trail_fade_tween != null and _trail_fade_tween.is_valid():
+		_trail_fade_tween.kill()
+	_trail_fade_tween = null
+
+
 func clear_trail() -> void:
+	_kill_trail_fade()
 	_trail.clear_points()
 	_trail_dry = 0.0
 	_trail.modulate.a = 1.0
@@ -257,7 +269,7 @@ func _sync_trail_visual() -> void:
 		return
 	var z := maxf(_camera_zoom(), 0.35)
 	var sw := TRACER_SCREEN_W_PURE if _is_perfect_shot else TRACER_SCREEN_W
-	_trail.width = sw / z
+	_trail.width = maxf(sw / z, TRACER_MIN_WORLD_W)
 	_sync_trail_gradient()
 	_sync_land_mark_visual()
 
@@ -348,6 +360,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_is_perfect_shot = false
 	state = State.IDLE
 	_planned_distance_px = 0.0
+	_kill_trail_fade()
 	_trail.clear_points()
 	_trail_dry = 0.0
 	_trail.modulate.a = 1.0
@@ -432,6 +445,7 @@ func launch(
 		velocity = _launch_dir * peak
 	# After pin-align may rewrite velocity; capture magnitude for harness comparison.
 	_launch_speed = velocity.length()
+	_kill_trail_fade()
 	_trail.clear_points()
 	_trail.position = Vector2.ZERO
 	_trail.modulate.a = 1.0
@@ -858,11 +872,12 @@ func _finish_settle() -> void:
 	# Finish drying the marker after stop (linger under result glance). Putts use the
 	# same tween — they stay wet for the whole roll, then fade here.
 	if _trail.get_point_count() > 0 or (_land_mark and _land_mark.visible):
-		var tw := create_tween()
-		tw.tween_method(_set_trail_dry, _trail_dry, 1.0, 0.85)
-		tw.parallel().tween_property(_trail, "modulate:a", 0.0, 1.1)
+		_kill_trail_fade()
+		_trail_fade_tween = create_tween()
+		_trail_fade_tween.tween_method(_set_trail_dry, _trail_dry, 1.0, 0.85)
+		_trail_fade_tween.parallel().tween_property(_trail, "modulate:a", 0.0, 1.1)
 		if _land_mark and _land_mark.visible:
-			tw.parallel().tween_property(_land_mark, "modulate:a", 0.0, 1.15)
+			_trail_fade_tween.parallel().tween_property(_land_mark, "modulate:a", 0.0, 1.15)
 	# Keep Trackman arc + land disc until fully dry; next launch/reset clears it.
 	if _lie != "Water" and _lie != "OOB":
 		_last_safe_pos = global_position
@@ -1206,10 +1221,12 @@ func _on_area_entered(other: Area2D) -> void:
 		AudioBus.set_roll_intensity(0.0)
 		entered_hazard.emit("oob")
 		return
-	# Order matters when fairway collars under the green: sand/green beat fairway.
+	# Order matters when fairway collars/apron sit under the green: sand/green beat fairway.
+	# `other` is one area — a fairway-enter while still overlapping green must not steal Green
+	# (course putts; practice green never re-enters the apron).
 	if other.is_in_group("sand"):
 		_apply_lie_string("Sand", false)
-	elif other.is_in_group("green"):
+	elif other.is_in_group("green") or _overlaps_green():
 		_apply_lie_string("Green", false)
 	elif other.is_in_group("tee"):
 		_apply_lie_string("Tee", false)
@@ -1217,6 +1234,13 @@ func _on_area_entered(other: Area2D) -> void:
 		_apply_lie_string("Fairway", false)
 	elif other.is_in_group("rough"):
 		_apply_lie_string("Rough", false)
+
+
+func _overlaps_green() -> bool:
+	for a in area.get_overlapping_areas():
+		if a.is_in_group("green"):
+			return true
+	return false
 
 
 func flash_perfect() -> void:
