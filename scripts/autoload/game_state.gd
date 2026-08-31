@@ -62,9 +62,8 @@ var practice_reps: Dictionary = {"full": 1, "pitch": 1, "chip": 0, "putt": 0, "f
 ## Lifetime real-shot counts per shot type (ghost-guide familiarity, Phase 4).
 ## 0 reps → strong guide even if global form is high.
 var shot_type_reps: Dictionary = {}
-## Tap-in fast path (putt ceremony skip). Playtest knobs via F1.
-var tap_in_yd: float = 4.0
-var tap_in_break: float = 0.01  ## ≤1% grade counts as flat (was 0.12 = 12%)
+## Tap-in: skip aim when pin is within 1 ft. Stroke still required; slope unchanged.
+var tap_in_yd: float = 1.0 / 3.0
 ## Driving range — infinite tee practice, no lives / hole advance.
 var range_mode: bool = false
 ## Practice green — infinite putt practice, no lives / hole advance.

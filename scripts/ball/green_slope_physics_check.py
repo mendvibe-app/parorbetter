@@ -94,7 +94,8 @@ def main() -> int:
     assert "PIN_MAX_LOCAL_SLOPE / HoleData.GREEN_PLANE_WEIGHT" in GEN
     assert "PIN_MAX_LOCAL_SLOPE := 0.03" in GEN
     assert "GREEN_CONTOUR_AMP_SCALE := 1.0" in DATA
-    assert "tap_in_break: float = 0.01" in GS
+    assert "tap_in_yd: float = 1.0 / 3.0" in GS
+    assert "tap_in_break" not in GS
     assert "Vector2(0.048, 0.0)" in CTRL  # practice green 2% plane
     make_sg = CTRL.split("func _make_short_game_hole")[1].split("func ")[0]
     assert "green_slope = Vector2.ZERO" in make_sg

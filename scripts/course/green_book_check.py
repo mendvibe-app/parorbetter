@@ -37,8 +37,8 @@ def main() -> int:
     assert _const("PUTT_FALL_ARROW_SCREEN") == 40.0
     assert _const("PUTT_FALL_MIN_SLOPE") == 0.005
     assert "func _refresh_putt_fall_lines" in CTRL
-    assert "func _putt_path_break_mag" in CTRL
-    assert "_putt_path_break_mag()" in CTRL.split("func _is_tap_in")[1].split("func ")[0]
+    assert "func _putt_path_break_mag" not in CTRL
+    assert "tap_in_break" not in CTRL.split("func _is_tap_in")[1].split("func ")[0]
     build = CTRL.split("func _build_green_book")[1].split("func ")[0]
     assert "GREEN_BOOK_WASH_HALF_FT" in build
     assert "_putt_fall" in build

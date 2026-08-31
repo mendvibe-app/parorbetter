@@ -1821,24 +1821,9 @@ func _start_shot_ui() -> void:
 		_begin_club_select()
 
 
-func _putt_path_break_mag() -> float:
-	## Max grade on ball → mid → cup. Tap-in used to sample feet only, so a 2 yd
-	## sidehill skipped the book while the roll still broke.
-	if hole == null or ball == null:
-		return 0.0
-	var from := ball.global_position
-	var mx := 0.0
-	for t in [0.0, 0.5, 1.0]:
-		var p: Vector2 = from.lerp(_cup_pos, t)
-		mx = maxf(mx, hole.green_slope_at(p - _green_center).length())
-	return mx
-
-
 func _is_tap_in(pin_yd: float) -> bool:
-	## Short + flat → skip read/aim ceremony; stroke still required.
-	if pin_yd > GameState.tap_in_yd:
-		return false
-	return _putt_path_break_mag() <= GameState.tap_in_break
+	## Within 1 ft of the cup → skip aim. Slope still applies on the stroke.
+	return pin_yd <= GameState.tap_in_yd
 
 
 func _refresh_putt_fall_lines() -> void:
