@@ -1,6 +1,6 @@
 # Plan — Chip distance vs real golf
 
-**Status:** PLAN ONLY — do not code until approve.  
+**Status:** CODE COMPLETE — Phase 1 pad linear + Phase 2 lie-change remain. Playtest dump identity.  
 **Origin:** Playtest dump (LW chip, Fairway, GOOD, ~48 yd to pin). Overpull felt like a full lob wedge.  
 **Scope lock:** Chip pad power map + chip lie-change roll speed. Putt log map, pitch/full plan-clamp, camera, `CHIP_YD` gate — untouched.  
 **User lock:** A bit past the tick = a bit long, not almost a full LW. Grass slower than green; once on the green the runner runs; downhill can still run past. One phase per PR after approve.
@@ -146,5 +146,5 @@ chip-on-green stimp identity stays
 ## Order
 
 1. Approve this doc.  
-2. Phase 1 PR (pad) — the dump’s 48→63.  
-3. Phase 2 PR (roll) — the dump’s 46→71. Needs Phase 1 in play or the remaining 25 yd of skate hides behind a still-long plan.
+2. Phase 1 pad — shipped this PR.  
+3. Phase 2 roll — shipped this PR (dump was both stacked).

@@ -5,7 +5,7 @@
 Phase 4 execute panel in build — playtest.
 
 **New track:** chip distance vs real golf — `chip-distance-real-golf.md`
-(plan only). Pad smash (log map) then roll skate (lie-change speed). One phase per PR.
+(Phase 1+2 code). Pad smash (log map) then roll skate (lie-change speed).
 
 **New track:** green slope align — `green-slope-align-roadmap.md` / `green-slope-align-phase1.md`.
 Field is 1–3% grade; putt and on-green short-game roll share `green_slope_accel`.
@@ -60,7 +60,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `green-slope-align-roadmap.md` | SHIPPED — 1–3% field, shared gravity, book ±2 ft, mag×t |
 | `green-slope-align-phase1.md` | SHIPPED — literals (playtest skipped) |
 | `short-game-follow-camera-phase1.md` | SHIPPED (`8af1a7e` / `#56`) — remaining-fit + roll tracer |
-| `chip-distance-real-golf.md` | PLAN ONLY — Phase 1 pad linear; Phase 2 lie-change remain |
+| `chip-distance-real-golf.md` | CODE COMPLETE — Phase 1 pad linear; Phase 2 lie-change remain |
 
 ---
 
