@@ -41,7 +41,7 @@ Grade = `green_slope_at(local).length()`.
 | Rare architecture | **4–6%** local | ridge spine, tier step — not the whole green |
 | False-front **face** | may exceed 6% in a **band** toward the tee | putting surface behind it back in 1–3% |
 | Pin shelf | **≤ 3%**, uniform over ~3 ft | USGA holing-out area; `PIN_MAX_LOCAL_SLOPE ≈ 0.03` |
-| Tap-in “flat” | **≤ 1%** | `tap_in_break ≈ 0.01` (was 0.12 = 12%) |
+| Tap-in ceremony skip | **1 ft**, distance only | `tap_in_yd = 1/3` yd. No slope gate (`tap_in_break` removed). |
 | Elevation span | **~1–3 ft** typical on an 80-ft green | 4–5 ft ok on bi-tier / false-front |
 | Break | ~**1 in per foot per 2%** at stimp 10 | Pelz: `grade% × feet / 2` |
 | Pace | downhill runs on; uphill dies | player reads it; **do not** auto-shift the putt/chip pad marker |

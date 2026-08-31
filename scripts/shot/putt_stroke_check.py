@@ -104,7 +104,9 @@ def main() -> int:
     assert "_draw_putt_amplitude" in METER
     assert 'p_lie == "Green"' in REPORT or "lie == \"Green\"" in REPORT
     assert "_is_tap_in" in HOLE
+    assert "_putt_path_break_mag" not in HOLE
     assert "tap_in_yd" in HOLE or "GameState.tap_in_yd" in HOLE
+    assert "tap_in_break" not in HOLE.split("func _is_tap_in")[1].split("func ")[0]
 
     assert "putt_show_marker" in GESTURE
     assert "putt_show_marker" in ROUTINE
