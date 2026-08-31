@@ -274,8 +274,17 @@ const PUNCH_UNDER_CANOPY_FRAC := 0.88
 ## --- Phase 3: carry share of total (PLAYTEST TARGETS, not final) ---
 ## Long clubs land shallow and release; short clubs land steep and stop.
 ## Continuous ramp — replaces the old bucket ladder that collapsed mid-iron gapping.
-const CARRY_FRAC_LONG := 0.91   ## driver end (260 yd club)
-const CARRY_FRAC_SHORT := 0.98  ## lob wedge end (65 yd club)
+## Ease t^k keeps PW/GW sticky (~3–6% roll) so 7-iron does not inherit wood release.
+const CARRY_FRAC_LONG := 0.80   ## driver end (~20% roll)
+const CARRY_FRAC_SHORT := 0.98  ## lob wedge end (~2% roll)
+const CARRY_FRAC_EASE := 1.5
+## Check multiplier: >1 more decel. Driver releases, LW checks.
+const CHECK_MUL_LONG := 0.9    ## driver
+const CHECK_MUL_SHORT := 1.5   ## lob wedge
+## PW and shorter (BAG Pitching Wedge 110). Pitch/flop also check.
+const WEDGE_FAMILY_MAX_YD := 110.0
+## PURE wedge/pitch/flop first bounce on Green — reverse along launch (not 10 yd).
+const SPINBACK_FT := 4.0  ## PLAYTEST TARGET (band 2–6 ft)
 
 ## --- Phase 1: apex primary, hang derived (PLAYTEST TARGETS, not final) ---
 ## Real PGA Tour average max height in FEET, sampled at bag max_yards.
@@ -417,11 +426,9 @@ static func air_distance_fraction(club_max_yards: float, shot_type: String = "fu
 static func _air_fraction_full(club_max_yards: float) -> float:
 	# Continuous ramp: short clubs stop, long clubs release. Replaces the bucket
 	# ladder that collapsed mid-iron carry gaps to <3 yd.
-	return lerpf(
-		CARRY_FRAC_SHORT,
-		CARRY_FRAC_LONG,
-		clampf((club_max_yards - 65.0) / (260.0 - 65.0), 0.0, 1.0)
-	)
+	var t := clampf((club_max_yards - 65.0) / (260.0 - 65.0), 0.0, 1.0)
+	t = pow(t, CARRY_FRAC_EASE)
+	return lerpf(CARRY_FRAC_SHORT, CARRY_FRAC_LONG, t)
 
 
 ## Path-spin multiplier — mild club identity (pre-pack driver 0.75; avoid 0.92 over-flatten).
@@ -856,15 +863,52 @@ static func is_short_game_shot(shot_type: String) -> bool:
 	return shot_type == "chip" or shot_type == "pitch" or shot_type == "flop"
 
 
-## Roll decel for release: green → putt pace; short-game off-green → chip pace.
-static func landing_roll_decel_px(lie: String, shot_type: String = "full") -> float:
-	if lie == "Green":
+## Wedge family (full) or pitch/flop — check-and-stop; PURE can spin back on Green.
+static func is_checking_club(club_max_yards: float, shot_type: String) -> bool:
+	if shot_type == "pitch" or shot_type == "flop":
+		return true
+	return shot_type == "full" and club_max_yards <= WEDGE_FAMILY_MAX_YD + 0.5
+
+
+## >1 more decel (check). Driver ~0.9 release, LW ~1.5. Chip is identity (hopping putt).
+static func roll_check_mul(
+	club_max_yards: float, shot_type: String, contact: String = "GOOD"
+) -> float:
+	var t := clampf((club_max_yards - 65.0) / (260.0 - 65.0), 0.0, 1.0)
+	var full := lerpf(CHECK_MUL_SHORT, CHECK_MUL_LONG, t)
+	var mul := full
+	match shot_type:
+		"pitch":
+			mul = full * 1.25
+		"flop":
+			mul = full * 1.4
+		"punch":
+			mul = full * 0.85
+		"chip", "putt":
+			mul = 1.0
+		_:
+			pass
+	if contact == "THIN":
+		mul *= 0.92  ## slightly less check = more release
+	return mul
+
+
+## Roll decel: putt / chip-on-Green → stimp; else lie × check. Green approaches
+## use fairway-class friction (not putt stimp) so a PW does not skate.
+static func landing_roll_decel_px(
+	lie: String,
+	shot_type: String = "full",
+	club_max_yards: float = 160.0,
+	contact: String = "GOOD"
+) -> float:
+	if shot_type == "putt" or (shot_type == "chip" and lie == "Green"):
 		return putt_decel_px()
-	var a := roll_decel_px(lie)
-	if is_short_game_shot(shot_type):
+	var check := roll_check_mul(club_max_yards, shot_type, contact)
+	var a := roll_decel_px("Fairway") if lie == "Green" else roll_decel_px(lie)
+	if lie != "Green" and is_short_game_shot(shot_type):
 		var k := CHIP_PACE_SCALE
-		return a * k * k
-	return a
+		a *= k * k
+	return a * check
 
 
 ## Real g (ft/s²). Apex uses GRAVITY_REAL_PX (× APEX_SCALE); green roll uses this.
@@ -1075,7 +1119,7 @@ static func launch_velocity(
 	var roll_px := total_px * (1.0 - air_frac)
 	var landing_speed := 0.0
 	if roll_px > 1.0:
-		var a_roll := landing_roll_decel_px(lie, shot_type)
+		var a_roll := landing_roll_decel_px(lie, shot_type, club_max_yards, contact)
 		landing_speed = sqrt(2.0 * a_roll * roll_px)
 
 	return {

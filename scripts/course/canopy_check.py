@@ -81,9 +81,11 @@ def main() -> int:
     # Phase 3 carry ramp (read-only mirror of ball_physics._air_fraction_full)
     carry_long = _f(PHYS, r"const CARRY_FRAC_LONG\s*:=\s*([0-9.]+)")
     carry_short = _f(PHYS, r"const CARRY_FRAC_SHORT\s*:=\s*([0-9.]+)")
+    carry_ease = _f(PHYS, r"const CARRY_FRAC_EASE\s*:=\s*([0-9.]+)")
 
     def air_frac_full(m: float) -> float:
         t = max(0.0, min(1.0, (m - 65.0) / (260.0 - 65.0)))
+        t = t ** carry_ease
         return carry_short + (carry_long - carry_short) * t
 
     def height_at_total_frac(

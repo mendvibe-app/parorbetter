@@ -18,6 +18,7 @@ def _f(pattern: str) -> float:
 
 CARRY_FRAC_LONG = _f(r"const CARRY_FRAC_LONG\s*:=\s*([0-9.]+)")
 CARRY_FRAC_SHORT = _f(r"const CARRY_FRAC_SHORT\s*:=\s*([0-9.]+)")
+CARRY_FRAC_EASE = _f(r"const CARRY_FRAC_EASE\s*:=\s*([0-9.]+)")
 PUNCH_AIR_FRAC_SCALE = _f(r"const PUNCH_AIR_FRAC_SCALE\s*:=\s*([0-9.]+)")
 _pitch_m = re.search(r'shot_type == "pitch":[\s\S]*?return ([0-9.]+)', PHYS)
 assert _pitch_m, "pitch absolute air frac not found"
@@ -46,6 +47,7 @@ def air_distance_fraction(club_max_yards: float, shot_type: str = "full") -> flo
 
 def _air_fraction_full(club_max_yards: float) -> float:
     t = max(0.0, min(1.0, (club_max_yards - 65.0) / (260.0 - 65.0)))
+    t = t ** CARRY_FRAC_EASE
     return CARRY_FRAC_SHORT + (CARRY_FRAC_LONG - CARRY_FRAC_SHORT) * t
 
 
