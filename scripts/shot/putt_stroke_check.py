@@ -200,7 +200,11 @@ def main() -> int:
     grade_body = PUTT.split("static func grade(")[1].split("static func ")[0]
     assert grade_body.count("contact = ShotResult.ContactQuality.MISS") == 1  # incomplete only
     assert "BAND_SHORT_LONG" not in PUTT
-    assert "power_from_frac(actual)" in grade_body
+    assert "power_from_frac(actual)" in grade_body  # putt log smash stays
+    assert 'shot_type == "chip"' in grade_body
+    assert "actual / maxf(target, MARKER_MIN_FRAC)" in grade_body
+    grade_call = ROUTINE.split("PuttStroke.grade(")[1][:400]
+    assert "shot_type" in grade_call
     # Phase 4: chip overpull keeps THIN label but drops distance tax (no GOOD→THIN cliff).
     assert "frac_err > 0.0 and contact_mul < 1.0" in grade_body
     assert "_draw_mishit_risk_marks" in GESTURE
@@ -215,12 +219,13 @@ def main() -> int:
         frac_err = actual - target
         abs_n = abs(frac_err) / BAND_HALF
         contact = contact_tier(abs_n, frac_err)
-        rolled = power_from_frac(actual)
+        power_mul = actual / max(target, MARKER_MIN)
         c_mul = CM[contact]
         # Mirror Phase 4: no distance tax on overpull THIN.
         if frac_err > 0.0 and c_mul < 1.0:
             c_mul = 1.0
-        yd = max(0.05, min(1.0, rolled)) * club * c_mul
+        result = max(0.05, min(1.0, commit * power_mul))
+        yd = result * club * c_mul
         return contact, yd
 
     for rem in (8.0, 12.0, 18.0):
@@ -233,10 +238,23 @@ def main() -> int:
         assert yd_thin + 1e-6 >= yd_good, (
             f"chip {rem:.0f}yd cliff: GOOD-edge {yd_good:.3f} → THIN {yd_thin:.3f}"
         )
-        # Still smash-long for big overpull vs on-target.
         _c_big, yd_big = chip_rolled_yd(min(tgt + 0.20, MARKER_MAX), commit)
         _c_on, yd_on = chip_rolled_yd(tgt, commit)
         assert yd_big > yd_on
+
+    # Dump: 0.87 vs 0.83 is a bit long, not 33% long. Putt log still smashes.
+    dump_commit = 0.73
+    dump_tgt = marker_frac(dump_commit)
+    dump_actual = 0.87
+    chip_mul = dump_actual / max(dump_tgt, MARKER_MIN)
+    putt_mul = power_from_frac(dump_actual) / max(dump_commit, POWER_FLOOR)
+    assert 1.02 <= chip_mul <= 1.10, chip_mul
+    assert putt_mul > 1.25, putt_mul
+    lw = 65.0
+    chip_yd = dump_commit * chip_mul * lw
+    putt_log_yd = min(1.0, power_from_frac(dump_actual)) * lw
+    assert 48.0 <= chip_yd <= 53.0, chip_yd
+    assert putt_log_yd > 60.0, putt_log_yd
 
     print("putt_stroke_check: ok")
     return 0
