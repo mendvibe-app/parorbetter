@@ -4160,6 +4160,26 @@ func debug_hole_out(ace: bool) -> void:
 	_on_holed_out()
 
 
+func debug_drop_on_green() -> void:
+	## F1: longest on-green putt toward the tee (Survival/18 tracer + roll cam).
+	if hole == null or ball == null or hole_complete:
+		return
+	if GameState.range_mode or GameState.short_game_mode:
+		return
+	_end_aim_phase()
+	ball_in_flight = false
+	_clear_putt_camera_lock()
+	var pos := _cup_pos
+	var step := Vector2(0.0, 3.0)
+	for _i in 40:
+		var nxt := pos + step
+		if not _on_painted_green(nxt):
+			break
+		pos = nxt
+	ball.reset_at(pos, "Green")
+	_start_shot_ui()
+
+
 func debug_force_shot(perfect: bool) -> void:
 	if ball_in_flight or hole_complete:
 		return

@@ -6,6 +6,7 @@ signal force_perfect
 signal force_mishit
 signal reload_hole
 signal hole_out(ace: bool)
+signal drop_on_green
 
 const _HOLE_CTRL := preload("res://scripts/course/hole_controller.gd")
 
@@ -55,16 +56,25 @@ func _ready() -> void:
 		hole_out.emit(true)
 	)
 	$Panel/Margin/Root/Scroll/VBox/Buttons/PerfectBtn.pressed.connect(func():
+		panel.visible = false
 		GameState.force_perfect = true
 		force_perfect.emit()
 		GameState.force_perfect = false
 	)
 	$Panel/Margin/Root/Scroll/VBox/Buttons/MishitBtn.pressed.connect(func():
+		panel.visible = false
 		GameState.force_mishit = true
 		force_mishit.emit()
 		GameState.force_mishit = false
 	)
 	$Panel/Margin/Root/Scroll/VBox/Buttons/ApplyBtn.pressed.connect(_apply_tweaks)
+	var on_green := Button.new()
+	on_green.text = "On Green"
+	$Panel/Margin/Root/Scroll/VBox/Buttons.add_child(on_green)
+	on_green.pressed.connect(func():
+		panel.visible = false
+		drop_on_green.emit()
+	)
 	$Panel/Margin/Root/Scroll/VBox/LivesRow/SetLivesBtn.pressed.connect(func():
 		GameState.set_lives(int(lives_spin.value))
 	)
