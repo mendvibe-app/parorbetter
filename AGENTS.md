@@ -44,8 +44,13 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Putt break | `BallPhysics.green_slope_accel` (`GREEN_GRAVITY_SCALE` 0.45 × g); field mag `0.024–0.071` → 1–3% plane (`GREEN_PLANE_WEIGHT` 0.42, hi = `PIN_MAX / 0.42`); pin shelf `PIN_MAX_LOCAL_SLOPE` 0.03 |
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
+<<<<<<< HEAD
 | Air vs roll split | `BallPhysics.CARRY_FRAC_LONG/SHORT` (0.80 / 0.98, ease 1.5); `roll_check_mul` 0.9–1.5; PURE wedge/pitch/flop green spin-back `SPINBACK_FT` 4 |
 | Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book wash ±2 ft, arrows from 1%; yellow rest = `preview_green_roll` |
+=======
+| Air vs roll split | `BallPhysics.AIR_DISTANCE_FRACTION` (0.78) |
+| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book wash ±2 ft, arrows from 1%; yellow rest = `preview_green_roll`; putt fall-line at stance/mid/cup (`PUTT_FALL_*`) |
+>>>>>>> 9aa85a0 (docs: note putt fall-line in AGENTS and decisions)
 | Hazards | `HoleData.hazards` role specs (`greenside` / `landing` / `carry` / `edge` / `island_ring`); placed by `HoleController._place_hazards` |
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
 | Lives (Survival) | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |
