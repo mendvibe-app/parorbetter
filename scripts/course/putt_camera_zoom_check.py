@@ -112,6 +112,15 @@ def main() -> int:
     assert "_desired_camera_look()" in putt_roll
     lerp_z = _const(CTRL, "PUTT_ROLL_ZOOM_LERP")
     assert abs(lerp_z - 0.08) < 1e-6, lerp_z  # match settle so rest isn't a second punch
+    # Stroke uses launch is_putt so a fairway-apron flicker can't drop to flight cam.
+    ctx = CTRL.split("func _is_putt_context()")[1].split("\nfunc ")[0]
+    assert 'last_shot_metrics.get("is_putt"' in ctx
+    # Cap-already putts (Survival/18 after approach) open a notch; _process owns zoom.
+    follow = CTRL.split("func _follow_ball")[1].split("func ")[0]
+    assert "PUTT_IMPACT_ZOOM_FRAC" in follow
+    assert 'tween_property(camera, "zoom"' not in follow.split("if _is_putt_context()")[1].split("return")[0]
+    frac = _const(CTRL, "PUTT_IMPACT_ZOOM_FRAC")
+    assert 0.75 <= frac < 1.0, frac
     print(
         f"putt_camera_zoom_check: ok z(3ft)={z3:.1f} z(6ft)={z6:.1f} "
         f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} lengths={len(LENGTHS_FT)}"

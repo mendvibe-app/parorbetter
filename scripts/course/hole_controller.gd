@@ -52,6 +52,9 @@ const FLIGHT_LOOK_LEAD_SHORT_MUL := 0.22  ## PLAYTEST
 ## zoom finishes as the ball dies (not a punch after rest). Cap still wins on tap-ins.
 const PUTT_ROLL_LOOK_LERP := 0.08  ## match settle
 const PUTT_ROLL_ZOOM_LERP := 0.08  ## match settle
+## Short course putts already sit at PUTT_ZOOM_CAP — open this fraction at impact so
+## roll can ease in (practice 36ft starts ~32 and tightens on its own).
+const PUTT_IMPACT_ZOOM_FRAC := 0.86
 ## Max putt aim zoom (higher = closer). Raised for true-scale ball/cup (Phase 2).
 ## Was 24 — Phase 1 geometry made objects ~few px; span floor 12 also blocked closer.
 const PUTT_ZOOM_CAP := 130.0  ## PLAYTEST TARGET
@@ -1618,6 +1621,10 @@ func _should_show_green_book() -> bool:
 
 func _is_putt_context() -> bool:
 	## Putt camera / lock only on the putting surface — chips use approach framing.
+	## During the stroke, trust the launch flag so a fairway-apron enter can't
+	## drop the roll into flight "up and in" (Survival / 18-hole).
+	if ball_in_flight and bool(GameState.last_shot_metrics.get("is_putt", false)):
+		return true
 	return ball != null and ball.get_lie() == "Green"
 
 
@@ -3495,10 +3502,14 @@ func _follow_ball() -> void:
 	camera.position_smoothing_enabled = false
 	if _is_putt_context():
 		_lock_putt_camera()
+		# Already at cap (typical first putt after an approach): open a notch so
+		# _process remaining-fit lerp has somewhere to go. Don't tween zoom — that
+		# snapped to cap in 0.2s and hid the ease-in.
+		if camera.zoom.x >= PUTT_ZOOM_CAP * 0.95:
+			camera.zoom = Vector2.ONE * maxf(PUTT_ZOOM_CAP * PUTT_IMPACT_ZOOM_FRAC, PUTT_ZOOM_FLOOR)
 		var tw_p := create_tween()
 		# Ease into locked mid-frame — not ball-only (that yanked short putts).
 		tw_p.tween_property(camera, "global_position", _putt_cam_look, 0.18).set_trans(Tween.TRANS_SINE)
-		tw_p.parallel().tween_property(camera, "zoom", _putt_cam_zoom, 0.2)
 		return
 	var st := ""
 	if shot_routine:
