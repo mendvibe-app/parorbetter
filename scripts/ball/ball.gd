@@ -790,8 +790,21 @@ func _sync_ground_lie() -> void:
 	if state != State.ROLL or not ground_lie_at.is_valid():
 		return
 	var lie: String = ground_lie_at.call(global_position)
-	if lie != _lie:
-		set_lie(lie)
+	if lie == _lie:
+		return
+	set_lie(lie)
+	if _shot_type != "chip":
+		return
+	# ponytail: leftover plan yards, not leftover speed. Slope still adds after.
+	# Cap friction ratio instead if playtest wants true energy carry.
+	var remain := maxf(_planned_distance_px - _traveled_along(), 0.0)
+	if remain < 0.5:
+		return
+	var a := BallPhysics.landing_roll_decel_px(
+		_lie, _shot_type, _club_max_yards, _contact
+	)
+	var heading := velocity.normalized() if velocity.length_squared() > 1.0 else _launch_dir
+	velocity = heading * sqrt(2.0 * a * remain)
 
 
 func _slope_at_ball() -> Vector2:
