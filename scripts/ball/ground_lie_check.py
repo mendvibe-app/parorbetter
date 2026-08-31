@@ -89,8 +89,11 @@ def main() -> None:
     assert resolve_landing_lie(["water"], ["fairway"]) == "Fairway"
     assert resolve_landing_lie(["water"], ["water"]) == "Water"
     assert resolve_landing_lie(["water"], ["water", "green"]) == "Green"
+    assert resolve_landing_lie(["fairway"], ["fairway", "green"]) == "Green"
     assert resolve_landing_lie(["sand"], ["fairway"]) == "Fairway"
     assert resolve_landing_lie(["sand"], ["fairway", "sand"]) == "Sand"
+    # ball.gd: fairway-enter while overlapping green stays Green (apron under green).
+    assert "_overlaps_green()" in Path(__file__).with_name("ball.gd").read_text(encoding="utf-8")
 
     bunkers = [((650.0, 380.0), 50.0)]
     green = (540.0, -80.0)

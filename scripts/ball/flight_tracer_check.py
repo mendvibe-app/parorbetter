@@ -70,6 +70,14 @@ def main() -> None:
     # (aim, club-select, tap-in putt) runs through — not just at launch, and not only
     # on the aim-phase branch some paths (tap-in putts) skip entirely.
     assert "func clear_trail() -> void:" in BALL
+    assert "func _kill_trail_fade()" in BALL
+    assert "TRACER_MIN_WORLD_W" in BALL
+    assert "maxf(sw / z, TRACER_MIN_WORLD_W)" in BALL
+    assert "_kill_trail_fade()" in BALL.split("func launch(")[1].split("func ")[0]
+    assert "_kill_trail_fade()" in BALL.split("func clear_trail()")[1].split("func ")[0]
+    # Fairway apron under the green must not steal Green on area_entered (course putts).
+    area_fn = BALL.split("func _on_area_entered")[1].split("\nfunc ")[0]
+    assert "_overlaps_green()" in area_fn
     start_shot_ui = HOLE.split("func _start_shot_ui()")[1].split("\nfunc ")[0]
     assert "ball.clear_trail()" in start_shot_ui
     # Tracer color reflects execution using the SAME good/ok/bad palette already
