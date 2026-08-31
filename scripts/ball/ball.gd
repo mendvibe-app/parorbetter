@@ -85,6 +85,8 @@ var _air_fraction: float = 0.78
 var _mean_air_speed: float = 0.0
 var _is_putt: bool = false
 var _shot_type: String = "full"  ## aim/launch type (visual radius no longer depends on this)
+var _club_max_yards: float = 160.0
+var _contact: String = "GOOD"
 var _spin_vis: float = 0.0
 ## Sample surface under the ball while rolling (fairway/rough/sand/green).
 var ground_lie_at: Callable = Callable()
@@ -357,6 +359,8 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	_punch_flight = false
 	_is_putt = false
 	_shot_type = "full"
+	_club_max_yards = 160.0
+	_contact = "GOOD"
 	_is_perfect_shot = false
 	state = State.IDLE
 	_planned_distance_px = 0.0
@@ -408,6 +412,8 @@ func launch(
 	_height_max = 0.0
 	_punch_flight = shot_type == "punch"
 	_shot_type = shot_type
+	_club_max_yards = club_max_yards
+	_contact = BallPhysics.contact_apex_label(result.contact_quality)
 	_is_putt = bool(launch_data.get("is_putt", _lie == "Green"))
 	_apply_lie_visual()
 	if _is_putt:
@@ -746,10 +752,6 @@ func _begin_roll() -> void:
 	_capture_flight_metrics()
 	_height = 0.0
 	state = State.ROLL
-	var speed := _landing_speed
-	if speed <= 1.0:
-		speed = maxf(velocity.length() * 0.35, ROLL_SPEED_FLOOR)
-	velocity = _launch_dir * speed
 	# Snap target to actual first bounce and illuminate — tracer tip dries into this.
 	_show_land_mark(global_position, true)
 	# Flight ignores ground under the arc; re-check hazards, then sample lie.
@@ -758,6 +760,27 @@ func _begin_roll() -> void:
 		if state != State.ROLL:
 			return
 	_sync_ground_lie()
+	# Bounce speed from *current* lie + remaining plan — not strike-lie landing_speed
+	# (fairway-hot PW onto green was the skate).
+	if _is_putt:
+		var speed := _landing_speed
+		if speed <= 1.0:
+			speed = maxf(velocity.length() * 0.35, ROLL_SPEED_FLOOR)
+		velocity = _launch_dir * speed
+	else:
+		var remain := maxf(_planned_distance_px - _traveled_along(), 0.5)
+		var a := BallPhysics.landing_roll_decel_px(
+			_lie, _shot_type, _club_max_yards, _contact
+		)
+		if (
+			_is_perfect_shot
+			and _lie == "Green"
+			and BallPhysics.is_checking_club(_club_max_yards, _shot_type)
+		):
+			var back_px := BallPhysics.FT_TO_PX * BallPhysics.SPINBACK_FT
+			velocity = -_launch_dir * sqrt(2.0 * a * maxf(back_px, 0.5))
+		else:
+			velocity = _launch_dir * sqrt(2.0 * a * remain)
 
 
 func _sync_ground_lie() -> void:
@@ -786,14 +809,14 @@ func _process_roll(delta: float) -> void:
 	if _is_putt or _lie == "Green":
 		velocity += BallPhysics.green_slope_accel(slope) * delta
 
-	# Green → putt pace; chip/pitch/flop off-green → chip pace (playtest: rocket rollout).
+	# Putt / chip-on-Green: stimp. Else lie × check (Green approaches = fairway-class).
 	var decel: float
-	if _is_putt or _lip_out_leave or _lie == "Green":
+	if _is_putt or _lip_out_leave:
 		decel = BallPhysics.putt_decel_px()
-	elif BallPhysics.is_short_game_shot(_shot_type):
-		decel = BallPhysics.landing_roll_decel_px(_lie, _shot_type)
 	else:
-		decel = BallPhysics.roll_decel_px(_lie)
+		decel = BallPhysics.landing_roll_decel_px(
+			_lie, _shot_type, _club_max_yards, _contact
+		)
 	velocity = velocity.move_toward(Vector2.ZERO, decel * delta)
 
 	if not _is_putt:
@@ -818,7 +841,15 @@ func _process_roll(delta: float) -> void:
 	var along := _traveled_along()
 	# Phase 5 CP6: remain<40 speed clamp removed. Hard settle at plan kept.
 	# Lip-out leave skips plan clamp — sideways trickle must coast on speed, not freeze at pin.
-	if along >= _planned_distance_px and not _is_putt and not _lip_out_leave and _lie != "Green":
+	# Chip/putt coast on speed + slope. Full/pitch/flop keep the plan ceiling even on Green
+	# (PW 99→121 skate). Reverse (PURE spin-back) skips so we don't freeze at bounce.
+	if (
+		along >= _planned_distance_px
+		and not _is_putt
+		and not _lip_out_leave
+		and _shot_type != "chip"
+		and velocity.dot(_launch_dir) >= 0.0
+	):
 		_finish_settle()
 		return
 	# Chip rim-out: never coast drive-length (leave skips plan clamp).

@@ -66,6 +66,7 @@ _require(PHYS, "lerpf(1.0, 0.94, force)")
 PX_PER_YARD = _f(PHYS, r"const PX_PER_YARD\s*:=\s*([0-9.]+)")
 CARRY_FRAC_LONG = _f(PHYS, r"const CARRY_FRAC_LONG\s*:=\s*([0-9.]+)")
 CARRY_FRAC_SHORT = _f(PHYS, r"const CARRY_FRAC_SHORT\s*:=\s*([0-9.]+)")
+CARRY_FRAC_EASE = _f(PHYS, r"const CARRY_FRAC_EASE\s*:=\s*([0-9.]+)")
 POWER_POCKET_LO = _f(PHYS, r"const POWER_POCKET_LO\s*:=\s*([0-9.]+)")
 POWER_POCKET_HI = _f(PHYS, r"const POWER_POCKET_HI\s*:=\s*([0-9.]+)")
 FLOP_MAX_YD = _f(PHYS, r"const FLOP_MAX_YD\s*:=\s*([0-9.]+)")
@@ -210,11 +211,9 @@ def force_factor(power: float, shot_type: str = "full") -> float:
 
 
 def air_fraction_full(m: float) -> float:
-    return lerp(
-        CARRY_FRAC_SHORT,
-        CARRY_FRAC_LONG,
-        clamp((m - 65.0) / (260.0 - 65.0), 0.0, 1.0),
-    )
+    t = clamp((m - 65.0) / (260.0 - 65.0), 0.0, 1.0)
+    t = t ** CARRY_FRAC_EASE
+    return lerp(CARRY_FRAC_SHORT, CARRY_FRAC_LONG, t)
 
 
 def air_distance_fraction(m: float, shot_type: str = "full") -> float:
@@ -617,13 +616,15 @@ def launch(
 GOLDEN = [
     # Phase 3: carry/total ratio. total_yd ranges are ~10-hcp amateur (Arccos/Shot Scope),
     # not Tour — Tour was the wrong player model for this bag (see epic-bag-calibration).
-    ("Driver stock", "Driver", STOCK_POWER, "full", "air_frac", 0.89, 0.93),
+    ("Driver stock", "Driver", STOCK_POWER, "full", "air_frac", 0.78, 0.82),
     ("Driver stock", "Driver", STOCK_POWER, "full", "total_yd", 230.0, 250.0),
     ("Driver stock", "Driver", STOCK_POWER, "full", "apex_yd", 28.0, 40.0),
-    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "air_frac", 0.93, 0.97),
+    ("7-iron stock", "7-Iron", STOCK_POWER, "full", "air_frac", 0.90, 0.94),
     ("7-iron stock", "7-Iron", STOCK_POWER, "full", "total_yd", 140.0, 160.0),
     ("7-iron stock", "7-Iron", STOCK_POWER, "full", "apex_yd", 28.0, 36.0),
     ("PW stock", "Pitching Wedge", STOCK_POWER, "full", "apex_yd", 26.0, 34.0),
+    ("PW stock", "Pitching Wedge", STOCK_POWER, "full", "air_frac", 0.94, 0.98),
+    ("Driver stock", "Driver", STOCK_POWER, "full", "roll_yd", 42.0, 55.0),
     ("SW 50yd pitch", "Sand Wedge", 50.0 / 80.0, "pitch", "apex_yd", 12.0, 22.0),
     ("SW 20yd pitch", "Sand Wedge", 20.0 / 80.0, "pitch", "apex_yd", 5.0, 12.0),
     ("SW 8yd chip", "Sand Wedge", 8.0 / 80.0, "chip", "apex_yd", 1.0, 5.0),
@@ -767,8 +768,9 @@ def verify_live_constants_reflected() -> None:
     assert abs(PUTT_CONTACT_MUL["THIN"] - 1.06) < 1e-9
     assert abs(PUTT_CONTACT_MUL["FAT"] - 0.90) < 1e-9
     assert abs(PUTT_CONTACT_MUL["MISS"] - 0.78) < 1e-9
-    assert abs(CARRY_FRAC_LONG - 0.91) < 1e-9
+    assert abs(CARRY_FRAC_LONG - 0.80) < 1e-9
     assert abs(CARRY_FRAC_SHORT - 0.98) < 1e-9
+    assert abs(CARRY_FRAC_EASE - 1.5) < 1e-9
     assert abs(PITCH_AIR_FRAC - 0.90) < 1e-9
     assert abs(PUNCH_AIR_FRAC_SCALE - 0.88) < 1e-9
     assert abs(PUNCH_CLAMP_HI - 0.90) < 1e-9

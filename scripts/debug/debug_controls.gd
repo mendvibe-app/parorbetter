@@ -342,18 +342,23 @@ func _process(_delta: float) -> void:
 			var hang := float(flight.get("hang_time", 0.0))
 			var launch_spd := float(flight.get("launch_speed", 0.0))
 			var carry_yd := BallPhysics.pixels_to_yards(carry_px)
-			var roll_yd := BallPhysics.pixels_to_yards(maxf(planned_px * (1.0 - air_frac), 0.0))
-			height_line += "\nCarry %.0f yd · roll %.0f yd · hang %.2fs · launch %.0f px/s" % [
-				carry_yd, roll_yd, hang, launch_spd
+			var plan_roll_yd := BallPhysics.pixels_to_yards(maxf(planned_px * (1.0 - air_frac), 0.0))
+			var actual_yd := float(m.get("actual_yd", 0.0)) if m.has("actual_yd") else -1.0
+			var roll_yd := plan_roll_yd
+			var roll_bit := "roll %.0f yd" % roll_yd
+			if actual_yd >= 0.0:
+				var actual_roll := actual_yd - carry_yd
+				roll_bit = "roll %+.0f yd (plan %.0f)" % [actual_roll, plan_roll_yd]
+			height_line += "\nCarry %.0f yd · %s · hang %.2fs · launch %.0f px/s" % [
+				carry_yd, roll_bit, hang, launch_spd
 			]
 			if _elevation_spark:
 				var contact_s := str(m.get("contact", "GOOD")).to_upper()
-				var actual_yd := float(m.get("actual_yd", 0.0)) if m.has("actual_yd") else 0.0
 				_elevation_spark.set_profile(
 					carry_px,
 					float(flight.get("apex_actual", h_max if h_max >= 0.0 else 0.0)),
 					planned_px,
-					actual_yd,
+					maxf(actual_yd, 0.0),
 					contact_s
 				)
 		elif _elevation_spark:
