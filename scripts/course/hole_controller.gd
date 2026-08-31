@@ -181,6 +181,7 @@ var _flight_short_game: bool = false  ## chip/pitch/flop — soft follow, hold g
 var _bunkers: Array = []  ## {c, r, sprite, img} — settle lie via paint alpha
 var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
+var _putt_fall: _GreenBookDraw  ## local downhill at stance / mid / cup (survives Confirm)
 var _pin_flag: Node2D  ## CoursePinFlag — hidden while putting (pin out)
 var _green_sprite: Sprite2D
 var _green_img: Image  ## cached for shape-aware Green lie (silhouette alpha)
@@ -626,6 +627,9 @@ func _build_course() -> void:
 	if _green_book:
 		_green_book.queue_free()
 		_green_book = null
+	if _putt_fall:
+		_putt_fall.queue_free()
+		_putt_fall = null
 	_bunkers.clear()
 	_trees.clear()
 	_tee_pads.clear()
@@ -1474,7 +1478,10 @@ const GREEN_BOOK_ARROW_N := 9  ## arrows across green (playtest density)
 const GREEN_BOOK_ARROW_MIN_SLOPE := 0.01  ## 1% fall lines show (was 0.04, hid AimPoint-1)
 const GREEN_BOOK_ARROW_LEN_SCREEN := 16.0  ## shaft length in screen px
 const GREEN_BOOK_ARROW_W_SCREEN := 2.0
+const GREEN_BOOK_ARROW_MAG_K := 14.0  ## length vs grade; 1.2 was invisible on 1–3% field
 const GREEN_BOOK_WASH_HALF_FT := 2.0  ## PLAYTEST — full cold→hot is ±this, not per-green min–max
+const PUTT_FALL_ARROW_SCREEN := 40.0  ## local downhill at this putt; book grid is 16
+const PUTT_FALL_MIN_SLOPE := 0.005  ## 0.5% — tap-in 1% still reads
 
 
 func _build_green_book() -> void:
@@ -1538,7 +1545,18 @@ func _build_green_book() -> void:
 	drawer.z_index = 4
 	drawer.arrow_len_screen = GREEN_BOOK_ARROW_LEN_SCREEN
 	drawer.arrow_w_screen = GREEN_BOOK_ARROW_W_SCREEN
+	drawer.mag_len_k = GREEN_BOOK_ARROW_MAG_K
 	_green_book.add_child(drawer)
+
+	_putt_fall = _GreenBookDraw.new()
+	_putt_fall.position = _green_center
+	_putt_fall.z_index = 5
+	_putt_fall.arrow_len_screen = PUTT_FALL_ARROW_SCREEN
+	_putt_fall.arrow_w_screen = 2.4
+	_putt_fall.mag_len_k = 0.0  ## full shaft — direction is the read
+	_putt_fall.arrow_color = Color(1.0, 0.92, 0.35, 0.92)
+	_putt_fall.visible = false
+	add_child(_putt_fall)
 
 	# Fall-line arrows: point downhill (same vector physics uses).
 	var an := GREEN_BOOK_ARROW_N
@@ -1576,6 +1594,8 @@ class _GreenBookDraw extends Node2D:
 	var arrows: Array = []
 	var arrow_len_screen: float = 16.0
 	var arrow_w_screen: float = 2.0
+	var mag_len_k: float = 14.0  ## 0 = full shaft
+	var arrow_color: Color = Color(0.1, 0.08, 0.06, 0.75)
 
 	func _ready() -> void:
 		set_process(true)
@@ -1592,12 +1612,14 @@ class _GreenBookDraw extends Node2D:
 		var shaft := arrow_len_screen / z
 		var w := arrow_w_screen / z
 		var head := shaft * 0.35
-		var col := Color(0.1, 0.08, 0.06, 0.75)
+		var col := arrow_color
 		for a in arrows:
 			var pos: Vector2 = a["pos"]
 			var dir: Vector2 = a["dir"]
-			# Scale length mildly by slope strength.
-			var len := shaft * clampf(0.65 + float(a["mag"]) * 1.2, 0.65, 1.25)
+			var mag := float(a["mag"])
+			var len := shaft
+			if mag_len_k > 0.0:
+				len = shaft * clampf(0.55 + mag * mag_len_k, 0.55, 1.35)
 			var tip: Vector2 = pos + dir * len * 0.5
 			var tail: Vector2 = pos - dir * len * 0.5
 			draw_line(tail, tip, col, w, true)
@@ -1793,13 +1815,49 @@ func _start_shot_ui() -> void:
 		_begin_club_select()
 
 
+func _putt_path_break_mag() -> float:
+	## Max grade on ball → mid → cup. Tap-in used to sample feet only, so a 2 yd
+	## sidehill skipped the book while the roll still broke.
+	if hole == null or ball == null:
+		return 0.0
+	var from := ball.global_position
+	var mx := 0.0
+	for t in [0.0, 0.5, 1.0]:
+		var p: Vector2 = from.lerp(_cup_pos, t)
+		mx = maxf(mx, hole.green_slope_at(p - _green_center).length())
+	return mx
+
+
 func _is_tap_in(pin_yd: float) -> bool:
 	## Short + flat → skip read/aim ceremony; stroke still required.
 	if pin_yd > GameState.tap_in_yd:
 		return false
-	var local := ball.global_position - _green_center
-	var break_mag := hole.green_slope_at(local).length()
-	return break_mag <= GameState.tap_in_break
+	return _putt_path_break_mag() <= GameState.tap_in_break
+
+
+func _refresh_putt_fall_lines() -> void:
+	## Yellow downhill ticks on THIS putt. Book grid is ~5 yd apart — a 6-ft
+	## putt can sit in a blank cell, and Confirm hides the wash.
+	if _putt_fall == null:
+		return
+	var on := (
+		hole != null and ball != null and not hole_complete and ball.get_lie() == "Green"
+	)
+	_putt_fall.visible = on
+	_putt_fall.arrows.clear()
+	if not on:
+		_putt_fall.queue_redraw()
+		return
+	var from := ball.global_position
+	for t in [0.0, 0.5, 1.0]:
+		var p: Vector2 = from.lerp(_cup_pos, t)
+		var local := p - _green_center
+		var s := hole.green_slope_at(local)
+		var mag := s.length()
+		if mag < PUTT_FALL_MIN_SLOPE:
+			continue
+		_putt_fall.arrows.append({"pos": local, "dir": s / mag, "mag": mag})
+	_putt_fall.queue_redraw()
 
 
 func _begin_tap_in_stroke(pin_yd: float) -> void:
@@ -1814,6 +1872,7 @@ func _begin_tap_in_stroke(pin_yd: float) -> void:
 	if _change_club_btn:
 		_change_club_btn.visible = false
 	_set_green_book_visible(false)
+	_refresh_putt_fall_lines()
 	_refresh_wind_indicator(false)
 	_aim_radius_base_yd = GameState.get_aim_radius_yards(true)
 	_aim_radius_yd = _aim_radius_base_yd
@@ -1844,6 +1903,8 @@ func _begin_club_select() -> void:
 	_set_aim_visuals_visible(false)
 	_refresh_wind_indicator(false)
 	_set_green_book_visible(false)
+	if _putt_fall:
+		_putt_fall.visible = false
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
 	if _change_club_btn:
@@ -2015,6 +2076,7 @@ func _begin_aim_phase(restore_aim: bool = false) -> void:
 	var show_book := _should_show_green_book()
 	var is_putt := lie == "Green"
 	_set_green_book_visible(show_book)
+	_refresh_putt_fall_lines()
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = true
 	if _change_club_btn:
@@ -2580,7 +2642,8 @@ func _confirm_aim() -> void:
 	if _punch_btn:
 		_punch_btn.visible = false
 	_hide_shot_type_row()
-	_set_green_book_visible(false)  # close the book before stroking
+	_set_green_book_visible(false)  # close the wash before stroking; local fall-line stays
+	_refresh_putt_fall_lines()
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
 	# Auto practice reps (0–3 per shot type), then real shot. Range never uses confirm-aim.
@@ -2647,6 +2710,7 @@ func _start_power_swing(p_practice: bool = false, p_allow_back: bool = false) ->
 	if not shot_routine.practice_result.is_connected(_on_practice_result):
 		shot_routine.practice_result.connect(_on_practice_result)
 	_set_green_book_visible(false)
+	_refresh_putt_fall_lines()
 	var total_pr := 0 if GameState.range_mode else _practice_count_for_current_shot()
 	if shot_routine.has_method("set_rep_indicator"):
 		shot_routine.set_rep_indicator(_practice_reps_left, total_pr, not p_practice)
@@ -2908,6 +2972,7 @@ func _refresh_aim_visuals() -> void:
 	var to := _aim_target
 	var is_putt := ball.get_lie() == "Green"
 	var inv_z := 1.0 / maxf(camera.zoom.x, 0.35)
+	_refresh_putt_fall_lines()
 	if is_putt:
 		## White start line along aim — length from hole distance, never through cup.
 		var along := to - from
@@ -3599,6 +3664,14 @@ func _fill_putt_debug(rest: Vector2, settled: bool, holed: bool) -> void:
 	var from := ball.shot_origin()
 	var pin_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
 	var c_mul := BallPhysics.contact_multiplier(_last_result.contact_quality, "Green")
+	var brk := hole.green_slope_at(from - _green_center) if hole else Vector2.ZERO
+	var pin_dir0 := (_cup_pos - from).normalized()
+	if pin_dir0 == Vector2.ZERO:
+		pin_dir0 = Vector2(0, -1)
+	var brk_lat := brk.dot(Vector2(-pin_dir0.y, pin_dir0.x))
+	var brk_bit := "brk 0%"
+	if brk.length() >= PUTT_FALL_MIN_SLOPE:
+		brk_bit = "brk %.1f%% %s" % [brk.length() * 100.0, "R" if brk_lat > 0.0 else "L"]
 	var flat_in := BallPhysics.putt_line_miss(_last_result) * pin_yd * 36.0
 	var flat_bit := "0in"
 	if absf(flat_in) >= 0.5:
@@ -3625,8 +3698,8 @@ func _fill_putt_debug(rest: Vector2, settled: bool, holed: bool) -> void:
 			al_bit = "%.1fft %s" % [absf(leave.y), "long" if leave.y > 0.0 else "short"]
 		leave_bit = "leave %s, %s" % [lat_bit, al_bit]
 	GameState.last_shot_metrics["contact_mul"] = c_mul
-	GameState.last_shot_metrics["putt_debug"] = "Putt c_mul %.2f · flat %s @ cup · %s" % [
-		c_mul, flat_bit, leave_bit
+	GameState.last_shot_metrics["putt_debug"] = "Putt c_mul %.2f · %s · flat %s @ cup · %s" % [
+		c_mul, brk_bit, flat_bit, leave_bit
 	]
 
 
@@ -3639,6 +3712,9 @@ func _on_ball_settled(pos: Vector2, lie_hint: String) -> void:
 	ball_in_flight = false
 	_clear_putt_camera_lock()
 	_set_green_book_visible(false)
+	if _putt_fall:
+		_putt_fall.visible = false
+		_putt_fall.arrows.clear()
 	var actual := ball.distance_traveled_yards()
 	# See = catch: same disc as cup sensor (dark opening), not full sprite/shelf.
 	var holed := pos.distance_to(_cup_pos) < CUP_CAPTURE_RADIUS and not GameState.range_mode

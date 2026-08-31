@@ -33,8 +33,15 @@ def main() -> int:
     assert "green_slope_at" in CTRL
     assert _const("GREEN_BOOK_ARROW_MIN_SLOPE") == 0.01
     assert _const("GREEN_BOOK_WASH_HALF_FT") == 2.0
+    assert _const("GREEN_BOOK_ARROW_MAG_K") == 14.0
+    assert _const("PUTT_FALL_ARROW_SCREEN") == 40.0
+    assert _const("PUTT_FALL_MIN_SLOPE") == 0.005
+    assert "func _refresh_putt_fall_lines" in CTRL
+    assert "func _putt_path_break_mag" in CTRL
+    assert "_putt_path_break_mag()" in CTRL.split("func _is_tap_in")[1].split("func ")[0]
     build = CTRL.split("func _build_green_book")[1].split("func ")[0]
     assert "GREEN_BOOK_WASH_HALF_FT" in build
+    assert "_putt_fall" in build
     assert "h_span" not in build  # per-green min–max stretch is gone
     assert "GREEN_BOOK_CONTOUR" not in CTRL or "CONTOUR_LEVELS" not in CTRL
     assert "Cool = low" in CTRL and "Warm = high" in CTRL
