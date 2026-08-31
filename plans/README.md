@@ -59,7 +59,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
 | `green-slope-align-roadmap.md` | SHIPPED — 1–3% field, shared gravity, book ±2 ft, mag×t |
 | `green-slope-align-phase1.md` | SHIPPED — literals (playtest skipped) |
-| `short-game-follow-camera-phase1.md` | PLAN — chip/pitch/flop remaining-fit + roll tracer |
+| `short-game-follow-camera-phase1.md` | CODE COMPLETE — remaining-fit + roll tracer; playtest |
 
 ---
 

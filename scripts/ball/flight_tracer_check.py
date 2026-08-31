@@ -49,12 +49,16 @@ def main() -> None:
     assert "TRACER_CAP := 280" in BALL or "TRACER_CAP := 256" in BALL or "const TRACER_CAP" in BALL
     # Flight: outer `if not _is_putt:` then FLIGHT (draw) / ROLL (wet-marker dry).
     # Putt: same Line2D, ground sample, no loft, wet until settle fade.
+    # Short-game ROLL: ground-sample like putt (keep lofted air ribbon; don't dry).
     assert "if not _is_putt:" in BALL
     assert "if state == State.FLIGHT:" in BALL
     assert "elif state == State.ROLL:" in BALL
     assert "TRACER_DRY_RATE" in BALL
     assert "func _sample_putt_trail()" in BALL
     assert "TRACER_LIFT" not in BALL.split("func _sample_putt_trail()")[1].split("func ")[0]
+    phys = BALL.split("func _physics_process")[1].split("func _traveled_along")[0]
+    assert "is_short_game_shot(_shot_type)" in phys
+    assert phys.split("is_short_game_shot(_shot_type)")[1].split("elif")[0].count("_sample_putt_trail()") >= 1
     settle = BALL.split("func _finish_settle()")[1].split("func ")[0]
     assert "tween_method(_set_trail_dry" in settle
     assert "if not _is_putt and (_trail" not in settle
@@ -80,6 +84,7 @@ def main() -> None:
     assert "_overlaps_green()" in area_fn
     start_shot_ui = HOLE.split("func _start_shot_ui()")[1].split("\nfunc ")[0]
     assert "ball.clear_trail()" in start_shot_ui
+    assert "_flight_short_game = false" in start_shot_ui
     # Tracer color reflects execution using the SAME good/ok/bad palette already
     # used by the swing-trail color and tempo needle — not a new invented scheme.
     assert "Color(0.35, 0.92, 0.45, 0.92)" in BALL  # green — matches tempo_gesture.trail_color()
@@ -100,11 +105,15 @@ def main() -> None:
     assert "func _flight_camera_zoom()" in HOLE
     assert "_flight_zoom_base" in HOLE
     assert "_flight_short_game" in HOLE
-    # Follow seeds from aim zoom, not corridor floor (pin-primary must not pull out).
+    # Follow: short-game seeds remaining-fit (putt lock), not hold-frame launch tween.
     follow = HOLE.split("func _follow_ball")[1].split("func ")[0]
     assert "_desired_camera_zoom()" in follow or "_flight_short_game" in follow
     assert "_corridor_zoom_level() * 0.9" not in follow
     assert "is_short_game_shot" in follow
+    assert "_lock_putt_camera()" in follow
+    seed = follow.split("if _is_putt_context() or _flight_short_game:")[1].split("return")[0]
+    assert "FLIGHT_LAND_FRAC_SHORT" not in seed
+    assert 'tween_property(camera, "zoom"' not in seed
     # Pure strike must not yank zoom back to aim framing mid-flight.
     pure = HOLE.split("func _on_pure_strike")[1].split("func ")[0]
     assert 'tween_property(camera, "zoom"' not in pure

@@ -340,9 +340,11 @@ func layout_shot_chrome() -> void:
 		UiScale.SHOT_PAD_TOP_COMPACT if (shot_type == "putt" or shot_type == "chip")
 		else UiScale.SHOT_PAD_TOP
 	)
-	# Putt execute: shorter panel so the green (true-scale camera) owns more screen.
+	# Putt/chip execute: shorter panel so remaining-fit camera owns more screen.
 	offset_top = -(
-		UiScale.SHOT_PANEL_H_PUTT if shot_type == "putt" else UiScale.SHOT_PANEL_H
+		UiScale.SHOT_PANEL_H_PUTT
+		if (shot_type == "putt" or shot_type == "chip")
+		else UiScale.SHOT_PANEL_H
 	)
 	if meter_display:
 		meter_display.offset_top = UiScale.METER_TOP

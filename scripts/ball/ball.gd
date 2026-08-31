@@ -604,8 +604,8 @@ func _physics_process(delta: float) -> void:
 	# Tip glued to the ball every frame. Body keeps screen-up loft, then every point
 	# is clamped so nothing sits past the tip along launch (apex loft was leading
 	# the ribbon past the ball on driver — playtest screenshot 2026-08-17).
-	# Roll (full/chip): freeze points and dry the ribbon (wet marker) into the land circle.
-	# Putt: same Line2D, ground-follow, stays wet until settle fade.
+	# Roll (full): freeze points and dry the ribbon (wet marker) into the land circle.
+	# Putt / short-game roll: same Line2D, ground-follow, stays wet until settle fade.
 	if not _is_putt:
 		if state == State.FLIGHT:
 			_sync_trail_visual()
@@ -643,7 +643,9 @@ func _physics_process(delta: float) -> void:
 			# Pull any lofted body point that sits past the tip back behind the ball.
 			_clamp_trail_behind_tip(tip_pt)
 		elif state == State.ROLL:
-			if _trail.get_point_count() > 0:
+			if BallPhysics.is_short_game_shot(_shot_type):
+				_sample_putt_trail()
+			elif _trail.get_point_count() > 0:
 				# Dry from launch end toward the land circle; drop fully-faded head points.
 				_trail_dry = minf(_trail_dry + delta * TRACER_DRY_RATE, 1.0)
 				if _trail_dry > 0.28 and _trail.get_point_count() > 6:

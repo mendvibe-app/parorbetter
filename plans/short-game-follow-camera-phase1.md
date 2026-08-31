@@ -1,8 +1,8 @@
 # Plan — Short-game follow camera (chip / pitch / flop)
 
-**Status:** PLAN — recon on `main` (`1d4d8a3`). No code in this PR.  
+**Status:** CODE COMPLETE — playtest remaining-fit on chip/pitch/flop.  
 **Origin:** Putt tracer + remaining-fit roll zoom (`d4c0597`, `dabc3f9`, Survival/18 `fc998e6`).  
-**Scope lock:** In-flight camera + roll tracer only. Aim/address camera, physics, landing-circle *sizing*, punch/full-swing “up and in” — untouched. One PR after approve.
+**Scope lock:** In-flight camera + roll tracer only. Aim/address camera, physics, landing-circle *sizing*, punch/full-swing “up and in” — untouched.
 
 **User lock:** Keep the landing indicator visible; follow the tracer with the ball; zoom in until rest — same idea as the putt pass, on chips (and the other short-game types that already share that camera branch).
 
