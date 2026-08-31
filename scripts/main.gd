@@ -33,6 +33,8 @@ func _ready() -> void:
 	debug_panel.force_perfect.connect(func(): hole_controller.debug_force_shot(true))
 	debug_panel.force_mishit.connect(func(): hole_controller.debug_force_shot(false))
 	debug_panel.hole_out.connect(func(ace: bool): hole_controller.debug_hole_out(ace))
+	if debug_panel.has_signal("drop_on_green"):
+		debug_panel.drop_on_green.connect(func(): hole_controller.debug_drop_on_green())
 	debug_panel.reload_hole.connect(_on_debug_reload)
 	if hole_controller.hud and hole_controller.hud.has_signal("menu_pressed"):
 		hole_controller.hud.menu_pressed.connect(_return_to_start)
