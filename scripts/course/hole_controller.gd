@@ -179,7 +179,7 @@ const SHORT_GAME_DIST_ORDER := ["close", "medium", "full"]
 const SHORT_GAME_DIST_LABELS := {"close": "Close", "medium": "Medium", "full": "Full"}
 var _fairway_half: float = 70.0
 var _flight_zoom_base: float = 1.2  ## captured at full-shot start; flight fracs scale from this
-var _flight_short_game: bool = false  ## chip/pitch/flop — soft follow, hold greenside frame
+var _flight_short_game: bool = false  ## chip/pitch/flop in-flight — remaining-fit like putt roll
 var _bunkers: Array = []  ## {c, r, sprite, img} — settle lie via paint alpha
 var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
@@ -1792,6 +1792,7 @@ func _add_circle(parent: Node2D, center: Vector2, radius: float, color: Color, g
 func _start_shot_ui() -> void:
 	if hole_complete or not GameState.run_active:
 		return
+	_flight_short_game = false
 	ball.clear_trail()
 	shot_routine.set_active(false)
 	if shot_result_panel and shot_result_panel.has_method("hide_now"):
@@ -3432,9 +3433,13 @@ func _green_book_aim_look() -> Vector2:
 
 
 func _putt_bottom_chrome() -> float:
-	## Aim: Confirm Aim. Stroke: putt panel. Don't size the frame for chrome that isn't up.
+	## Aim: Confirm Aim. Stroke: putt/chip share the short panel; pitch/flop stay tall.
 	if _aiming:
 		return absf(UiScale.CONFIRM_AIM_TOP)
+	if shot_routine and shot_routine.visible:
+		var st := shot_routine.shot_type
+		if st != "putt" and st != "chip":
+			return UiScale.SHOT_PANEL_H
 	return UiScale.SHOT_PANEL_H_PUTT
 
 
@@ -3478,9 +3483,11 @@ func _desired_camera_zoom() -> Vector2:
 	var view_min := minf(view.x, view.y)
 	var z: float
 	# Greenside book (aim + chip address): green ∪ ball. On-green putts use ball→cup.
+	# ponytail: short-game air is ball→cup, not ball∪land AABB. Offline dumps can
+	# crop _land_mark; union the bounce if playtest crops it.
 	if _greenside_book_frame():
 		z = _green_book_aim_zoom(view)
-	elif _is_putt_context():
+	elif _is_putt_context() or _flight_short_game:
 		z = _putt_frame_zoom(view)
 	else:
 		# Pin-primary mid-irons; long tee opens to corridor (playtest 1685 — 216 yd).
@@ -3513,7 +3520,7 @@ func _ui_safe_look(focus: Vector2) -> Vector2:
 func _desired_camera_look() -> Vector2:
 	if _greenside_book_frame():
 		return _green_book_aim_look()
-	if _is_putt_context():
+	if _is_putt_context() or _flight_short_game:
 		return _putt_frame_look()
 	if _aiming:
 		return ball.global_position.lerp(_aim_target, 0.45)
@@ -3550,7 +3557,11 @@ func _clear_putt_camera_lock() -> void:
 func _follow_ball() -> void:
 	## Smoothing fights the up-and-in punch — own the transform directly in flight.
 	camera.position_smoothing_enabled = false
-	if _is_putt_context():
+	var st := ""
+	if shot_routine:
+		st = shot_routine.flight_shot_type()
+	_flight_short_game = BallPhysics.is_short_game_shot(st)
+	if _is_putt_context() or _flight_short_game:
 		_lock_putt_camera()
 		# Already at cap (typical first putt after an approach): open a notch so
 		# _process remaining-fit lerp has somewhere to go. Don't tween zoom — that
@@ -3561,15 +3572,7 @@ func _follow_ball() -> void:
 		# Ease into locked mid-frame — not ball-only (that yanked short putts).
 		tw_p.tween_property(camera, "global_position", _putt_cam_look, 0.18).set_trans(Tween.TRANS_SINE)
 		return
-	var st := ""
-	if shot_routine:
-		st = shot_routine.flight_shot_type()
-	_flight_short_game = BallPhysics.is_short_game_shot(st)
-	# Short game: hold live greenside frame. Full: prefer max(live, desired) for pin aim.
-	if _flight_short_game:
-		_flight_zoom_base = maxf(camera.zoom.x, 0.5)
-	else:
-		_flight_zoom_base = maxf(camera.zoom.x, _desired_camera_zoom().x)
+	_flight_zoom_base = maxf(camera.zoom.x, _desired_camera_zoom().x)
 	var z := Vector2(_flight_z_launch(), _flight_z_launch())  # launch frac 1.0 = hold aim
 	var tw := create_tween()
 	tw.tween_property(camera, "global_position", ball.global_position, 0.18).set_trans(Tween.TRANS_SINE)
@@ -3609,7 +3612,7 @@ func _process(_delta: float) -> void:
 	if _hole_map and ball:
 		_hole_map.set_ball(ball.global_position)
 	if ball_in_flight and ball.state != GolfBall.State.SETTLED and ball.state != GolfBall.State.IDLE:
-		if _is_putt_context() and _putt_cam_active:
+		if _putt_cam_active and (_is_putt_context() or _flight_short_game):
 			# Live remaining ball→cup — same target settle uses, so rest isn't a zoom punch.
 			camera.global_position = camera.global_position.lerp(
 				_desired_camera_look(), PUTT_ROLL_LOOK_LERP
@@ -3645,7 +3648,10 @@ func _process(_delta: float) -> void:
 		_sync_screen_line_widths()
 	elif not ball_in_flight:
 		# Hold land framing while the glance/result panel is up so the "in" punch isn't undone.
-		if shot_result_panel and shot_result_panel.visible and not _is_putt_context():
+		if (
+			shot_result_panel and shot_result_panel.visible
+			and not _is_putt_context() and not _flight_short_game
+		):
 			camera.global_position = camera.global_position.lerp(ball.global_position, 0.12)
 			var z_land := _flight_z_land()
 			camera.zoom = camera.zoom.lerp(Vector2(z_land, z_land), 0.16)

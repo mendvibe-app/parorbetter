@@ -278,7 +278,8 @@ def main() -> int:
     assert "SHOT_PAD_TOP_COMPACT if (shot_type == \"putt\"" in layout or "shot_type == \"putt\"" in layout
     assert "pad_top := UiScale.SHOT_PAD_TOP if show_meter" not in layout
     assert "SHOT_PANEL_H_PUTT" in layout
-    assert "shot_type == \"putt\" else UiScale.SHOT_PANEL_H" in layout
+    assert "shot_type == \"putt\" or shot_type == \"chip\"" in layout
+    assert "SHOT_PANEL_H" in layout
     # Takeaway starts on axis lock (not finger-down) — pitch ghost wait no longer inflates 2:1.
     assert "VEL_TOP_EPS_PITCH" in GESTURE
     begin_fn = GESTURE.split("func _begin")[1].split("func ")[0]

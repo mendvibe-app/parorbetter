@@ -107,7 +107,7 @@ def main() -> int:
     # Roll eases toward live remaining (same as settle), not a locked 18% bump.
     assert "PUTT_ROLL_ZOOM_IN" not in CTRL
     proc = CTRL.split("func _process(_delta: float) -> void:")[-1].split("\nfunc ")[0]
-    putt_roll = proc.split("if _is_putt_context() and _putt_cam_active:")[1].split("else:")[0]
+    putt_roll = proc.split("if _putt_cam_active and (_is_putt_context() or _flight_short_game):")[1].split("else:")[0]
     assert "_desired_camera_zoom()" in putt_roll
     assert "_desired_camera_look()" in putt_roll
     lerp_z = _const(CTRL, "PUTT_ROLL_ZOOM_LERP")
@@ -115,12 +115,23 @@ def main() -> int:
     # Stroke uses launch is_putt so a fairway-apron flicker can't drop to flight cam.
     ctx = CTRL.split("func _is_putt_context()")[1].split("\nfunc ")[0]
     assert 'last_shot_metrics.get("is_putt"' in ctx
+    assert "get_lie() == \"Green\"" in ctx
     # Cap-already putts (Survival/18 after approach) open a notch; _process owns zoom.
     follow = CTRL.split("func _follow_ball")[1].split("func ")[0]
     assert "PUTT_IMPACT_ZOOM_FRAC" in follow
-    assert 'tween_property(camera, "zoom"' not in follow.split("if _is_putt_context()")[1].split("return")[0]
+    assert "is_short_game_shot" in follow
+    assert "_lock_putt_camera()" in follow
+    seed = follow.split("if _is_putt_context() or _flight_short_game:")[1].split("return")[0]
+    assert 'tween_property(camera, "zoom"' not in seed
     frac = _const(CTRL, "PUTT_IMPACT_ZOOM_FRAC")
     assert 0.75 <= frac < 1.0, frac
+    # Glance must not punch short-game remaining-fit back to flight land zoom.
+    assert "not _flight_short_game" in proc
+    # Desired remaining-fit includes short-game in-flight (aim still book-first).
+    zoom_fn = CTRL.split("func _desired_camera_zoom")[1].split("func ")[0]
+    assert "_flight_short_game" in zoom_fn
+    look_fn = CTRL.split("func _desired_camera_look")[1].split("func ")[0]
+    assert "_flight_short_game" in look_fn
     print(
         f"putt_camera_zoom_check: ok z(3ft)={z3:.1f} z(6ft)={z6:.1f} "
         f"z(17ft)={z17:.1f} z(75ft)={z75:.1f} lengths={len(LENGTHS_FT)}"
