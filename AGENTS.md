@@ -22,7 +22,7 @@ Coding philosophy is already enforced: read `.cursor/rules/ponytail.mdc` before 
 Orchestrated by `HoleController` + `ShotRoutine`.
 
 1. **Club select** (`ClubSelect`) — Off green: 3 clubs near `BallPhysics.pick_club` (★), **Full bag** for the rest (sand → wedges only). Green skips to putter. Confirm commits. **Driving range** (start screen → Practice Range): same club pick, then skip aim.
-2. **Aim** (`HoleController` aim phase + `AimControl`) — Drag bearing; yellow dispersion circle = form radius from `GameState.get_aim_radius_yards`. Confirm Aim / Space locks target. Optional **Practice Swing** grades tempo with no stroke. Range mode skips this (fixed center aim). On green: aim-drag is **start line** (distance locked to cup; short putts soft-snap within `PUTT_LINE_SNAP_*`); pace is the stroke. Inside 1 ft (`GameState.tap_in_yd`) skips aim and goes straight to stroke — slope still applies.
+2. **Aim** (`HoleController` aim phase + `AimControl`) — Drag bearing; yellow dispersion circle = form radius from `GameState.get_aim_radius_yards`. Confirm Aim / Space locks target. Optional **Practice Swing** grades tempo with no stroke. Range mode skips this (fixed center aim). On green: aim-drag is **start line** (distance locked to cup; no hole-line snap); pace is the stroke. Inside 1 ft (`GameState.tap_in_yd`) skips aim and goes straight to stroke — slope still applies.
 3. **Strike** — Full/pitch/flop/punch: `TempoGesture` + `TempoGrade`; power from pull length (`power_from_amplitude`); `recommended_power` is the pad-tick / aim-preview target, not launch power. Putt/chip: same pad, re-skinned; `PuttStroke` grades **amplitude vs pace marker** (power), **arc path** (line), tempo as miss-explainer. Pure = PERFECT + balance ≥ 0.72.
 4. **Result** — Glance panel (`ShotReport.glance_text`: tempo diagnosis for full; distance/line for putt). Full dump stays in F1. Range: ball resets to tee and loops. Course: settle → next shot / hole-out lives via `Scoring`.
 
@@ -33,7 +33,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Full-swing tempo target | `TempoGrade.TARGET_FULL` (3.0); tol half-width `TOL_FULL` (1.1 → accept ~1.9–4.1 at full balance; 14-hcp miss model) |
 | Chip tempo target | `TempoGrade.TARGET_SHORT` (2.0); `TOL_SHORT` (0.85) |
 | Putt stroke (amplitude) | `PuttStroke` absolute log pad (`marker_frac` / `power_from_frac`, `_power_to_u` / `_u_to_power` + `BEND`); soft ticks `SCALE_LABELED_FT` / `SCALE_TICK_FT`; line via `arc_allowance` |
-| Putt line aim | Bearing drag, distance locked to cup; `PUTT_LINE_SNAP_DEG` 3° / `PUTT_LINE_SNAP_MAX_FT` 8 (`HoleController`) |
+| Putt line aim | Bearing drag, distance locked to cup; no hole-line snap (`HoleController`) |
 | Putter max | `BallPhysics.PUTTER_MAX_YD` (25.0 → 75 ft); soft scale labels/ticks in `PuttStroke.SCALE_*_FT` |
 | Tap-in fast path | `GameState.tap_in_yd` (1 ft = `1.0 / 3.0` yd); no slope gate |
 | Pure balance gate | `TempoGrade.PURE_BALANCE` / `PuttStroke.PURE_BALANCE` / `ShotRoutine.PURE_BALANCE` (0.72) |
@@ -45,7 +45,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.CARRY_FRAC_LONG/SHORT` (0.80 / 0.98, ease 1.5); `roll_check_mul` 0.9–1.5; PURE wedge/pitch/flop green spin-back `SPINBACK_FT` 4 |
-| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book heatmap = this-green High/Low (`h_span`, `GREEN_BOOK_WASH_MIN_SPAN`); arrows from 1%, cup keep-out `GREEN_BOOK_CUP_KEEP_YD` 1.2; yellow rest = `preview_green_roll`; putt fall-line at stance/mid (`PUTT_FALL_*`) |
+| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book heatmap = this-green High/Low (`h_span`, `GREEN_BOOK_WASH_MIN_SPAN`); arrows from 1%, cup keep-out `GREEN_BOOK_CUP_KEEP_YD` 1.2; yellow rest = `preview_green_roll`; putt fall ticks aim-only (`PUTT_FALL_*`) |
 | Hazards | `HoleData.hazards` role specs (`greenside` / `landing` / `carry` / `edge` / `island_ring`); placed by `HoleController._place_hazards` |
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
 | Lives (Survival) | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |

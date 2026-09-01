@@ -50,6 +50,12 @@ def main() -> int:
     assert "Arrows = downhill" in CTRL
     fall_fn = CTRL.split("func _refresh_putt_fall_lines")[1].split("func ")[0]
     assert "1.0" not in fall_fn.split("for t in")[1].split(":")[0]
+    assert "_aiming" in fall_fn
+    assert "_green_book.visible" in fall_fn
+    vis_fn = CTRL.split("func _set_green_book_visible")[1].split("func ")[0]
+    assert "_putt_fall.visible = false" in vis_fn
+    assert "_green_book.add_child(_putt_fall)" in CTRL
+    assert CTRL.count("add_child(_putt_fall)") == 1
     assert "cup_spr.z_index = 6" not in CTRL
     assert "_cup_sprite.z_index = 6" in CTRL
     assert "add_child(_green_book)" in build
