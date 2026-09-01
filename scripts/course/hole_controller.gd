@@ -183,7 +183,7 @@ var _flight_short_game: bool = false  ## chip/pitch/flop in-flight — remaining
 var _bunkers: Array = []  ## {c, r, sprite, img} — settle lie via paint alpha
 var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
-var _putt_fall: _GreenBookDraw  ## local downhill at stance / mid / cup (survives Confirm)
+var _putt_fall: _GreenBookDraw  ## local downhill at stance / mid (cup kept clear)
 var _pin_flag: Node2D  ## CoursePinFlag — hidden while putting (pin out)
 var _green_sprite: Sprite2D
 var _green_img: Image  ## cached for shape-aware Green lie (silhouette alpha)
@@ -685,7 +685,7 @@ func _build_course() -> void:
 	cup_spr.texture = TEX_CUP
 	cup_spr.position = _cup_pos
 	cup_spr.scale = Vector2.ONE * ((CUP_RADIUS * 2.0) / float(TEX_CUP.get_width()))
-	cup_spr.z_index = 2
+	cup_spr.z_index = 6  ## above book wash — hole stays a clear disc
 	course_root.add_child(cup_spr)
 
 	# Same cloth language as HUD WindFlag; foot planted on the cup.
@@ -1473,7 +1473,7 @@ func _add_fog_band() -> void:
 	course_root.add_child(spr)
 
 
-## Yardage-book: filtered height wash + fall-line arrows (ref: debug/greenbook2-*.jpg).
+## Yardage-book: this-green elevation heatmap + downhill arrows (hole kept clear).
 const GREEN_BOOK_ELLIPSE_FRAC := 0.92
 const GREEN_BOOK_TEX_N := 64  ## PLAYTEST — bilinear wash resolution
 const GREEN_BOOK_ARROW_N := 9  ## arrows across green (playtest density)
@@ -1481,18 +1481,19 @@ const GREEN_BOOK_ARROW_MIN_SLOPE := 0.01  ## 1% fall lines show (was 0.04, hid A
 const GREEN_BOOK_ARROW_LEN_SCREEN := 16.0  ## shaft length in screen px
 const GREEN_BOOK_ARROW_W_SCREEN := 2.0
 const GREEN_BOOK_ARROW_MAG_K := 14.0  ## length vs grade; 1.2 was invisible on 1–3% field
-const GREEN_BOOK_WASH_HALF_FT := 2.0  ## PLAYTEST — full cold→hot is ±this, not per-green min–max
+const GREEN_BOOK_WASH_MIN_SPAN := 0.08  ## world px; below this = FLAT, no fake rainbow
+const GREEN_BOOK_CUP_KEEP_YD := 1.2  ## no grid arrows on the hole
 const PUTT_FALL_ARROW_SCREEN := 40.0  ## local downhill at this putt; book grid is 16
 const PUTT_FALL_MIN_SLOPE := 0.005  ## 0.5% — tap-in 1% still reads
 
 
 func _build_green_book() -> void:
-	## Continuous wash + downhill arrows (yardage-book language).
+	## Elevation heatmap (this-green Low→High) + downhill arrows; hole kept clear.
 	_green_book = Node2D.new()
 	_green_book.name = "GreenBook"
 	_green_book.z_index = 3
 	_green_book.visible = false
-	add_child(_green_book)
+	course_root.add_child(_green_book)
 
 	var rx := hole.green_radius_x + 14.0
 	var ry := hole.green_radius_y + 14.0
@@ -1514,9 +1515,12 @@ func _build_green_book() -> void:
 			if inside:
 				h_min = minf(h_min, h)
 				h_max = maxf(h_max, h)
-	var h_mid := (h_min + h_max) * 0.5 if h_max > -INF else 0.0
-	var half_px := GREEN_BOOK_WASH_HALF_FT * (BallPhysics.PX_PER_YARD / 3.0)
+	# ponytail: per-green min–max is yardage-book High/Low, not absolute steepness.
+	# Absolute ±ft washed 1–3% greens invisible; FLAT (h_span≈0) skips the rainbow.
+	var h_span := (h_max - h_min) if h_max > -INF else 0.0
 	var frac2 := GREEN_BOOK_ELLIPSE_FRAC * GREEN_BOOK_ELLIPSE_FRAC
+	var cup_keep := BallPhysics.yards_to_pixels(GREEN_BOOK_CUP_KEEP_YD)
+	var cup_keep2 := cup_keep * cup_keep
 
 	var img := Image.create(n, n, false, Image.FORMAT_RGBA8)
 	for iy in n:
@@ -1529,7 +1533,10 @@ func _build_green_book() -> void:
 			if ell > 1.05 or not _on_painted_green(_green_center + local):
 				img.set_pixel(ix, iy, Color(0, 0, 0, 0))
 				continue
-			var t := clampf(0.5 + (grid[iy * n + ix] - h_mid) / maxf(2.0 * half_px, 0.001), 0.0, 1.0)
+			if h_span < GREEN_BOOK_WASH_MIN_SPAN:
+				img.set_pixel(ix, iy, Color(0, 0, 0, 0))
+				continue
+			var t := snappedf(clampf((grid[iy * n + ix] - h_min) / h_span, 0.0, 1.0), 1.0 / 7.0)
 			img.set_pixel(ix, iy, _green_book_wash_color(t))
 	var tex := ImageTexture.create_from_image(img)
 	var wash := Sprite2D.new()
@@ -1539,12 +1546,12 @@ func _build_green_book() -> void:
 	wash.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
 	wash.scale = Vector2((2.0 * rx) / float(n), (2.0 * ry) / float(n))
 	wash.position = _green_center
-	wash.z_index = 3
+	wash.z_index = 0
 	_green_book.add_child(wash)
 
 	var drawer := _GreenBookDraw.new()
 	drawer.position = _green_center
-	drawer.z_index = 4
+	drawer.z_index = 1
 	drawer.arrow_len_screen = GREEN_BOOK_ARROW_LEN_SCREEN
 	drawer.arrow_w_screen = GREEN_BOOK_ARROW_W_SCREEN
 	drawer.mag_len_k = GREEN_BOOK_ARROW_MAG_K
@@ -1552,15 +1559,15 @@ func _build_green_book() -> void:
 
 	_putt_fall = _GreenBookDraw.new()
 	_putt_fall.position = _green_center
-	_putt_fall.z_index = 5
+	_putt_fall.z_index = 4  ## under cup (6) so a near-hole tick cannot paint the disc
 	_putt_fall.arrow_len_screen = PUTT_FALL_ARROW_SCREEN
 	_putt_fall.arrow_w_screen = 2.4
 	_putt_fall.mag_len_k = 0.0  ## full shaft — direction is the read
 	_putt_fall.arrow_color = Color(1.0, 0.92, 0.35, 0.92)
 	_putt_fall.visible = false
-	add_child(_putt_fall)
+	course_root.add_child(_putt_fall)
 
-	# Fall-line arrows: point downhill (same vector physics uses).
+	# Fall-line arrows: point downhill (same vector physics uses). Skip the cup.
 	var an := GREEN_BOOK_ARROW_N
 	for iy in an:
 		for ix in an:
@@ -1573,6 +1580,8 @@ func _build_green_book() -> void:
 				continue
 			if not _on_painted_green(_green_center + local):
 				continue
+			if local.distance_squared_to(hole.pin_offset) < cup_keep2:
+				continue
 			var s := hole.green_slope_at(local)
 			var mag := s.length()
 			if mag < GREEN_BOOK_ARROW_MIN_SLOPE:
@@ -1582,13 +1591,15 @@ func _build_green_book() -> void:
 
 
 func _green_book_wash_color(t: float) -> Color:
-	## Soft yardage-book ramp (blue/cool = low → red/warm = high).
-	var cold := Color(0.28, 0.58, 0.92, 0.32)
-	var mid := Color(0.55, 0.82, 0.42, 0.26)
-	var hot := Color(0.95, 0.42, 0.28, 0.34)
+	## Elevation heatmap: Low=blue → High=red (StrackaLine / digital books).
+	var a := 0.68
+	if t < 0.25:
+		return Color(0.12, 0.38, 0.98, a).lerp(Color(0.08, 0.82, 0.88, a), t / 0.25)
 	if t < 0.5:
-		return cold.lerp(mid, t * 2.0)
-	return mid.lerp(hot, (t - 0.5) * 2.0)
+		return Color(0.08, 0.82, 0.88, a).lerp(Color(0.22, 0.86, 0.32, a), (t - 0.25) / 0.25)
+	if t < 0.75:
+		return Color(0.22, 0.86, 0.32, a).lerp(Color(0.98, 0.86, 0.14, a), (t - 0.5) / 0.25)
+	return Color(0.98, 0.86, 0.14, a).lerp(Color(0.96, 0.18, 0.10, a), (t - 0.75) / 0.25)
 
 
 class _GreenBookDraw extends Node2D:
@@ -1689,7 +1700,7 @@ func _set_green_book_visible(on: bool) -> void:
 
 
 func _set_green_book_legend_visible(on: bool) -> void:
-	## One-glance key: warm = high, cool = low.
+	## One-glance key: elevation heatmap (Low=blue, High=red).
 	var leg := ui_layer.get_node_or_null("GreenBookLegend") as Label
 	if not on:
 		if leg:
@@ -1705,12 +1716,12 @@ func _set_green_book_legend_visible(on: bool) -> void:
 		leg.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		leg.set_anchors_preset(Control.PRESET_TOP_LEFT)
 		ui_layer.add_child(leg)
-	leg.text = "Cool = low  ·  Warm = high  ·  Arrows = downhill"
+	leg.text = "Low = blue  ·  High = red  ·  Arrows = downhill"
 	leg.visible = true
 	var m := UiScale.viewport_safe_margins(get_viewport())
 	leg.offset_left = 16.0 + m.x
 	leg.offset_top = UiScale.HUD_HEIGHT + m.y + 72.0
-	leg.offset_right = leg.offset_left + 420.0
+	leg.offset_right = leg.offset_left + 520.0
 	leg.offset_bottom = leg.offset_top + 40.0
 
 
@@ -1828,8 +1839,8 @@ func _is_tap_in(pin_yd: float) -> bool:
 
 
 func _refresh_putt_fall_lines() -> void:
-	## Yellow downhill ticks on THIS putt. Book grid is ~5 yd apart — a 6-ft
-	## putt can sit in a blank cell, and Confirm hides the wash.
+	## Yellow downhill ticks on THIS putt (stance + mid). Book grid is ~5 yd
+	## apart — a 6-ft putt can sit in a blank cell, and Confirm hides the wash.
 	if _putt_fall == null:
 		return
 	var on := (
@@ -1841,7 +1852,7 @@ func _refresh_putt_fall_lines() -> void:
 		_putt_fall.queue_redraw()
 		return
 	var from := ball.global_position
-	for t in [0.0, 0.5, 1.0]:
+	for t in [0.0, 0.5]:  ## stance + mid; never the cup
 		var p: Vector2 = from.lerp(_cup_pos, t)
 		var local := p - _green_center
 		var s := hole.green_slope_at(local)

@@ -21,7 +21,7 @@ var _t: float = 0.0
 
 
 func _ready() -> void:
-	z_index = 3
+	z_index = 7  ## above book wash / cup disc so the stick reads during aim
 	set_process(true)
 
 

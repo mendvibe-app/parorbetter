@@ -80,7 +80,7 @@ Out of scope for this epic: fairway/rough slope fields (we do not have them). Of
 
 ## What else fights a real read
 
-1. **Green book wash min–max normalizes per green** — 2-ft tilt and 12-ft canyon both paint full blue→red. Arrow min `0.04` hides 1–2% fall lines.
+1. **Green book wash used a fixed ±2 ft span** — 1–3% greens painted as near-grass, so the heatmap did not read. Playtest 2026-09-01 restored this-green High/Low (`h_span`) with a FLAT skip; cup keep-out so arrows never sit on the hole.
 2. **`ContourProfile.FLAT` still applies the plane** unless mag is 0. Generator zeros mag; `_make_short_game_hole` does not (`green_slope = (0.18,0)` + FLAT).
 3. **Non-putt anti-backup** kills trickle-back on false fronts / down-tiers.
 4. **`green_slope_field_check.py` is stale** (still asserts mag `0.10–0.48`) and does not apply plane weight / contour boost — it is not testing the live field.
@@ -129,7 +129,7 @@ Device playtest skipped; shipped on the Phase 1 field.
 
 Only after Phase 1 feel is signed off (otherwise we paint a field we are about to retune).
 
-- Green book wash: **fixed height span** (PLAYTEST ±2 ft) or grade-based color — not per-green min–max.
+- Green book wash: **this-green High/Low** (`h_span` rainbow; `GREEN_BOOK_WASH_MIN_SPAN` skips FLAT). Cup keep-out `GREEN_BOOK_CUP_KEEP_YD` 1.2 — no arrows on the hole.
 - `GREEN_BOOK_ARROW_MIN_SLOPE := 0.01` (show 1% fall lines). Arrow length still scales with mag.
 - Pin picker: keep 5-pace edge margin; make the 3% shelf a hard-enough reject that mid/high contours still find a holeable cup (today almost everything scores ~0.18).
 - AGENTS.md constant table + `decisions.md` line once numbers stick.
