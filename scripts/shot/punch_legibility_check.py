@@ -58,10 +58,10 @@ def ft_floor(shot_type: str) -> float:
 
 def lane_frac(shot_type: str) -> float:
     """Pad address→top length as fraction of pad height (tempo_gesture hints)."""
-    # putt 0.22→0.92 = 0.70; chip 0.20→0.85 = 0.65; short-lane 0.30→0.80 = 0.50; full 0.30→0.92 = 0.62
-    if shot_type in ("pitch", "flop", "punch"):
+    # putt 0.22→0.92 = 0.70; chip/flop 0.20→0.85 = 0.65; short-lane 0.30→0.80 = 0.50; full 0.30→0.92 = 0.62
+    if shot_type in ("pitch", "punch"):
         return 0.50
-    if shot_type == "chip":
+    if shot_type in ("chip", "flop"):
         return 0.65
     if shot_type == "putt":
         return 0.70
@@ -175,9 +175,12 @@ def main() -> int:
     short_lane_fn = GESTURE.split("func _uses_short_lane")[1].split("func ")[0]
     assert 'shot_type == "punch"' in short_lane_fn
     assert 'shot_type == "pitch"' in short_lane_fn
-    assert 'shot_type == "flop"' in short_lane_fn
+    assert 'shot_type == "flop"' not in short_lane_fn
+    is_chip_fn = GESTURE.split("func _is_chip")[1].split("func ")[0]
+    assert 'shot_type == "flop"' in is_chip_fn
     is_pitch_fn = GESTURE.split("func _is_pitch")[1].split("func ")[0]
     assert 'shot_type == "punch"' not in is_pitch_fn, "_is_pitch must not include punch"
+    assert 'shot_type == "flop"' not in is_pitch_fn, "_is_pitch must not include flop"
     addr_fn = GESTURE.split("func address_hint")[1].split("func ")[0]
     top_fn = GESTURE.split("func top_hint")[1].split("func ")[0]
     assert "_uses_short_lane()" in addr_fn

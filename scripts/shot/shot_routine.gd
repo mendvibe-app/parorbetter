@@ -196,7 +196,7 @@ func configure(
 func flight_shot_type() -> String:
 	## Shared identity for physics, grade, and pad ghost when punch is on.
 	## (Picker shot_type stays full/pitch/…; punch_mode remaps here.)
-	if punch_mode and shot_type != "putt" and shot_type != "chip":
+	if punch_mode and not BallPhysics.uses_stroke_pad(shot_type):
 		return "punch"
 	return shot_type
 
@@ -243,10 +243,12 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	tempo_gesture.shot_type = pad_type
 	# Always pass club max so pad drag head matches bag (driver/wood/hybrid/iron/wedge).
 	tempo_gesture.club_max_yards = club_max_yards
-	if shot_type == "putt" or shot_type == "chip":
-		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(committed_power)
-		# Chip already amplitude-primary (PuttStroke) — show pace tick on scored too.
-		tempo_gesture.putt_show_marker = true if shot_type == "chip" else practice_mode
+	if BallPhysics.uses_stroke_pad(shot_type):
+		tempo_gesture.putt_target_frac = PuttStroke.marker_frac(
+			committed_power, PuttStroke.stroke_power_ceil(shot_type, club_max_yards)
+		)
+		# Chip/flop already amplitude-primary (PuttStroke) — show pace tick on scored too.
+		tempo_gesture.putt_show_marker = true if shot_type != "putt" else practice_mode
 		tempo_gesture.full_show_markers = false
 	else:
 		tempo_gesture.putt_show_marker = false
@@ -266,15 +268,17 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 	tempo_gesture.set_enabled(true)
 	if meter_display:
 		meter_display.set_shot_context(pad_type, timing_scale, practice_mode)
-		if shot_type == "putt" or shot_type == "chip":
+		if BallPhysics.uses_stroke_pad(shot_type):
 			meter_display.set_putt_target(tempo_gesture.putt_target_frac)
 	_layout_shot_chrome()
-	# Pull length = power for amplitude types (full/pitch/flop/punch); putt/chip own copy.
+	# Pull length = power for amplitude types (full/pitch/punch); putt/chip/flop own copy.
 	if practice_mode:
 		if shot_type == "putt":
 			hint_label.text = "Practice — address · to the pace tick · through the ball."
 		elif shot_type == "chip":
 			hint_label.text = "PRACTICE CHIP — pull length = power · past rose ticks = mishit risk."
+		elif shot_type == "flop":
+			hint_label.text = "PRACTICE FLOP — pull length = power · high · sits · little roll."
 		elif punch_mode:
 			hint_label.text = "PRACTICE PUNCH — low · ~2:1 · pull length = power · under canopy."
 		elif BallPhysics.uses_amplitude_power(pad_type):
@@ -288,12 +292,12 @@ func begin_shot(p_practice: bool = false, p_allow_back: bool = false) -> void:
 		hint_label.text = "Address · feel your pace · through the ball."
 	elif shot_type == "chip":
 		hint_label.text = "CHIP — pull length = power · past rose ticks = mishit risk · through."
+	elif shot_type == "flop":
+		hint_label.text = "FLOP — pull length = power · high · sits · little roll · through."
 	elif punch_mode:
 		hint_label.text = "PUNCH ~2:1 — pull length = power · pocket mark = mash · under canopy."
 	elif shot_type == "pitch":
 		hint_label.text = "PITCH ~2:1 — pull length = power · pocket mark = mash · through."
-	elif shot_type == "flop":
-		hint_label.text = "FLOP ~2:1 — pull length = power · soft · little roll. Mistakes hurt."
 	else:
 		hint_label.text = "SWING ~3:1 — pull length = power · pocket mark = mash · through."
 	phase_changed.emit("active")
@@ -331,19 +335,19 @@ func layout_shot_chrome() -> void:
 	## Meter/hint may hide or shift; pad size is shot-type only so practice = real.
 	var show_meter := (
 		(practice_mode or GameState.range_mode)
-		and shot_type != "putt" and shot_type != "chip"
+		and not BallPhysics.uses_stroke_pad(shot_type)
 	)
 	var hint_top := UiScale.HINT_TOP_WITH_METER if show_meter else UiScale.HINT_TOP_NO_METER
-	# Pad size follows shot type only (putt/chip stay compact) — never practice-vs-real,
+	# Pad size follows shot type only (putt/chip/flop stay compact) — never practice-vs-real,
 	# so the gesture area a player rehearses on is identical to the one they're scored on.
 	var pad_top := (
-		UiScale.SHOT_PAD_TOP_COMPACT if (shot_type == "putt" or shot_type == "chip")
+		UiScale.SHOT_PAD_TOP_COMPACT if BallPhysics.uses_stroke_pad(shot_type)
 		else UiScale.SHOT_PAD_TOP
 	)
-	# Putt/chip execute: shorter panel so remaining-fit camera owns more screen.
+	# Putt/chip/flop execute: shorter panel so remaining-fit camera owns more screen.
 	offset_top = -(
 		UiScale.SHOT_PANEL_H_PUTT
-		if (shot_type == "putt" or shot_type == "chip")
+		if BallPhysics.uses_stroke_pad(shot_type)
 		else UiScale.SHOT_PANEL_H
 	)
 	if meter_display:
@@ -422,9 +426,10 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		bal_tighten = float(GameState.debug_balance_tighten)
 
 	var verdict: Dictionary
-	if shot_type == "putt" or shot_type == "chip":
-		var chip_tol := PuttStroke.CHIP_TOL_SCALE if shot_type == "chip" else 1.0
-		var chip_arc := PuttStroke.CHIP_ARC_SCALE if shot_type == "chip" else 1.0
+	if BallPhysics.uses_stroke_pad(shot_type):
+		var chip_like := shot_type == "chip" or shot_type == "flop"
+		var chip_tol := PuttStroke.CHIP_TOL_SCALE if chip_like else 1.0
+		var chip_arc := PuttStroke.CHIP_ARC_SCALE if chip_like else 1.0
 		verdict = PuttStroke.grade(
 			sample,
 			committed_power,
@@ -447,8 +452,10 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	GameState.last_tempo_metrics = verdict
 
 	if GameState.force_perfect:
-		if shot_type == "putt" or shot_type == "chip":
-			var tf := PuttStroke.marker_frac(committed_power)
+		if BallPhysics.uses_stroke_pad(shot_type):
+			var tf := PuttStroke.marker_frac(
+				committed_power, PuttStroke.stroke_power_ceil(shot_type, club_max_yards)
+			)
 			verdict = {
 				"ratio": 1.0,
 				"target": tf,
@@ -479,8 +486,10 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 		last_verdict = verdict
 		GameState.last_tempo_metrics = verdict
 	elif GameState.force_mishit:
-		if shot_type == "putt" or shot_type == "chip":
-			var tf2 := PuttStroke.marker_frac(committed_power)
+		if BallPhysics.uses_stroke_pad(shot_type):
+			var tf2 := PuttStroke.marker_frac(
+				committed_power, PuttStroke.stroke_power_ceil(shot_type, club_max_yards)
+			)
 			verdict = {
 				"ratio": 0.55,
 				"target": tf2,
@@ -513,7 +522,7 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	var contact: ShotResult.ContactQuality = verdict["contact"]
 	var bal: float = float(verdict["balance"])
 	var power_mul := float(verdict["power_mul"])
-	# Phase 1–3: full/pitch/flop/punch from amplitude; putt/chip stay on PuttStroke.
+	# Phase 1–3: full/pitch/punch from amplitude; putt/chip/flop stay on PuttStroke.
 	var amp_power := -1.0
 	var power: float
 	var grade_type := flight_shot_type()
@@ -530,12 +539,12 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 	var shape := 0.0
 	var swing_shape := 0.0
 	var path: float
-	if shot_type == "putt" or shot_type == "chip":
+	if BallPhysics.uses_stroke_pad(shot_type):
 		path = float(verdict.get("path_error", 0.0))
 		# Putts: slight line emphasis — physics already scales contact/stance.
 		if current_lie == "Green":
 			path = clampf(path * 1.1, -1.0, 1.0)
-		# Chip flight keys lateral off intended_shape; keep it equal to stroke path.
+		# Chip/flop flight keys lateral off intended_shape; keep it equal to stroke path.
 		shape = path
 		# Single metrics object for F1 Path + Shape (Phase 3) — no blank shape on putt/chip.
 		verdict["path_error"] = path

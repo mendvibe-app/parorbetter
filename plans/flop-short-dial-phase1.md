@@ -1,6 +1,6 @@
 # Plan — Flop at chip distances (recon + Phase 1)
 
-**Status:** PLAN — do not implement until approved.  
+**Status:** CODE COMPLETE — playtest remaining (Range, LW, pick Flop).  
 **Origin:** Playtest flop at ~4 yd to pin still flew ~30 yd (LW, THIN, Plan 30 → Actual 28). User: flop should dial short like a chip; optional at chip range; high, over hazards, land soft.  
 **Scope lock:** Flop **input family** only — join chip’s `PuttStroke` pad. Keep flop **flight** (apex, air share, check, wider aim circle). `FLOP_MAX_YD` 30 stays a **ceiling**, not a floor. Pitch / full / putt / chip pad map / `shot_type_for` — untouched.  
 **User lock:** Optional picker shot at chip-like distance. ★ stays chip under 20 yd. SW/LW only. Real-golf trade: carry over trouble, sit, more miss than a chip.

@@ -96,8 +96,8 @@ func _process(delta: float) -> void:
 		return
 	if tempo_gesture and (tempo_gesture.dragging or tempo_gesture.swinging):
 		queue_redraw()
-	# Putt/chip meter doesn't need metronome ticks — pad marker is the guide.
-	if shot_type == "putt" or shot_type == "chip":
+	# Putt/chip/flop meter doesn't need metronome ticks — pad marker is the guide.
+	if BallPhysics.uses_stroke_pad(shot_type):
 		return
 	if _guide_alpha > 0.02 and tempo_gesture and tempo_gesture.active and tempo_gesture.dragging:
 		_guide_phase += delta
@@ -115,7 +115,7 @@ func _process(delta: float) -> void:
 
 
 func _draw() -> void:
-	if shot_type == "putt" or shot_type == "chip":
+	if BallPhysics.uses_stroke_pad(shot_type):
 		_draw_putt_amplitude()
 		return
 	_draw_tempo_ratio()

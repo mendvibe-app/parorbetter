@@ -26,26 +26,28 @@ CLUB_MAX_YD = 25.0
 BEND = 1.0
 
 
-def power_to_u(committed_power: float) -> float:
-    p = min(max(committed_power, POWER_FLOOR), 1.0)
-    u = math.log(p / POWER_FLOOR) / math.log(1.0 / POWER_FLOOR)
+def power_to_u(committed_power: float, power_ceil: float = 1.0) -> float:
+    hi = max(power_ceil, POWER_FLOOR * 1.01)
+    p = min(max(committed_power, POWER_FLOOR), hi)
+    u = math.log(p / POWER_FLOOR) / math.log(hi / POWER_FLOOR)
     return min(max(u, 0.0), 1.0) ** BEND
 
 
-def u_to_power(u: float) -> float:
+def u_to_power(u: float, power_ceil: float = 1.0) -> float:
+    hi = max(power_ceil, POWER_FLOOR * 1.01)
     lin = min(max(u, 0.0), 1.0) ** (1.0 / BEND)
-    return POWER_FLOOR * (1.0 / POWER_FLOOR) ** lin
+    return POWER_FLOOR * (hi / POWER_FLOOR) ** lin
 
 
-def marker_frac(committed_power: float) -> float:
-    u = power_to_u(committed_power)
+def marker_frac(committed_power: float, power_ceil: float = 1.0) -> float:
+    u = power_to_u(committed_power, power_ceil)
     return MARKER_MIN + (MARKER_MAX - MARKER_MIN) * u
 
 
-def power_from_frac(frac: float) -> float:
+def power_from_frac(frac: float, power_ceil: float = 1.0) -> float:
     span = MARKER_MAX - MARKER_MIN
     t = min(max((frac - MARKER_MIN) / max(span, 0.001), 0.0), 1.0)
-    return u_to_power(t)
+    return u_to_power(t, power_ceil)
 
 
 def frac_for_ft(ft: float, club_max_yd: float = CLUB_MAX_YD) -> float:
@@ -200,8 +202,8 @@ def main() -> int:
     grade_body = PUTT.split("static func grade(")[1].split("static func ")[0]
     assert grade_body.count("contact = ShotResult.ContactQuality.MISS") == 1  # incomplete only
     assert "BAND_SHORT_LONG" not in PUTT
-    assert "power_from_frac(actual)" in grade_body  # putt log smash stays
-    assert 'shot_type == "chip"' in grade_body
+    assert "power_from_frac(actual" in grade_body  # putt log smash stays
+    assert 'shot_type == "chip" or shot_type == "flop"' in grade_body
     assert "actual / maxf(target, MARKER_MIN_FRAC)" in grade_body
     grade_call = ROUTINE.split("PuttStroke.grade(")[1][:400]
     assert "shot_type" in grade_call
@@ -262,7 +264,31 @@ def main() -> int:
     chip_arm = cm.split('shot_type == "chip"')[1][:280]
     assert "ContactQuality.PERFECT" in chip_arm
     assert "return 1.0" in chip_arm
+    assert "shot_type == \"flop\"" in chip_arm
     assert "Contact PURE — committed distance" in REPORT
+
+    # Flop pad: 30 yd ceiling, short dial, chip map bit-identical at ceil=1.0.
+    assert "func stroke_power_ceil" in PUTT
+    assert "FLOP_SCALE_LABELED_YD := [5, 10, 15, 20, 30]" in PUTT
+    assert "FLOP_SCALE_TICK_YD := [3, 8, 13, 17, 25]" in PUTT
+    FLOP_MAX = 30.0
+    flop_lw = 65.0
+    flop_ceil = FLOP_MAX / flop_lw
+    f4 = marker_frac(4.0 / flop_lw, flop_ceil)
+    f20 = marker_frac(20.0 / flop_lw, flop_ceil)
+    f30 = marker_frac(FLOP_MAX / flop_lw, flop_ceil)
+    assert f4 > MARKER_MIN
+    assert f4 < f20 < f30
+    assert abs(f30 - MARKER_MAX) < 1e-5
+    p_top = power_from_frac(MARKER_MAX, flop_ceil)
+    assert abs(p_top - flop_ceil) < 1e-5
+    assert abs(p_top * flop_lw - FLOP_MAX) < 1e-4
+    # Chip/putt map still tops out at club max, not 30.
+    assert abs(power_from_frac(MARKER_MAX) - 1.0) < 1e-5
+    # Tick-hit 4 yd flop is 4 yd, not the old 30 yd floor.
+    commit4 = 4.0 / flop_lw
+    assert abs(commit4 * flop_lw - 4.0) < 1e-9
+    assert commit4 * flop_lw < 10.0
 
     print("putt_stroke_check: ok")
     return 0

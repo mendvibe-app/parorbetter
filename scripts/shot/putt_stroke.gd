@@ -40,6 +40,9 @@ const SCALE_TICK_FT := [8, 18, 70]
 ## point like the other Phase 3/4 chip constants, not a final calibration.
 const CHIP_SCALE_LABELED_YD := [5, 10, 15, 20]
 const CHIP_SCALE_TICK_YD := [3, 8, 13, 17]
+## Flop reuses the chip log map; ruler ceiling is FLOP_MAX_YD (not club max).
+const FLOP_SCALE_LABELED_YD := [5, 10, 15, 20, 30]
+const FLOP_SCALE_TICK_YD := [3, 8, 13, 17, 25]
 ## Curve shape on top of the log map — pow(u, BEND) / pow(u, 1/BEND). 1.0 = pure log.
 const BEND := 1.0
 ## Phase 4 tuning: BAND_HALF/ARC_FLOOR/ARC_SCALE above were calibrated against real
@@ -61,30 +64,39 @@ static func ft_to_yd(ft: float) -> float:
 	return ft / FT_PER_YD
 
 
-static func _power_to_u(committed_power: float) -> float:
-	## Log u in [0,1] from power floor → full — constant thumb error → constant % distance error.
-	var p := clampf(committed_power, POWER_FLOOR, 1.0)
-	var u := log(p / POWER_FLOOR) / log(1.0 / POWER_FLOOR)
+static func stroke_power_ceil(shot_type: String, club_max_yd: float) -> float:
+	## Flop pad top = FLOP_MAX_YD. Putt/chip stay club-max (1.0).
+	if shot_type != "flop":
+		return 1.0
+	return clampf(BallPhysics.FLOP_MAX_YD / maxf(club_max_yd, 1.0), POWER_FLOOR * 1.01, 1.0)
+
+
+static func _power_to_u(committed_power: float, power_ceil: float = 1.0) -> float:
+	## Log u in [0,1] from power floor → ceil — constant thumb error → constant % distance error.
+	var hi := maxf(power_ceil, POWER_FLOOR * 1.01)
+	var p := clampf(committed_power, POWER_FLOOR, hi)
+	var u := log(p / POWER_FLOOR) / log(hi / POWER_FLOOR)
 	return pow(clampf(u, 0.0, 1.0), BEND)
 
 
-static func _u_to_power(u: float) -> float:
+static func _u_to_power(u: float, power_ceil: float = 1.0) -> float:
 	## Exact inverse of _power_to_u.
+	var hi := maxf(power_ceil, POWER_FLOOR * 1.01)
 	var lin := pow(clampf(u, 0.0, 1.0), 1.0 / BEND)
-	return POWER_FLOOR * pow(1.0 / POWER_FLOOR, lin)
+	return POWER_FLOOR * pow(hi / POWER_FLOOR, lin)
 
 
-static func marker_frac(committed_power: float) -> float:
+static func marker_frac(committed_power: float, power_ceil: float = 1.0) -> float:
 	## Log-spaced: short putts low on pad, lags high — feel/guess, not mid-lane answer.
-	var u := _power_to_u(committed_power)
+	var u := _power_to_u(committed_power, power_ceil)
 	return MARKER_MIN_FRAC + (MARKER_MAX_FRAC - MARKER_MIN_FRAC) * u
 
 
-static func power_from_frac(frac: float) -> float:
+static func power_from_frac(frac: float, power_ceil: float = 1.0) -> float:
 	## Inverse of marker_frac — soft scale / grade share one map.
 	var span := MARKER_MAX_FRAC - MARKER_MIN_FRAC
 	var t := clampf((frac - MARKER_MIN_FRAC) / maxf(span, 0.001), 0.0, 1.0)
-	return _u_to_power(t)
+	return _u_to_power(t, power_ceil)
 
 
 static func frac_for_ft(ft: float, club_max_yd: float = BallPhysics.PUTTER_MAX_YD) -> float:
@@ -94,12 +106,13 @@ static func frac_for_ft(ft: float, club_max_yd: float = BallPhysics.PUTTER_MAX_Y
 	return marker_frac(power)
 
 
-static func frac_for_yd(yd: float, club_max_yd: float) -> float:
-	## Pad fraction for a chip length in yards — golfers read greenside wedge shots
+static func frac_for_yd(yd: float, club_max_yd: float, power_ceil: float = 1.0) -> float:
+	## Pad fraction for a chip/flop length in yards — golfers read greenside wedge shots
 	## in yards, not feet. Same map as frac_for_ft, graded against the actual club's
-	## max carry (not the putter constant frac_for_ft defaults to).
-	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, 1.0)
-	return marker_frac(power)
+	## max carry (flop: power_ceil = FLOP_MAX / club_max so 30 yd sits at pad top).
+	var hi := maxf(power_ceil, POWER_FLOOR * 1.01)
+	var power := clampf(yd / maxf(club_max_yd, 1.0), POWER_FLOOR, hi)
+	return marker_frac(power, hi)
 
 
 static func band_half(_committed_power: float = 0.0) -> float:
@@ -124,7 +137,8 @@ static func grade(
 	severity: String = "",
 	shot_type: String = "putt"
 ) -> Dictionary:
-	var target := marker_frac(committed_power)
+	var power_ceil := stroke_power_ceil(shot_type, club_max_yd)
+	var target := marker_frac(committed_power, power_ceil)
 	var band := BAND_HALF * maxf(tol_scale, 0.15) * maxf(chip_tol_scale, 0.15)
 	var actual := float(sample.get("backswing_frac", float(sample.get("backswing_len", 0.0))))
 	var follow := float(sample.get("follow_frac", float(sample.get("follow_through_len", 0.0))))
@@ -160,12 +174,12 @@ static func grade(
 	if bal < 0.35 and contact == ShotResult.ContactQuality.PERFECT:
 		contact = ShotResult.ContactQuality.GOOD
 
-	# Putt: log map (smash past commit is the feel). Chip: thumb error = % distance.
+	# Putt: log map (smash past commit is the feel). Chip/flop: thumb error = % distance.
 	var power_mul: float
-	if shot_type == "chip":
+	if shot_type == "chip" or shot_type == "flop":
 		power_mul = actual / maxf(target, MARKER_MIN_FRAC)
 	else:
-		var rolled := power_from_frac(actual)
+		var rolled := power_from_frac(actual, power_ceil)
 		power_mul = rolled / maxf(committed_power, POWER_FLOOR)
 
 	# Tempo as modifier: jab → long, decel/chop → short. Smooth = no effect.
