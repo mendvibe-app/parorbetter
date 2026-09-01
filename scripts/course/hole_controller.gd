@@ -185,6 +185,7 @@ var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
 var _putt_fall: _GreenBookDraw  ## local downhill at stance / mid (cup kept clear)
 var _pin_flag: Node2D  ## CoursePinFlag — hidden while putting (pin out)
+var _cup_sprite: Sprite2D  ## on HoleController so it sits above the book wash
 var _green_sprite: Sprite2D
 var _green_img: Image  ## cached for shape-aware Green lie (silhouette alpha)
 
@@ -258,6 +259,7 @@ var ace_pond: TextureRect
 
 
 func _ready() -> void:
+	ball.z_index = 8  ## above book wash (z=3) so the ball isn't under the heatmap
 	ball.settled.connect(_on_ball_settled)
 	ball.entered_hazard.connect(_on_hazard)
 	ball.holed_out.connect(_on_holed_out)
@@ -623,7 +625,12 @@ func _make_short_game_hole() -> HoleData:
 func _build_course() -> void:
 	for c in course_root.get_children():
 		c.queue_free()
-	_pin_flag = null
+	if _pin_flag:
+		_pin_flag.queue_free()
+		_pin_flag = null
+	if _cup_sprite:
+		_cup_sprite.queue_free()
+		_cup_sprite = null
 	_green_sprite = null
 	_green_img = null
 	if _green_book:
@@ -681,19 +688,19 @@ func _build_course() -> void:
 
 	# Sensor = dark hole only; sprite keeps full collar for rim/depth read.
 	_add_circle(course_root, _cup_pos, CUP_CAPTURE_RADIUS, Color(0, 0, 0, 0), "cup")
-	var cup_spr := Sprite2D.new()
-	cup_spr.texture = TEX_CUP
-	cup_spr.position = _cup_pos
-	cup_spr.scale = Vector2.ONE * ((CUP_RADIUS * 2.0) / float(TEX_CUP.get_width()))
-	cup_spr.z_index = 6  ## above book wash — hole stays a clear disc
-	course_root.add_child(cup_spr)
+	_cup_sprite = Sprite2D.new()
+	_cup_sprite.texture = TEX_CUP
+	_cup_sprite.position = _cup_pos
+	_cup_sprite.scale = Vector2.ONE * ((CUP_RADIUS * 2.0) / float(TEX_CUP.get_width()))
+	_cup_sprite.z_index = 6  ## above book wash — hole stays a clear disc
+	add_child(_cup_sprite)
 
 	# Same cloth language as HUD WindFlag; foot planted on the cup.
 	var flag_node: Node2D = CoursePinFlagScr.new()
 	flag_node.name = "CoursePinFlag"
 	flag_node.position = _cup_pos
 	flag_node.set("height_px", PIN_FLAG_H_MAX)
-	course_root.add_child(flag_node)
+	add_child(flag_node)
 	_pin_flag = flag_node
 	_sync_pin_flag_visible()
 	_update_pin_flag_wind()
@@ -1493,7 +1500,7 @@ func _build_green_book() -> void:
 	_green_book.name = "GreenBook"
 	_green_book.z_index = 3
 	_green_book.visible = false
-	course_root.add_child(_green_book)
+	add_child(_green_book)
 
 	var rx := hole.green_radius_x + 14.0
 	var ry := hole.green_radius_y + 14.0
@@ -1565,7 +1572,7 @@ func _build_green_book() -> void:
 	_putt_fall.mag_len_k = 0.0  ## full shaft — direction is the read
 	_putt_fall.arrow_color = Color(1.0, 0.92, 0.35, 0.92)
 	_putt_fall.visible = false
-	course_root.add_child(_putt_fall)
+	add_child(_putt_fall)
 
 	# Fall-line arrows: point downhill (same vector physics uses). Skip the cup.
 	var an := GREEN_BOOK_ARROW_N

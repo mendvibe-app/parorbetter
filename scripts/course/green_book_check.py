@@ -50,7 +50,10 @@ def main() -> int:
     assert "Arrows = downhill" in CTRL
     fall_fn = CTRL.split("func _refresh_putt_fall_lines")[1].split("func ")[0]
     assert "1.0" not in fall_fn.split("for t in")[1].split(":")[0]
-    assert "cup_spr.z_index = 6" in CTRL
+    assert "cup_spr.z_index = 6" not in CTRL
+    assert "_cup_sprite.z_index = 6" in CTRL
+    assert "add_child(_green_book)" in build
+    assert "course_root.add_child(_green_book)" not in build
 
     show_fn = CTRL.split("func _should_show_green_book")[1].split("func _is_putt_context")[0]
     assert "aim_target" not in show_fn and "apron" not in show_fn
