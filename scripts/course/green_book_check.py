@@ -62,9 +62,11 @@ def main() -> int:
     assert m and int(m.group(1)) >= 9
     sh = ball_tscn.split("[node name=\"Shadow\"")[1].split("[node")[0]
     assert "z_index = -1" in sh
+    assert "visible = false" in sh
     ball_gd = (Path(__file__).resolve().parents[1] / "ball" / "ball.gd").read_text(encoding="utf-8")
     assert "shadow.visible = aloft" in ball_gd
-    assert "var aloft := _height > 0.0" in ball_gd
+    assert "var aloft := state == State.FLIGHT and _height > 0.0" in ball_gd
+    assert "state == State.FLIGHT" in ball_gd.split("var aloft")[1].split("\n")[0]
 
     show_fn = CTRL.split("func _should_show_green_book")[1].split("func _is_putt_context")[0]
     assert "aim_target" not in show_fn and "apron" not in show_fn
