@@ -96,10 +96,11 @@ def main() -> int:
     assert abs(p20 - 0.625) > 0.01
 
     # Source: resolve_distance always multiplies contact (putt uses Green curve).
-    assert "power_mul *= contact_multiplier(contact, lie)" in PHYS
+    assert "power_mul *= contact_multiplier(contact, lie, shot_type)" in PHYS
     assert "static func resolve_distance" in PHYS
     assert "static func contact_multiplier" in PHYS
     assert 'if lie == "Green":' in PHYS.split("static func contact_multiplier")[1].split("static func")[0]
+    assert 'shot_type == "chip"' in PHYS.split("static func contact_multiplier")[1].split("static func")[0]
     assert "return 0.90" in PHYS
     assert "return 0.78" in PHYS
     # MISS dist_err removed (no 0.65 branch)
@@ -130,7 +131,7 @@ def main() -> int:
     assert "min(power_mul, 0.50)" not in PUTT
     assert "PUTT_CONTACT_LINE_FLOOR := 0.08" in PUTT
     assert "PUTT_CONTACT_LINE_MISS := 0.14" in PUTT
-    assert "contact_multiplier(contact, lie)" in PUTT
+    assert "contact_multiplier(contact, lie, shot_type)" in PUTT
     assert "static func putt_line_miss" in PHYS
     assert "PUTT_LINE_MISS_SCALE := 0.84" in PHYS
     # 6 ft THIN floor mishit → ~5 in at the cup (was ~1 in at 0.14).

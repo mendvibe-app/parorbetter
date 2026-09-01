@@ -335,7 +335,12 @@ def resolve_distance(
     force_p = power if force_power is None else force_power
     force = 0.0 if is_putt else force_factor(force_p, shot_type)
     power_mul = power * LIE_MUL.get(lie, 1.0)
-    power_mul *= PUTT_CONTACT_MUL.get(contact, 1.0) if is_putt else CONTACT_MUL[contact]
+    if is_putt:
+        power_mul *= PUTT_CONTACT_MUL.get(contact, 1.0)
+    elif shot_type == "chip" and contact == "PERFECT":
+        power_mul *= 1.0
+    else:
+        power_mul *= CONTACT_MUL[contact]
     if force > 0.0 and power > POWER_POCKET_HI:
         power_mul *= lerp(1.0, MASH_POWER_LERP, force)
     total_yards = club_max * power_mul
@@ -768,6 +773,10 @@ def verify_live_constants_reflected() -> None:
     assert abs(PUTT_CONTACT_MUL["THIN"] - 1.06) < 1e-9
     assert abs(PUTT_CONTACT_MUL["FAT"] - 0.90) < 1e-9
     assert abs(PUTT_CONTACT_MUL["MISS"] - 0.78) < 1e-9
+    chip_pure = resolve_distance(65.0, 0.73, "Fairway", "PERFECT", "chip")
+    full_pure = resolve_distance(65.0, 0.73, "Fairway", "PERFECT", "full")
+    assert abs(chip_pure - 65.0 * 0.73) < 1e-6, chip_pure
+    assert abs(full_pure - 65.0 * 0.73 * 1.06) < 1e-6, full_pure
     assert abs(CARRY_FRAC_LONG - 0.80) < 1e-9
     assert abs(CARRY_FRAC_SHORT - 0.98) < 1e-9
     assert abs(CARRY_FRAC_EASE - 1.5) < 1e-9

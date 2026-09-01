@@ -434,7 +434,8 @@ func _on_tempo_committed(sample: Dictionary) -> void:
 			chip_tol,
 			chip_arc,
 			current_lie,
-			current_severity
+			current_severity,
+			shot_type
 		)
 	else:
 		# flight_shot_type(): punch_mode remaps to "punch" for grade (same as physics).

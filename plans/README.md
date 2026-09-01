@@ -4,8 +4,8 @@
 `HANDOFF-putting-true-scale.md`. Line + contact signed off. Phase 3 shipped.
 Phase 4 execute panel in build — playtest.
 
-**New track:** short-game follow camera — `short-game-follow-camera-phase1.md`
-(plan only). Reuse putt remaining-fit + tracer on chip/pitch/flop in-flight.
+**New track:** chip distance vs real golf — `chip-distance-real-golf.md`
+(Phase 1+2 code). Pad smash (log map) then roll skate (lie-change speed).
 
 **New track:** green slope align — `green-slope-align-roadmap.md` / `green-slope-align-phase1.md`.
 Field is 1–3% grade; putt and on-green short-game roll share `green_slope_accel`.
@@ -59,7 +59,8 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `cup-lip-out-phase2.md` | SHIPPED (`0038400`) — horseshoe on hot rejects; make rate frozen |
 | `green-slope-align-roadmap.md` | SHIPPED — 1–3% field, shared gravity, book ±2 ft, mag×t |
 | `green-slope-align-phase1.md` | SHIPPED — literals (playtest skipped) |
-| `short-game-follow-camera-phase1.md` | CODE COMPLETE — remaining-fit + roll tracer; playtest |
+| `short-game-follow-camera-phase1.md` | SHIPPED (`8af1a7e` / `#56`) — remaining-fit + roll tracer |
+| `chip-distance-real-golf.md` | CODE COMPLETE — pad linear, lie-change remain, chip PERFECT 1.0 |
 
 ---
 

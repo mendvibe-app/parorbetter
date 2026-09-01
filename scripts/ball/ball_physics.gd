@@ -638,7 +638,7 @@ static func resolve_distance(
 	var force := 0.0 if is_putt else force_factor(force_p, club_max_yards, lie, shot_type)
 	# Distance owner: lie × contact. Putt uses a mild Green curve (see contact_multiplier).
 	var power_mul := power * lie_multiplier(lie, severity)
-	power_mul *= contact_multiplier(contact, lie)
+	power_mul *= contact_multiplier(contact, lie, shot_type)
 	# Mash doesn't buy clean extra yards — contact gets jumpy instead.
 	if force > 0.0 and power > POWER_POCKET_HI:
 		power_mul *= lerpf(1.0, 0.94, force)
@@ -771,7 +771,9 @@ static func force_factor(
 	return 0.0
 
 
-static func contact_multiplier(quality: ShotResult.ContactQuality, lie: String = "") -> float:
+static func contact_multiplier(
+	quality: ShotResult.ContactQuality, lie: String = "", shot_type: String = ""
+) -> float:
 	if lie == "Green":
 		## PLAYTEST TARGET — putt-only; amplitude already owns the big miss.
 		match quality:
@@ -783,6 +785,9 @@ static func contact_multiplier(quality: ShotResult.ContactQuality, lie: String =
 				return 0.78
 			_:
 				return 1.0  ## PERFECT/GOOD — no 1.06 make-rate gift
+	# Chip: committed yards. Full-swing PERFECT still reads a bit past (~15 yd driver).
+	if shot_type == "chip" and quality == ShotResult.ContactQuality.PERFECT:
+		return 1.0
 	match quality:
 		ShotResult.ContactQuality.PERFECT:
 			return 1.06  # pure reads past committed (~15 yd driver / ~5 yd wedge)

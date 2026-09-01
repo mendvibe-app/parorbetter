@@ -155,8 +155,8 @@ map; overswing mash tax and per-club curves stay playtest knobs if feel fails.
 **Device feel (playtest, not a code gate):**
 - Full / pitch / flop / punch: target mark vs pocket, deliberate overswing cost readable
 - Chip / putt: pull-length still owns pace; mishit marks clear
-- Logged not fixed: PERFECT chip still +6% via `contact_multiplier` — revisit if pure chips
-  play long
+- Logged not fixed: PERFECT chip still +6% via `contact_multiplier` — **fixed**
+  (`chip-distance-real-golf` Phase 3)
 - Does “harder swing + hold tempo” feel like the intended fine line?
 
 **Acceptance (met for code):** track closed on paper; feel = Matt device checklist.
@@ -187,5 +187,4 @@ it changes how "acceptance" reads for phases 1–3 individually.
   aim preview. Not removed.
 - Exact shape of the amplitude→power curve per club — linear is the starting assumption,
   Phase 1's harness should confirm or correct it against how the pad actually feels.
-- **Logged (Phase 4):** PERFECT chip still gets +6% via `contact_multiplier` — not fixed;
-  revisit if short-game pure strikes feel long.
+- **Logged (Phase 4):** PERFECT chip +6% — **fixed** in `chip-distance-real-golf.md` Phase 3.

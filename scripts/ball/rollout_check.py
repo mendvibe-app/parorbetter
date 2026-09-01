@@ -116,6 +116,10 @@ def main() -> None:
     clamp = roll[roll.find("along >= _planned_distance_px") : roll.find("_finish_settle")]
     assert "_lie != \"Green\"" not in clamp
     assert "roll %+.0f yd (plan %.0f)" in DEBUG
+    sync = BALL.split("func _sync_ground_lie")[1].split("func ")[0]
+    assert '_shot_type != "chip"' in sync
+    assert "sqrt(2.0 * a * remain)" in sync
+    assert "remain < 0.5" in sync
 
     assert 0.78 <= CARRY_FRAC_LONG <= 0.82, CARRY_FRAC_LONG
     assert abs(CARRY_FRAC_SHORT - 0.98) < 1e-9
@@ -159,6 +163,15 @@ def main() -> None:
     v_hot = math.sqrt(2.0 * roll_decel_px("Fairway") * remain_px)
     skate = v_hot * v_hot / (2.0 * putt_decel_px())
     assert skate > remain_px * 3.0, (skate, remain_px)
+
+    # Chip lie change: leftover plan yards at new a (flat), not leftover speed.
+    leftover = 5.0 * PX_PER_YARD
+    a_fw = landing_roll_decel_px("Fairway", "chip", 65.0)
+    a_green = landing_roll_decel_px("Green", "chip", 65.0)
+    chip_skate = (2.0 * a_fw * leftover) / (2.0 * a_green)
+    assert chip_skate > leftover * 3.0, (chip_skate, leftover)
+    remap_rest = (2.0 * a_green * leftover) / (2.0 * a_green)
+    assert abs(remap_rest - leftover) < 1e-6, (remap_rest, leftover)
 
     print(
         "rollout_check: ok "

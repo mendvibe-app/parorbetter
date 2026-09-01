@@ -3315,6 +3315,7 @@ func _on_shot_ready(result: ShotResult) -> void:
 		wind_note = "Wind was active — landing may drift from aim circle"
 	_last_result = result
 	var sev_at_strike := ball.get_lie_severity()
+	var flight_st := shot_routine.flight_shot_type()
 	_last_report = ShotReport.from_shot(
 		result,
 		shot_routine.club_name,
@@ -3323,9 +3324,9 @@ func _on_shot_ready(result: ShotResult) -> void:
 		_aim_radius_yd,
 		aim_offset,
 		wind_note,
-		sev_at_strike
+		sev_at_strike,
+		flight_st
 	)
-	var flight_st := shot_routine.flight_shot_type()
 	GameState.last_shot_metrics = {
 		"power": result.power,
 		"true_power": result.true_power,

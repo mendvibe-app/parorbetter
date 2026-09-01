@@ -90,7 +90,7 @@ def main() -> int:
     # Phase 3: coaching yards match launch/report product (lie + contact).
     assert "BallPhysics.lie_multiplier" in PUTT
     assert "BallPhysics.contact_multiplier" in PUTT
-    assert "contact_multiplier(contact, lie)" in PUTT
+    assert "contact_multiplier(contact, lie, shot_type)" in PUTT
     assert "PUTT_CONTACT_LINE_FLOOR := 0.08" in PUTT
     assert "PUTT_CONTACT_LINE_MISS := 0.14" in PUTT
     assert "current_lie" in ROUTINE
@@ -200,7 +200,11 @@ def main() -> int:
     grade_body = PUTT.split("static func grade(")[1].split("static func ")[0]
     assert grade_body.count("contact = ShotResult.ContactQuality.MISS") == 1  # incomplete only
     assert "BAND_SHORT_LONG" not in PUTT
-    assert "power_from_frac(actual)" in grade_body
+    assert "power_from_frac(actual)" in grade_body  # putt log smash stays
+    assert 'shot_type == "chip"' in grade_body
+    assert "actual / maxf(target, MARKER_MIN_FRAC)" in grade_body
+    grade_call = ROUTINE.split("PuttStroke.grade(")[1][:400]
+    assert "shot_type" in grade_call
     # Phase 4: chip overpull keeps THIN label but drops distance tax (no GOOD→THIN cliff).
     assert "frac_err > 0.0 and contact_mul < 1.0" in grade_body
     assert "_draw_mishit_risk_marks" in GESTURE
@@ -208,19 +212,20 @@ def main() -> int:
     assert "mishit risk" in ROUTINE
 
     # Chip Fairway: overpull past BAND_GOOD must not land shorter than GOOD edge.
-    CM = {"PERFECT": 1.06, "GOOD": 1.0, "THIN": 0.82, "FAT": 0.68}
+    CM = {"PERFECT": 1.0, "GOOD": 1.0, "THIN": 0.82, "FAT": 0.68}
 
     def chip_rolled_yd(actual: float, commit: float, club: float = 80.0) -> tuple[str, float]:
         target = marker_frac(commit)
         frac_err = actual - target
         abs_n = abs(frac_err) / BAND_HALF
         contact = contact_tier(abs_n, frac_err)
-        rolled = power_from_frac(actual)
+        power_mul = actual / max(target, MARKER_MIN)
         c_mul = CM[contact]
         # Mirror Phase 4: no distance tax on overpull THIN.
         if frac_err > 0.0 and c_mul < 1.0:
             c_mul = 1.0
-        yd = max(0.05, min(1.0, rolled)) * club * c_mul
+        result = max(0.05, min(1.0, commit * power_mul))
+        yd = result * club * c_mul
         return contact, yd
 
     for rem in (8.0, 12.0, 18.0):
@@ -233,10 +238,31 @@ def main() -> int:
         assert yd_thin + 1e-6 >= yd_good, (
             f"chip {rem:.0f}yd cliff: GOOD-edge {yd_good:.3f} → THIN {yd_thin:.3f}"
         )
-        # Still smash-long for big overpull vs on-target.
         _c_big, yd_big = chip_rolled_yd(min(tgt + 0.20, MARKER_MAX), commit)
         _c_on, yd_on = chip_rolled_yd(tgt, commit)
         assert yd_big > yd_on
+
+    # Dump: 0.87 vs 0.83 is a bit long, not 33% long. Putt log still smashes.
+    dump_commit = 0.73
+    dump_tgt = marker_frac(dump_commit)
+    dump_actual = 0.87
+    chip_mul = dump_actual / max(dump_tgt, MARKER_MIN)
+    putt_mul = power_from_frac(dump_actual) / max(dump_commit, POWER_FLOOR)
+    assert 1.02 <= chip_mul <= 1.10, chip_mul
+    assert putt_mul > 1.25, putt_mul
+    lw = 65.0
+    chip_yd = dump_commit * chip_mul * lw
+    putt_log_yd = min(1.0, power_from_frac(dump_actual)) * lw
+    assert 48.0 <= chip_yd <= 53.0, chip_yd
+    assert putt_log_yd > 60.0, putt_log_yd
+
+    # Chip PERFECT is committed yards — full-swing +6% gift stays off this type.
+    PHYS = (DIR / "../ball/ball_physics.gd").read_text(encoding="utf-8")
+    cm = PHYS.split("static func contact_multiplier")[1].split("static func")[0]
+    chip_arm = cm.split('shot_type == "chip"')[1][:280]
+    assert "ContactQuality.PERFECT" in chip_arm
+    assert "return 1.0" in chip_arm
+    assert "Contact PURE — committed distance" in REPORT
 
     print("putt_stroke_check: ok")
     return 0

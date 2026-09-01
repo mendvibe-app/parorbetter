@@ -30,7 +30,8 @@ static func from_shot(
 	p_aim_radius_yd: float = 0.0,
 	p_aim_offset: String = "",
 	p_wind_note: String = "",
-	p_severity: String = ""
+	p_severity: String = "",
+	p_shot_type: String = "full"
 ) -> ShotReport:
 	var r := ShotReport.new()
 	r.club_name = p_club
@@ -41,7 +42,7 @@ static func from_shot(
 	r.stance = result.stance_stability
 	r.path_error = result.path_error
 	r.contact = result.contact_label()
-	r.contact_mul = BallPhysics.contact_multiplier(result.contact_quality, p_lie)
+	r.contact_mul = BallPhysics.contact_multiplier(result.contact_quality, p_lie, p_shot_type)
 	r.lie_mul = BallPhysics.lie_multiplier(p_lie, p_severity)
 	# Same owner as launch — Plan matches Actual when force/path/contact agree.
 	var force_p := result.true_power if result.true_power > 0.0 else -1.0
@@ -51,7 +52,7 @@ static func from_shot(
 		p_lie,
 		p_severity,
 		result.contact_quality,
-		"full",
+		p_shot_type,
 		result.path_error,
 		force_p
 	)
@@ -78,7 +79,10 @@ func _build_reasons(result: ShotResult) -> void:
 		return
 	match result.contact_quality:
 		ShotResult.ContactQuality.PERFECT:
-			reasons.append("Contact PURE — small distance bonus")
+			if contact_mul > 1.001:
+				reasons.append("Contact PURE — small distance bonus")
+			else:
+				reasons.append("Contact PURE — committed distance")
 		ShotResult.ContactQuality.GOOD:
 			reasons.append("Contact GOOD — full distance")
 		ShotResult.ContactQuality.THIN:

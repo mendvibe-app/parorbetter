@@ -121,7 +121,8 @@ static func grade(
 	chip_tol_scale: float = 1.0,
 	chip_arc_scale: float = 1.0,
 	lie: String = "Green",
-	severity: String = ""
+	severity: String = "",
+	shot_type: String = "putt"
 ) -> Dictionary:
 	var target := marker_frac(committed_power)
 	var band := BAND_HALF * maxf(tol_scale, 0.15) * maxf(chip_tol_scale, 0.15)
@@ -159,9 +160,13 @@ static func grade(
 	if bal < 0.35 and contact == ShotResult.ContactQuality.PERFECT:
 		contact = ShotResult.ContactQuality.GOOD
 
-	# Absolute amplitude → rolled power (may exceed commit — smash runs long).
-	var rolled := power_from_frac(actual)
-	var power_mul := rolled / maxf(committed_power, POWER_FLOOR)
+	# Putt: log map (smash past commit is the feel). Chip: thumb error = % distance.
+	var power_mul: float
+	if shot_type == "chip":
+		power_mul = actual / maxf(target, MARKER_MIN_FRAC)
+	else:
+		var rolled := power_from_frac(actual)
+		power_mul = rolled / maxf(committed_power, POWER_FLOOR)
 
 	# Tempo as modifier: jab → long, decel/chop → short. Smooth = no effect.
 	var tempo_bias := _tempo_bias(sample, bal, match_pen)
@@ -187,7 +192,7 @@ static func grade(
 
 	# Same product as ShotReport.planned_yards / BallPhysics.resolve_distance.
 	var lie_mul := BallPhysics.lie_multiplier(lie, severity)
-	var contact_mul := BallPhysics.contact_multiplier(contact, lie)
+	var contact_mul := BallPhysics.contact_multiplier(contact, lie, shot_type)
 	# Chip overpull: THIN label stays, but don't distance-tax with 0.82 — that cliff
 	# made a bigger pull land shorter than a milder GOOD overpull (Phase 4).
 	# FAT underpull keeps the tax (monotonic + matches decelerated chip).
