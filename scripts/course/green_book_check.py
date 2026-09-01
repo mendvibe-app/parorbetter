@@ -54,6 +54,14 @@ def main() -> int:
     assert "_cup_sprite.z_index = 6" in CTRL
     assert "add_child(_green_book)" in build
     assert "course_root.add_child(_green_book)" not in build
+    # Ball node z stays 0 so Shadow (z=-1) paints under the green. Visual sits above wash.
+    assert "ball.z_index" not in CTRL
+    ball_tscn = (Path(__file__).resolve().parents[2] / "scenes" / "ball.tscn").read_text(encoding="utf-8")
+    vis = ball_tscn.split("[node name=\"Visual\"")[1].split("[node")[0]
+    m = re.search(r"z_index = (\d+)", vis)
+    assert m and int(m.group(1)) >= 9
+    sh = ball_tscn.split("[node name=\"Shadow\"")[1].split("[node")[0]
+    assert "z_index = -1" in sh
 
     show_fn = CTRL.split("func _should_show_green_book")[1].split("func _is_putt_context")[0]
     assert "aim_target" not in show_fn and "apron" not in show_fn

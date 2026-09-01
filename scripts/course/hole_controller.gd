@@ -259,7 +259,6 @@ var ace_pond: TextureRect
 
 
 func _ready() -> void:
-	ball.z_index = 8  ## above book wash (z=3) so the ball isn't under the heatmap
 	ball.settled.connect(_on_ball_settled)
 	ball.entered_hazard.connect(_on_hazard)
 	ball.holed_out.connect(_on_holed_out)
