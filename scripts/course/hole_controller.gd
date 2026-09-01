@@ -1569,7 +1569,7 @@ func _build_green_book() -> void:
 	_putt_fall.mag_len_k = 0.0  ## full shaft — direction is the read
 	_putt_fall.arrow_color = Color(1.0, 0.92, 0.35, 0.92)
 	_putt_fall.visible = false
-	add_child(_putt_fall)
+	_green_book.add_child(_putt_fall)  ## hide with the wash — not a HoleController sibling
 
 	# Fall-line arrows: point downhill (same vector physics uses). Skip the cup.
 	var an := GREEN_BOOK_ARROW_N
@@ -1698,6 +1698,10 @@ func _update_pin_flag_wind() -> void:
 func _set_green_book_visible(on: bool) -> void:
 	if _green_book:
 		_green_book.visible = on
+	if _putt_fall and not on:
+		_putt_fall.visible = false
+		_putt_fall.arrows.clear()
+		_putt_fall.queue_redraw()
 	_set_green_book_legend_visible(on)
 	if on:
 		_sync_screen_line_widths()
@@ -1847,7 +1851,8 @@ func _refresh_putt_fall_lines() -> void:
 	if _putt_fall == null:
 		return
 	var on := (
-		_aiming and hole != null and ball != null and not hole_complete
+		_aiming and _green_book != null and _green_book.visible
+		and hole != null and ball != null and not hole_complete
 		and ball.get_lie() == "Green"
 	)
 	_putt_fall.visible = on
