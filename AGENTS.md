@@ -45,7 +45,7 @@ Orchestrated by `HoleController` + `ShotRoutine`.
 | Pin placement | `HoleGenerator.PIN_EDGE_MARGIN_YD` (5.0 → 15 ft / ~4 paces from edge & greenside trouble); `_pick_pin` zone sample + slope shelf |
 | Yards ↔ pixels | `BallPhysics.PX_PER_YARD` (2.25) |
 | Air vs roll split | `BallPhysics.CARRY_FRAC_LONG/SHORT` (0.80 / 0.98, ease 1.5); `roll_check_mul` 0.9–1.5; PURE wedge/pitch/flop green spin-back `SPINBACK_FT` 4 |
-| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book wash ±2 ft, arrows from 1%; yellow rest = `preview_green_roll`; putt fall-line at stance/mid/cup (`PUTT_FALL_*`) |
+| Green slope field | `HoleData.contour_profile` + `green_slope` + `green_height_at` / `green_slope_at`; book heatmap = this-green High/Low (`h_span`, `GREEN_BOOK_WASH_MIN_SPAN`); arrows from 1%, cup keep-out `GREEN_BOOK_CUP_KEEP_YD` 1.2; yellow rest = `preview_green_roll`; putt fall-line at stance/mid (`PUTT_FALL_*`) |
 | Hazards | `HoleData.hazards` role specs (`greenside` / `landing` / `carry` / `edge` / `island_ring`); placed by `HoleController._place_hazards` |
 | Lie timing tighten | `BallPhysics.lie_timing_scale` (scales tempo tolerance width) |
 | Lives (Survival) | `GameState.MAX_LIVES/START_LIVES`; deltas via `GameState.apply_hole_result_lives` |

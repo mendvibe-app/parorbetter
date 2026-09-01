@@ -32,7 +32,9 @@ def main() -> int:
     assert "arrows" in CTRL
     assert "green_slope_at" in CTRL
     assert _const("GREEN_BOOK_ARROW_MIN_SLOPE") == 0.01
-    assert _const("GREEN_BOOK_WASH_HALF_FT") == 2.0
+    assert "GREEN_BOOK_WASH_HALF_FT" not in CTRL
+    assert _const("GREEN_BOOK_WASH_MIN_SPAN") == 0.08
+    assert _const("GREEN_BOOK_CUP_KEEP_YD") == 1.2
     assert _const("GREEN_BOOK_ARROW_MAG_K") == 14.0
     assert _const("PUTT_FALL_ARROW_SCREEN") == 40.0
     assert _const("PUTT_FALL_MIN_SLOPE") == 0.005
@@ -40,12 +42,18 @@ def main() -> int:
     assert "func _putt_path_break_mag" not in CTRL
     assert "tap_in_break" not in CTRL.split("func _is_tap_in")[1].split("func ")[0]
     build = CTRL.split("func _build_green_book")[1].split("func ")[0]
-    assert "GREEN_BOOK_WASH_HALF_FT" in build
+    assert "h_span" in build  # this-green High/Low stretch
+    assert "GREEN_BOOK_CUP_KEEP_YD" in build
     assert "_putt_fall" in build
-    assert "h_span" not in build  # per-green min–max stretch is gone
     assert "GREEN_BOOK_CONTOUR" not in CTRL or "CONTOUR_LEVELS" not in CTRL
-    assert "Cool = low" in CTRL and "Warm = high" in CTRL
+    assert "Low = blue" in CTRL and "High = red" in CTRL
     assert "Arrows = downhill" in CTRL
+    fall_fn = CTRL.split("func _refresh_putt_fall_lines")[1].split("func ")[0]
+    assert "1.0" not in fall_fn.split("for t in")[1].split(":")[0]
+    assert "cup_spr.z_index = 6" not in CTRL
+    assert "_cup_sprite.z_index = 6" in CTRL
+    assert "add_child(_green_book)" in build
+    assert "course_root.add_child(_green_book)" not in build
 
     show_fn = CTRL.split("func _should_show_green_book")[1].split("func _is_putt_context")[0]
     assert "aim_target" not in show_fn and "apron" not in show_fn
@@ -72,10 +80,11 @@ def main() -> int:
     assert "_flight_short_game" in CTRL
     assert "is_short_game_shot" in CTRL.split("func _follow_ball")[1].split("func ")[0]
 
-    # Pin: screen-scaled, flag at tip.
+    # Pin: screen-scaled, flag at tip, above book wash.
     assert "POLE_H_SCREEN" in PIN
     assert "FLAG_TIP_INSET_SCREEN" in PIN
     assert "-pole_h + inset" in PIN
+    assert "z_index = 7" in PIN
 
     print(f"green_book_check: ok arrows wash show_max_yd={_const('GREEN_BOOK_SHOW_MAX_PIN_YD'):.0f}")
     return 0
