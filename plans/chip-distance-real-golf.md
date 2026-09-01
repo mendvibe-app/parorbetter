@@ -1,9 +1,9 @@
 # Plan — Chip distance vs real golf
 
-**Status:** CODE COMPLETE — Phase 1 pad linear + Phase 2 lie-change remain. Playtest dump identity.  
+**Status:** CODE COMPLETE — Phase 1 pad, Phase 2 lie-change remain, Phase 3 chip PERFECT = 1.0.  
 **Origin:** Playtest dump (LW chip, Fairway, GOOD, ~48 yd to pin). Overpull felt like a full lob wedge.  
-**Scope lock:** Chip pad power map + chip lie-change roll speed. Putt log map, pitch/full plan-clamp, camera, `CHIP_YD` gate — untouched.  
-**User lock:** A bit past the tick = a bit long, not almost a full LW. Grass slower than green; once on the green the runner runs; downhill can still run past. One phase per PR after approve.
+**Scope lock:** Chip pad power map + chip lie-change roll speed + chip PERFECT contact mul. Putt log map, pitch/full plan-clamp, camera, `CHIP_YD` gate — untouched.  
+**User lock:** A bit past the tick = a bit long, not almost a full LW. Grass slower than green; once on the green the runner runs; downhill can still run past. Pure chip = committed yards.
 
 ---
 
@@ -132,13 +132,21 @@ chip-on-green stimp identity stays
 
 ---
 
+## Phase 3 — Chip PERFECT is committed yards
+
+Logged leftover from swing-input Phase 4: full-swing `contact_multiplier` PERFECT = 1.06 leaked onto chips (~3 yd on a 48 yd chip, stacked on the pad smash). Putt already identity on Green.
+
+**Diff:** `contact_multiplier(..., shot_type)` returns 1.0 for chip PERFECT. Full/pitch/flop/punch stay 1.06. `resolve_distance` + `PuttStroke.grade` + `ShotReport.from_shot` pass shot type so F1 Plan matches launch.
+
+---
+
 ## Out of scope
 
 - Putt log map / `POWER_FLOOR` / `BAND_HALF`
 - Pitch/full plan-distance clamp
 - Camera / tracer (shipped `#56`)
 - `CHIP_YD` 20 gate (48 yd bump-and-run still legal)
-- Logged PERFECT chip +6% `contact_multiplier` (`swing-input-rework-roadmap.md` Phase 4)
+- Logged PERFECT chip +6% `contact_multiplier` — **shipped Phase 3**
 - Chip execute-panel ticks past 20 yd (cosmetic; pad already accepts the pull)
 
 ---
@@ -148,3 +156,4 @@ chip-on-green stimp identity stays
 1. Approve this doc.  
 2. Phase 1 pad — shipped this PR.  
 3. Phase 2 roll — shipped this PR (dump was both stacked).
+4. Phase 3 chip PERFECT = 1.0 — shipped this PR (logged leftover, still long).

@@ -60,7 +60,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `green-slope-align-roadmap.md` | SHIPPED — 1–3% field, shared gravity, book ±2 ft, mag×t |
 | `green-slope-align-phase1.md` | SHIPPED — literals (playtest skipped) |
 | `short-game-follow-camera-phase1.md` | SHIPPED (`8af1a7e` / `#56`) — remaining-fit + roll tracer |
-| `chip-distance-real-golf.md` | CODE COMPLETE — Phase 1 pad linear; Phase 2 lie-change remain |
+| `chip-distance-real-golf.md` | CODE COMPLETE — pad linear, lie-change remain, chip PERFECT 1.0 |
 
 ---
 

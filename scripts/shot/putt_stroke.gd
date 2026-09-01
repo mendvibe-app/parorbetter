@@ -192,7 +192,7 @@ static func grade(
 
 	# Same product as ShotReport.planned_yards / BallPhysics.resolve_distance.
 	var lie_mul := BallPhysics.lie_multiplier(lie, severity)
-	var contact_mul := BallPhysics.contact_multiplier(contact, lie)
+	var contact_mul := BallPhysics.contact_multiplier(contact, lie, shot_type)
 	# Chip overpull: THIN label stays, but don't distance-tax with 0.82 — that cliff
 	# made a bigger pull land shorter than a milder GOOD overpull (Phase 4).
 	# FAT underpull keeps the tax (monotonic + matches decelerated chip).

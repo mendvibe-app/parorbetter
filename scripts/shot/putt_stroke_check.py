@@ -90,7 +90,7 @@ def main() -> int:
     # Phase 3: coaching yards match launch/report product (lie + contact).
     assert "BallPhysics.lie_multiplier" in PUTT
     assert "BallPhysics.contact_multiplier" in PUTT
-    assert "contact_multiplier(contact, lie)" in PUTT
+    assert "contact_multiplier(contact, lie, shot_type)" in PUTT
     assert "PUTT_CONTACT_LINE_FLOOR := 0.08" in PUTT
     assert "PUTT_CONTACT_LINE_MISS := 0.14" in PUTT
     assert "current_lie" in ROUTINE
@@ -212,7 +212,7 @@ def main() -> int:
     assert "mishit risk" in ROUTINE
 
     # Chip Fairway: overpull past BAND_GOOD must not land shorter than GOOD edge.
-    CM = {"PERFECT": 1.06, "GOOD": 1.0, "THIN": 0.82, "FAT": 0.68}
+    CM = {"PERFECT": 1.0, "GOOD": 1.0, "THIN": 0.82, "FAT": 0.68}
 
     def chip_rolled_yd(actual: float, commit: float, club: float = 80.0) -> tuple[str, float]:
         target = marker_frac(commit)
@@ -255,6 +255,14 @@ def main() -> int:
     putt_log_yd = min(1.0, power_from_frac(dump_actual)) * lw
     assert 48.0 <= chip_yd <= 53.0, chip_yd
     assert putt_log_yd > 60.0, putt_log_yd
+
+    # Chip PERFECT is committed yards — full-swing +6% gift stays off this type.
+    PHYS = (DIR / "../ball/ball_physics.gd").read_text(encoding="utf-8")
+    cm = PHYS.split("static func contact_multiplier")[1].split("static func")[0]
+    chip_arm = cm.split('shot_type == "chip"')[1][:280]
+    assert "ContactQuality.PERFECT" in chip_arm
+    assert "return 1.0" in chip_arm
+    assert "Contact PURE — committed distance" in REPORT
 
     print("putt_stroke_check: ok")
     return 0
