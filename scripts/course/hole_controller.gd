@@ -68,9 +68,7 @@ const PUTT_SPAN_FLOOR := 3.5
 const PUTT_VIEW_FRAC := 0.72
 ## Place putt focus higher than viewport mid so ball/cup clear HUD + swing pad (playtest 23ft).
 const PUTT_SAFE_SCREEN_Y := 0.40  ## PLAYTEST — 0.5=center; lower = action higher on screen
-## Putt line aim — bearing drag, distance locked to cup. PLAYTEST TARGETS.
-const PUTT_LINE_SNAP_DEG := 3.0  ## soft-snap to cup line within this angle
-const PUTT_LINE_SNAP_MAX_FT := 8.0  ## only soft-snap on short putts
+## Putt line aim — bearing drag, distance locked to cup. No hole-line snap.
 ## Screen-constant putt aim line (2.6/zoom was a hairline at true-scale zoom).
 const PUTT_AIM_LINE_SCREEN_PX := 5.0  ## PLAYTEST TARGET
 ## Start-line length scales with hole distance — never a runway past the cup.
@@ -1845,12 +1843,12 @@ func _is_tap_in(pin_yd: float) -> bool:
 
 
 func _refresh_putt_fall_lines() -> void:
-	## Yellow downhill ticks on THIS putt (stance + mid). Book grid is ~5 yd
-	## apart — a 6-ft putt can sit in a blank cell, and Confirm hides the wash.
+	## Yellow downhill ticks with the book during aim. Confirm Aim hides both.
 	if _putt_fall == null:
 		return
 	var on := (
-		hole != null and ball != null and not hole_complete and ball.get_lie() == "Green"
+		_aiming and hole != null and ball != null and not hole_complete
+		and ball.get_lie() == "Green"
 	)
 	_putt_fall.visible = on
 	_putt_fall.arrows.clear()
@@ -2651,7 +2649,7 @@ func _confirm_aim() -> void:
 	if _punch_btn:
 		_punch_btn.visible = false
 	_hide_shot_type_row()
-	_set_green_book_visible(false)  # close the wash before stroking; local fall-line stays
+	_set_green_book_visible(false)
 	_refresh_putt_fall_lines()
 	_refresh_wind_indicator(false)
 	AudioBus.play_ui()
@@ -3150,28 +3148,11 @@ func _apply_aim_world(world: Vector2) -> void:
 		var cup_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
 		_aim_lock_yards = maxf(cup_yd, 0.5)
 		_aim_target = AimControl.retarget_bearing(from, world, _aim_lock_yards)
-		_aim_target = _putt_line_soft_snap(from, _aim_target)
 		if _aiming:
 			_refresh_putt_line_feedback()
 	else:
 		_aim_target = AimControl.retarget_bearing(from, world, _aim_lock_yards)
 	_refresh_aim_visuals()
-
-
-func _putt_line_soft_snap(from: Vector2, aim: Vector2) -> Vector2:
-	## Short putts: snap near-cup-line aims so 3 ft isn't twitchy (PLAYTEST).
-	var cup_yd := BallPhysics.pixels_to_yards(from.distance_to(_cup_pos))
-	var cup_ft := cup_yd * 3.0
-	if cup_ft > PUTT_LINE_SNAP_MAX_FT:
-		return aim
-	var cup_dir := _cup_pos - from
-	var aim_dir := aim - from
-	if cup_dir.length_squared() < 0.01 or aim_dir.length_squared() < 0.01:
-		return aim
-	var ang := absf(cup_dir.angle_to(aim_dir))
-	if rad_to_deg(ang) <= PUTT_LINE_SNAP_DEG:
-		return AimControl.point_along_bearing(from, cup_dir, _aim_lock_yards)
-	return aim
 
 
 func _refresh_putt_line_feedback() -> void:

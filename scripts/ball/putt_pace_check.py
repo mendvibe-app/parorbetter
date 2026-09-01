@@ -143,9 +143,8 @@ def main() -> int:
 
     # Pace UI: aim stays blind of live pace/pin numbers — line only, stroke owns power.
     assert "_refresh_putt_line_feedback" in HOLE
-    assert "_putt_line_soft_snap" in HOLE
-    assert "PUTT_LINE_SNAP_DEG := 3.0" in HOLE
-    assert "PUTT_LINE_SNAP_MAX_FT := 8.0" in HOLE
+    assert "_putt_line_soft_snap" not in HOLE
+    assert "PUTT_LINE_SNAP" not in HOLE
     assert "_refresh_putt_pace_feedback" not in HOLE
     assert "Putt — set line & pace" not in HOLE
     assert "debug_putt_line_aim" not in HOLE
