@@ -275,10 +275,10 @@ def main() -> int:
     assert "SHOT_PAD_TOP_COMPACT" in (DIR.parent / "ui" / "ui_scale.gd").read_text(encoding="utf-8")
     # Pad size is shot-type only — not show_meter — so practice pad == real pad.
     layout = ROUTINE.split("func layout_shot_chrome")[1].split("func ")[0]
-    assert "SHOT_PAD_TOP_COMPACT if (shot_type == \"putt\"" in layout or "shot_type == \"putt\"" in layout
+    assert "uses_stroke_pad" in layout
+    assert "SHOT_PAD_TOP_COMPACT" in layout
     assert "pad_top := UiScale.SHOT_PAD_TOP if show_meter" not in layout
     assert "SHOT_PANEL_H_PUTT" in layout
-    assert "shot_type == \"putt\" or shot_type == \"chip\"" in layout
     assert "SHOT_PANEL_H" in layout
     # Takeaway starts on axis lock (not finger-down) — pitch ghost wait no longer inflates 2:1.
     assert "VEL_TOP_EPS_PITCH" in GESTURE
