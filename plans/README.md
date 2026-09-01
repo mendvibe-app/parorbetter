@@ -4,6 +4,9 @@
 `HANDOFF-putting-true-scale.md`. Line + contact signed off. Phase 3 shipped.
 Phase 4 execute panel in build — playtest.
 
+**New track:** flop at chip distances — `flop-short-dial-phase1.md`
+(code). Flop joins chip’s `PuttStroke` pad; flight stays flop; `FLOP_MAX_YD` 30 is a ceiling not a floor.
+
 **New track:** chip distance vs real golf — `chip-distance-real-golf.md`
 (Phase 1+2 code). Pad smash (log map) then roll skate (lie-change speed).
 
@@ -61,6 +64,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `green-slope-align-phase1.md` | SHIPPED — literals (playtest skipped) |
 | `short-game-follow-camera-phase1.md` | SHIPPED (`8af1a7e` / `#56`) — remaining-fit + roll tracer |
 | `chip-distance-real-golf.md` | CODE COMPLETE — pad linear, lie-change remain, chip PERFECT 1.0 |
+| `flop-short-dial-phase1.md` | CODE COMPLETE — flop joins chip pad; 30 yd ceiling only; picker-only |
 
 ---
 

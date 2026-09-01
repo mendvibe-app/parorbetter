@@ -222,20 +222,20 @@ func _is_putt() -> bool:
 
 
 func _is_chip() -> bool:
-	return shot_type == "chip"
+	## Chip pad geometry. Flop shares the lane (short dial); flight stays flop.
+	return shot_type == "chip" or shot_type == "flop"
 
 
 func _is_pitch() -> bool:
-	## Flop reuses pitch pad geometry / 2:1 guide (tempo-gesture family).
 	## Punch is NOT included — it uses _uses_short_lane() for path only so VEL_TOP /
 	## min-backswing pitch tuning does not silently apply to punch.
-	return shot_type == "pitch" or shot_type == "flop"
+	return shot_type == "pitch"
 
 
 func _uses_short_lane() -> bool:
-	## Mid-lane path length for 2:1 clock (pitch/flop/punch). Distinct from _is_pitch()
+	## Mid-lane path length for 2:1 clock (pitch/punch). Distinct from _is_pitch()
 	## so punch does not inherit pitch reverse-detect / min-backswing physics.
-	return shot_type == "pitch" or shot_type == "flop" or shot_type == "punch"
+	return shot_type == "pitch" or shot_type == "punch"
 
 
 func _uses_chip_golfer() -> bool:
@@ -257,8 +257,8 @@ func _lane_x() -> float:
 
 func address_hint() -> Vector2:
 	## Address toward target on pad (upper); pull DOWN = backswing, through = up.
-	## Putt: long vertical span for ft resolution. Chip: short amplitude pad.
-	## Pitch/flop/punch: mid lane so 2:1 ghost isn't a full-length race.
+	## Putt: long vertical span for ft resolution. Chip/flop: short amplitude pad.
+	## Pitch/punch: mid lane so 2:1 ghost isn't a full-length race.
 	## Full: longest lane for 3:1.
 	var y := 0.30
 	if _is_putt():
@@ -1185,14 +1185,22 @@ func _draw_chip_soft_scale(start: Vector2, top: Vector2) -> void:
 	## Same "absolute soft ruler" idea as putt, but yards (not feet) graded against
 	## the actual wedge's club_max_yards — a flat 20yd chip vs an 85yd Gap wedge maps
 	## to a very different pad slice than putt's fixed putter-length ruler would.
-	for yd in PuttStroke.CHIP_SCALE_LABELED_YD:
+	## Flop: same map, ticks through FLOP_MAX_YD (30) with pad ceiling at that cap.
+	var labeled: Array = (
+		PuttStroke.FLOP_SCALE_LABELED_YD if shot_type == "flop" else PuttStroke.CHIP_SCALE_LABELED_YD
+	)
+	var ticks: Array = (
+		PuttStroke.FLOP_SCALE_TICK_YD if shot_type == "flop" else PuttStroke.CHIP_SCALE_TICK_YD
+	)
+	for yd in labeled:
 		_draw_chip_scale_tick(start, top, float(yd), true)
-	for yd in PuttStroke.CHIP_SCALE_TICK_YD:
+	for yd in ticks:
 		_draw_chip_scale_tick(start, top, float(yd), false)
 
 
 func _draw_chip_scale_tick(start: Vector2, top: Vector2, yd: float, labeled: bool) -> void:
-	var frac := PuttStroke.frac_for_yd(yd, maxf(club_max_yards, 1.0))
+	var ceil := PuttStroke.stroke_power_ceil(shot_type, maxf(club_max_yards, 1.0))
+	var frac := PuttStroke.frac_for_yd(yd, maxf(club_max_yards, 1.0), ceil)
 	## Floor-collapsed lengths share MARKER_MIN — skip so digits don't stack there.
 	if frac <= PuttStroke.MARKER_MIN_FRAC or frac > PuttStroke.MARKER_MAX_FRAC:
 		return

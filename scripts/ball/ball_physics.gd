@@ -85,9 +85,9 @@ const POWER_POCKET_HI := 0.92
 ## Lane pad-Y fractions — must match tempo_gesture address_hint/top_hint branches.
 const FULL_ADDRESS_Y := 0.30
 const FULL_TOP_Y := 0.92
-const SHORT_ADDRESS_Y := 0.30  ## pitch / flop / punch mid-lane
+const SHORT_ADDRESS_Y := 0.30  ## pitch / punch mid-lane
 const SHORT_TOP_Y := 0.80
-const CHIP_ADDRESS_Y := 0.20
+const CHIP_ADDRESS_Y := 0.20  ## chip / flop short-dial lane
 const CHIP_TOP_Y := 0.85
 ## Fixed putter range — never derive from remaining (that canceled to a constant %).
 ## 25 yd = 75 ft: covers long lags with headroom past the hole (was 40 yd / 120 ft,
@@ -99,9 +99,9 @@ const PUTTER_MAX_YD := 25.0
 ## Pad-H length of the lane for this shot type (address → top).
 static func lane_pad_len(shot_type: String = "full") -> float:
 	match shot_type:
-		"pitch", "flop", "punch":
+		"pitch", "punch":
 			return absf(SHORT_TOP_Y - SHORT_ADDRESS_Y)
-		"chip":
+		"chip", "flop":
 			return absf(CHIP_TOP_Y - CHIP_ADDRESS_Y)
 		_:
 			return absf(FULL_TOP_Y - FULL_ADDRESS_Y)
@@ -113,7 +113,7 @@ static func full_lane_pad_len() -> float:
 
 
 ## Power from backswing_len (pad-height). Floor = TempoGrade.bs_floor(shot_type).
-## PLAYTEST TARGET — linear. Chip/putt use PuttStroke.power_from_frac instead.
+## PLAYTEST TARGET — linear. Chip/putt/flop use PuttStroke.power_from_frac instead.
 static func power_from_amplitude(backswing_len: float, shot_type: String = "full") -> float:
 	var floor_len := TempoGrade.bs_floor(shot_type)
 	var full_len := lane_pad_len(shot_type)
@@ -131,14 +131,18 @@ static func amplitude_for_power(power: float, shot_type: String = "full") -> flo
 	return floor_len + t * (full_len - floor_len)
 
 
-## TempoGrade-pad types that read power from amplitude (not aim). Chip/putt = PuttStroke.
+## TempoGrade-pad types that read power from amplitude (not aim). Chip/putt/flop = PuttStroke.
 static func uses_amplitude_power(shot_type: String) -> bool:
 	return (
 		shot_type == "full"
 		or shot_type == "pitch"
-		or shot_type == "flop"
 		or shot_type == "punch"
 	)
+
+
+## PuttStroke family — pull length = power. Flop flight stays flop; input matches chip.
+static func uses_stroke_pad(shot_type: String) -> bool:
+	return shot_type == "putt" or shot_type == "chip" or shot_type == "flop"
 
 
 static func is_wedge_family(club_name: String) -> bool:
@@ -785,8 +789,11 @@ static func contact_multiplier(
 				return 0.78
 			_:
 				return 1.0  ## PERFECT/GOOD — no 1.06 make-rate gift
-	# Chip: committed yards. Full-swing PERFECT still reads a bit past (~15 yd driver).
-	if shot_type == "chip" and quality == ShotResult.ContactQuality.PERFECT:
+	# Chip/flop: committed yards. Full-swing PERFECT still reads a bit past (~15 yd driver).
+	if (
+		(shot_type == "chip" or shot_type == "flop")
+		and quality == ShotResult.ContactQuality.PERFECT
+	):
 		return 1.0
 	match quality:
 		ShotResult.ContactQuality.PERFECT:

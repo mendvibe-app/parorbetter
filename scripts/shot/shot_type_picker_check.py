@@ -68,6 +68,10 @@ def main() -> int:
     assert eligible(65.0) == ["full", "chip", "pitch", "flop"]  # LW
     assert "flop" not in eligible(95.0)
 
+    st_for = TG.split("static func shot_type_for")[1].split("static func")[0]
+    assert 'return "flop"' not in st_for
+    assert 'return "chip"' in st_for
+
     # Phase 4 guide familiarity — shared fade, path unchanged
     GS = (ROOT / "scripts" / "autoload" / "game_state.gd").read_text(encoding="utf-8")
     assert "get_shot_type_form" in GS

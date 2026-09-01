@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Phase 0–3 swing instrumentation — F1 plumbing + TempoGrade contact-only power_mul.
 
-Full/pitch/flop/punch read power from amplitude; chip/putt stay on PuttStroke.
+Full/pitch/punch read power from amplitude; chip/putt/flop stay on PuttStroke.
 TempoGrade.power_mul remains contact-tier only (no amplitude).
 
 Usage:
@@ -40,7 +40,7 @@ def main() -> int:
         GRADE,
     ), "tempo_grade power_mul block drifted"
 
-    # Phase 1–3: full/pitch/flop/punch use amplitude; chip/putt keep committed path.
+    # Phase 1–3: full/pitch/punch use amplitude; chip/putt/flop keep committed path.
     _require(ROUTINE, "BallPhysics.uses_amplitude_power", "shot_routine.gd")
     _require(ROUTINE, "BallPhysics.power_from_amplitude", "shot_routine.gd")
     _require(
@@ -54,6 +54,8 @@ def main() -> int:
     _require(PHYS, "static func uses_amplitude_power", "ball_physics.gd")
     gate = PHYS.split("static func uses_amplitude_power")[1].split("static func")[0]
     assert 'shot_type == "punch"' in gate
+    assert 'shot_type == "flop"' not in gate
+    _require(PHYS, "static func uses_stroke_pad", "ball_physics.gd")
     _require(PHYS, "static func lane_pad_len", "ball_physics.gd")
     _require(ROUTINE, 'verdict["backswing_len"]', "shot_routine.gd")
     _require(ROUTINE, 'verdict["rolled_power"]', "shot_routine.gd")
@@ -72,7 +74,7 @@ def main() -> int:
 
     print("amplitude_power_check: OK")
     print("  TempoGrade power_mul: contact only (no amplitude)")
-    print("  full/pitch/flop/punch: power_from_amplitude; chip/putt: PuttStroke")
+    print("  full/pitch/punch: power_from_amplitude; chip/putt/flop: PuttStroke")
     print("  F1 Amp plumbing intact")
     return 0
 

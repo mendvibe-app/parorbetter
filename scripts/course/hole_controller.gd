@@ -2722,15 +2722,13 @@ func _apply_committed_preview() -> void:
 	var club_max := float(_chosen_club.get("max_yards", shot_routine.club_max_yards))
 	var power := shot_routine.committed_power
 	var st := shot_routine.flight_shot_type()
-	var est: float
-	# Pitch/flop amplitude floors at POWER_POCKET_LO — preview must match the pad tick.
-	if st == "pitch" or st == "flop":
+	# Pitch amplitude floors at POWER_POCKET_LO — preview must match the pad tick.
+	# Flop dials true % (chip pad); always pass st so FLOP_MAX_YD still caps.
+	if st == "pitch":
 		power = maxf(power, BallPhysics.POWER_POCKET_LO)
-		est = BallPhysics.estimate_carry_yards(
-			power, club_max, lie, ball.get_lie_severity(), st
-		)
-	else:
-		est = BallPhysics.estimate_carry_yards(power, club_max, lie, ball.get_lie_severity())
+	var est := BallPhysics.estimate_carry_yards(
+		power, club_max, lie, ball.get_lie_severity(), st
+	)
 	var from := ball.global_position
 	var bearing := _aim_target - from
 	if bearing.length_squared() < 1.0:
@@ -2900,7 +2898,7 @@ func _aim_planned_total_yd(
 		aim_yd, club_max, lie, wind, severity, shot_type, dir.normalized()
 	)
 	var power := float(solved["power"])
-	if shot_type == "pitch" or shot_type == "flop":
+	if shot_type == "pitch":
 		power = maxf(power, BallPhysics.POWER_POCKET_LO)
 	if shot_type == "flop":
 		var lie_m := BallPhysics.lie_multiplier(lie, severity)
@@ -3434,12 +3432,12 @@ func _green_book_aim_look() -> Vector2:
 
 
 func _putt_bottom_chrome() -> float:
-	## Aim: Confirm Aim. Stroke: putt/chip share the short panel; pitch/flop stay tall.
+	## Aim: Confirm Aim. Stroke: putt/chip/flop share the short panel; pitch stays tall.
 	if _aiming:
 		return absf(UiScale.CONFIRM_AIM_TOP)
 	if shot_routine and shot_routine.visible:
 		var st := shot_routine.shot_type
-		if st != "putt" and st != "chip":
+		if not BallPhysics.uses_stroke_pad(st):
 			return UiScale.SHOT_PANEL_H
 	return UiScale.SHOT_PANEL_H_PUTT
 
