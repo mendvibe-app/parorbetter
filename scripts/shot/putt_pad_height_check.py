@@ -12,6 +12,12 @@ PUTT = DIR.joinpath("putt_stroke.gd").read_text(encoding="utf-8")
 GESTURE = DIR.joinpath("tempo_gesture.gd").read_text(encoding="utf-8")
 UI = DIR.joinpath("../ui/ui_scale.gd").read_text(encoding="utf-8")
 ROUTINE = DIR.joinpath("shot_routine.gd").read_text(encoding="utf-8")
+CTRL = DIR.joinpath("../course/hole_controller.gd").read_text(encoding="utf-8")
+BALL = DIR.joinpath("../ball/ball.gd").read_text(encoding="utf-8")
+
+VIEW = (1080.0, 1920.0)
+PX_PER_FOOT = 2.25 / 3.0  # BallPhysics.PX_PER_YARD / 3
+LENGTHS_FT = (3, 6, 12, 20, 36, 75)
 
 
 def _f(src: str, name: str) -> float:
@@ -22,6 +28,36 @@ def _f(src: str, name: str) -> float:
 
 def pad_h(panel: float, top: float, bottom: float, safe_b: float = 0.0) -> float:
     return panel - top - (bottom + safe_b)
+
+
+def putt_frame_zoom(dist_ft: float, chrome_h: float, *, vertical: bool = True) -> dict:
+    """Mirror HoleController._putt_frame_zoom + ball/cup screen span in the HUD–panel band."""
+    dist = dist_ft * PX_PER_FOOT
+    pad = min(
+        max(dist * _f(CTRL, "PUTT_SPAN_PAD_FRAC"), _f(CTRL, "PUTT_SPAN_PAD_MIN")),
+        _f(CTRL, "PUTT_SPAN_PAD"),
+    )
+    dx = 0.0 if vertical else dist * 0.7071
+    dy = dist if vertical else dist * 0.7071
+    span_x = max(abs(dx) + pad * 2.0, _f(CTRL, "PUTT_SPAN_FLOOR"))
+    span_y = max(abs(dy) + pad * 2.0, _f(CTRL, "PUTT_SPAN_FLOOR"))
+    hud = _f(UI, "HUD_HEIGHT")
+    safe_h = VIEW[1] - hud - chrome_h
+    view_frac = _f(CTRL, "PUTT_VIEW_FRAC")
+    z_w = VIEW[0] * view_frac / span_x
+    z_h = max(safe_h, 1.0) * view_frac / span_y
+    z = min(max(min(z_w, z_h), _f(CTRL, "PUTT_ZOOM_FLOOR")), _f(CTRL, "PUTT_ZOOM_CAP"))
+    pair_px = dist * z
+    ball_px = 2.0 * _f(BALL, "BALL_R_PUTT") * z
+    return {
+        "z": z,
+        "pair_px": pair_px,
+        "safe_h": safe_h,
+        "fit": pair_px <= safe_h + 1e-6,
+        "ball_px": ball_px,
+        "world_ft": (safe_h / z) / PX_PER_FOOT,
+        "height_limited": z_h <= z_w and z < _f(CTRL, "PUTT_ZOOM_CAP") - 1e-6,
+    }
 
 
 def main() -> int:
@@ -79,6 +115,31 @@ def main() -> int:
             f"{ft_per_px(ft, old):.3f} at {panel_full:.0f}  "
             f"(8px miss {8 * ft_per_px(ft, now):.1f} vs {8 * ft_per_px(ft, old):.1f} ft)"
         )
+
+    # Execute camera zooms to the HUD–panel band. Taller pad does not clip ball→cup —
+    # it zooms out (long) or covers more of a cap-zoom (short). Look centers the pair.
+    chrome_fn = CTRL.split("func _putt_bottom_chrome")[1].split("func ")[0]
+    assert "SHOT_PANEL_H_PUTT" in chrome_fn
+    for chrome in (panel_putt, 720.0, panel_full):
+        for ft in LENGTHS_FT:
+            r = putt_frame_zoom(float(ft), chrome)
+            assert r["fit"], (ft, chrome, r)
+        r36 = putt_frame_zoom(36.0, chrome)
+        print(
+            f"  camera {chrome:.0f} chrome: 36ft z={r36['z']:.1f} ball={r36['ball_px']:.1f}px "
+            f"slack={r36['safe_h'] - r36['pair_px']:.0f}px fit"
+        )
+    w640 = putt_frame_zoom(36.0, panel_putt)["world_ft"]
+    w900 = putt_frame_zoom(36.0, panel_full)["world_ft"]
+    assert abs(w640 - w900) < 0.05, (w640, w900)  # height-limited: same world, fewer pixels
+    r3_640 = putt_frame_zoom(3.0, panel_putt)
+    r3_900 = putt_frame_zoom(3.0, panel_full)
+    assert abs(r3_640["z"] - r3_900["z"]) < 0.05  # both at cap — 900 just covers more
+    assert r3_640["world_ft"] > r3_900["world_ft"]
+    print(
+        f"  3ft cap: world in band {r3_640['world_ft']:.1f}ft @640 vs "
+        f"{r3_900['world_ft']:.1f}ft @900 (same z={r3_640['z']:.0f})"
+    )
     return 0
 
 

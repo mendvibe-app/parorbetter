@@ -46,14 +46,21 @@ Chip/flop share `SHOT_PANEL_H_PUTT` — same compression if those feel tight too
 
 ---
 
-## Not the cause
+## Does 640 exist to fit the green?
 
-- Snap / fall ticks (aim only; gone on Confirm).
-- Log map / `BAND_HALF` 0.06 — unchanged. The accept *fraction* is the same; it is just fewer pixels.
-- Camera zoom. That is the green, not the stroke pad.
+**No. 900 still fits ball and cup at every length.** `_putt_frame_zoom` sizes zoom to `view.y − HUD − chrome`, and `_putt_frame_look` parks the midpoint in that band. `dist × zoom ≤ safe_h` holds at 640, 720, and 900 (3–75 ft, including a 45° 36-footer).
+
+What the extra window actually does:
+
+| Length | 640 vs 900 |
+|---|---|
+| ≤ ~6 ft (hit `PUTT_ZOOM_CAP` 130) | Same zoom, same ball size (~26 px). 640 uncovers more grass around it (11.1 vs 8.4 ft in the band). 900 does **not** cover the ball or cup — slack still ~530 px on a 3-footer. |
+| 12 ft+ (height-limited) | **Same world span** (zoom scales with the hole in the band). 640 just paints that span with more pixels: 36 ft ball 5.1 vs 3.9 px. |
+
+So Phase 4 did not unblock a clip. It traded pad travel for a taller *pixel* window of the same framing (long) / a bit more uncovered cap-zoom (short). Readability of a true-scale ball on a 36-footer is the real camera argument for keeping *some* reclaim — not “won’t fit.”
 
 ---
 
 ## Next (when you want a change)
 
-Raise `SHOT_PANEL_H_PUTT` toward **720** (Phase 4 playtest knob) if you want some green back *and* ~16% more lane than 640. Restoring **900** restores old pace feel and gives the green back to the pad. No map retune needed — height is the scale.
+Raising `SHOT_PANEL_H_PUTT` toward **720** (or **900**) will not hide the hole. It restores pace travel and makes long-putt ball/cup a few pixels smaller. No map or zoom-formula retune — height is both the input scale and the camera’s bottom chrome.
