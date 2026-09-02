@@ -22,9 +22,8 @@ const HUD_HEIGHT := 200.0
 const CONTROLS_PAD_BOTTOM := 16.0
 ## Kept for confirm-aim / legacy callers; swing pad now fills ShotPanel under the hint.
 const CONTROLS_HEIGHT := 480.0
-## ShotPanel height (bottom-anchored, 1920 canvas). 900 = 47% — putt reclaim is Phase 4.
+## ShotPanel height (bottom-anchored, 1920 canvas). 900 = 47% — all shot types.
 const SHOT_PANEL_H := 900.0
-const SHOT_PANEL_H_PUTT := 640.0  ## PLAYTEST — 33% vs 47%; pad still ~508 px
 const CONFIRM_AIM_TOP := -296.0
 const CONFIRM_AIM_BOTTOM := -160.0
 const FEEDBACK_TOP := 220.0

@@ -3435,14 +3435,10 @@ func _green_book_aim_look() -> Vector2:
 
 
 func _putt_bottom_chrome() -> float:
-	## Aim: Confirm Aim. Stroke: putt/chip/flop share the short panel; pitch stays tall.
+	## Aim: Confirm Aim. Stroke: same 900 panel as full / chip / flop.
 	if _aiming:
 		return absf(UiScale.CONFIRM_AIM_TOP)
-	if shot_routine and shot_routine.visible:
-		var st := shot_routine.shot_type
-		if not BallPhysics.uses_stroke_pad(st):
-			return UiScale.SHOT_PANEL_H
-	return UiScale.SHOT_PANEL_H_PUTT
+	return UiScale.SHOT_PANEL_H
 
 
 func _putt_safe_mid_y_frac(view: Vector2) -> float:
