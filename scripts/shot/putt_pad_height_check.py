@@ -62,7 +62,7 @@ def putt_frame_zoom(dist_ft: float, chrome_h: float, *, vertical: bool = True) -
 
 def main() -> int:
     panel_full = _f(UI, "SHOT_PANEL_H")
-    panel_putt = _f(UI, "SHOT_PANEL_H_PUTT")
+    panel_was = 640.0  # Phase 4 SHOT_PANEL_H_PUTT — deleted; keep the 640-vs-900 math
     compact = _f(UI, "SHOT_PAD_TOP_COMPACT")
     bottom = _f(UI, "CONTROLS_PAD_BOTTOM")
     marker_min = _f(PUTT, "MARKER_MIN_FRAC")
@@ -81,8 +81,10 @@ def main() -> int:
     sample = GESTURE.split("func _finish_impact")[1].split("func ")[0]
     assert '"backswing_frac": _peak_disp / lane' in sample
     layout = ROUTINE.split("func layout_shot_chrome")[1].split("func ")[0]
-    assert "SHOT_PANEL_H_PUTT" in layout
+    assert "SHOT_PANEL_H_PUTT" not in layout
     assert "SHOT_PAD_TOP_COMPACT" in layout
+    assert "SHOT_PANEL_H_PUTT" not in UI
+    assert panel_full == 900.0, panel_full
 
     span = marker_max - marker_min
     rel_per_frac = math.log(1.0 / power_floor) / span  # d(ln ft) / d(frac)
@@ -93,34 +95,30 @@ def main() -> int:
     def ft_per_px(ft: float, lane_px: float) -> float:
         return ft * rel_per_frac / lane_px
 
-    old = lane(panel_full)
-    now = lane(panel_putt)
-    ratio = now / old
-    assert old > now, (old, now)
-    # Linear: panel shrink = lane shrink. 640/900 chrome-fixed → 508/768 = 0.661.
-    pad_ratio = pad_h(panel_putt, compact, bottom) / pad_h(panel_full, compact, bottom)
-    assert abs(ratio - pad_ratio) < 1e-9
+    old = lane(panel_was)
+    now = lane(panel_full)
+    ratio = old / now
+    assert old < now, (old, now)
     print(
-        f"putt_pad_height: panel {panel_putt:.0f} vs {panel_full:.0f}  "
-        f"lane {now:.0f}/{old:.0f}px  ({(1 - ratio) * 100:.0f}% less travel, "
-        f"{1 / ratio:.2f}x ft error per px)"
+        f"putt_pad_height: panel now {panel_full:.0f} (was {panel_was:.0f})  "
+        f"lane {now:.0f}/{old:.0f}px  ({(now / old - 1) * 100:.0f}% more travel than 640, "
+        f"{1 / ratio:.2f}x ft error per px on the old pad)"
     )
     print(
         f"  PERFECT band {band_half * band_perfect * now:.1f}px now vs "
-        f"{band_half * band_perfect * old:.1f}px at {panel_full:.0f}"
+        f"{band_half * band_perfect * old:.1f}px at {panel_was:.0f}"
     )
     for ft in (12, 20, 36):
         print(
             f"  {ft:2d} ft: {ft_per_px(ft, now):.3f} ft/px now vs "
-            f"{ft_per_px(ft, old):.3f} at {panel_full:.0f}  "
+            f"{ft_per_px(ft, old):.3f} at {panel_was:.0f}  "
             f"(8px miss {8 * ft_per_px(ft, now):.1f} vs {8 * ft_per_px(ft, old):.1f} ft)"
         )
 
-    # Execute camera zooms to the HUD–panel band. Taller pad does not clip ball→cup —
-    # it zooms out (long) or covers more of a cap-zoom (short). Look centers the pair.
     chrome_fn = CTRL.split("func _putt_bottom_chrome")[1].split("func ")[0]
-    assert "SHOT_PANEL_H_PUTT" in chrome_fn
-    for chrome in (panel_putt, 720.0, panel_full):
+    assert "SHOT_PANEL_H_PUTT" not in chrome_fn
+    assert "SHOT_PANEL_H" in chrome_fn
+    for chrome in (panel_was, 720.0, panel_full):
         for ft in LENGTHS_FT:
             r = putt_frame_zoom(float(ft), chrome)
             assert r["fit"], (ft, chrome, r)
@@ -129,12 +127,12 @@ def main() -> int:
             f"  camera {chrome:.0f} chrome: 36ft z={r36['z']:.1f} ball={r36['ball_px']:.1f}px "
             f"slack={r36['safe_h'] - r36['pair_px']:.0f}px fit"
         )
-    w640 = putt_frame_zoom(36.0, panel_putt)["world_ft"]
+    w640 = putt_frame_zoom(36.0, panel_was)["world_ft"]
     w900 = putt_frame_zoom(36.0, panel_full)["world_ft"]
-    assert abs(w640 - w900) < 0.05, (w640, w900)  # height-limited: same world, fewer pixels
-    r3_640 = putt_frame_zoom(3.0, panel_putt)
+    assert abs(w640 - w900) < 0.05, (w640, w900)
+    r3_640 = putt_frame_zoom(3.0, panel_was)
     r3_900 = putt_frame_zoom(3.0, panel_full)
-    assert abs(r3_640["z"] - r3_900["z"]) < 0.05  # both at cap — 900 just covers more
+    assert abs(r3_640["z"] - r3_900["z"]) < 0.05
     assert r3_640["world_ft"] > r3_900["world_ft"]
     print(
         f"  3ft cap: world in band {r3_640['world_ft']:.1f}ft @640 vs "

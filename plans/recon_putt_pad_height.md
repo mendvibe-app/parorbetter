@@ -1,7 +1,6 @@
 # Recon: putt pad height vs distance difficulty
 
-**Status:** pace hypothesis confirmed; 640 is not required to fit ball→cup. No code change in this pass.  
-**Trigger:** playtest — hitting putt distance felt harder lately; guess was the shorter execute panel.  
+**Status:** confirmed. 900 restored (`putt-panel-restore-900.md` / #64).**Trigger:** playtest — hitting putt distance felt harder lately; guess was the shorter execute panel.
 **Runnable:** `python3 scripts/shot/putt_pad_height_check.py`
 
 ---
@@ -61,6 +60,6 @@ So Phase 4 did not unblock a clip. It traded pad travel for a taller *pixel* win
 
 ---
 
-## Next (when you want a change)
+## Outcome
 
-Raising `SHOT_PANEL_H_PUTT` toward **720** (or **900**) will not hide the hole. It restores pace travel and makes long-putt ball/cup a few pixels smaller. No map or zoom-formula retune — height is both the input scale and the camera’s bottom chrome.
+900 restored (`putt-panel-restore-900.md`). Pace travel is back; camera still fits.

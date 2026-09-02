@@ -374,6 +374,7 @@ func reset_at(pos: Vector2, lie: String = "Tee") -> void:
 	visual.position = Vector2.ZERO  ## clear lip-in offset; stash cleared separately
 	visual.self_modulate = Color(1, 1, 1)
 	shadow.position = Vector2.ZERO
+	shadow.visible = false
 	glow.visible = false
 	spin_fx.visible = false
 	_cancel_lip_out()
@@ -568,7 +569,8 @@ func _apply_lie_visual() -> void:
 	_shadow_scale = ((r + 0.15) * 2.6) / sh_w
 	shadow.scale = Vector2(_shadow_scale, _shadow_scale)
 	shadow.modulate.a = 0.85
-	shadow.visible = _height > 0.0
+	shadow.visible = false
+	shadow.position = Vector2.ZERO
 	# Glow / spin hug the ball (world). Trail/land rings stay screen-constant elsewhere.
 	if glow.texture:
 		_glow_scale = (r * 5.2) / float(glow.texture.get_width())
@@ -667,13 +669,16 @@ func _physics_process(delta: float) -> void:
 	visual.rotation = _spin_vis
 	var s := 1.0 + _height * 0.006
 	visual.scale = Vector2.ONE * (_ball_scale * s)
-	# Loft shadow is the airborne cue. Height 0 (putt/roll) = on the cloth.
-	var aloft := _height > 0.0
+	# Loft shadow = airborne only. Putts/rolls are height 0; the 6px offset is a
+	# giant-ball leftover and reads as hover on true-scale greens.
+	var aloft := state == State.FLIGHT and _height > 0.0
 	shadow.visible = aloft
 	if aloft:
 		shadow.position = Vector2(spin * 2.0, 6.0 + _height * 0.35)
 		shadow.scale = Vector2(_shadow_scale * (1.0 + _height * 0.012), _shadow_scale * (0.85 + _height * 0.006))
 		shadow.modulate.a = clampf(0.85 - _height * 0.012, 0.2, 0.85)
+	else:
+		shadow.position = Vector2.ZERO
 	# Spin arcs show while rolling with meaningful sidespin
 	var show_spin := state == State.ROLL and absf(spin) > 0.35
 	spin_fx.visible = show_spin
@@ -1354,7 +1359,8 @@ func play_cup_drop() -> void:
 	visual.self_modulate = Color(1, 1, 1, 1)
 	visual.position = Vector2.ZERO
 	if shadow:
-		shadow.modulate.a = 1.0
+		shadow.visible = false
+		shadow.modulate.a = 0.0
 	if glow:
 		glow.visible = false
 	if spin_fx:

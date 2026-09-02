@@ -1,6 +1,6 @@
 # Handoff — Putting / true-scale / green book (2026-08-27)
 
-**Board:** `plans/README.md` (putting rework is Active)  
+**Board:** `plans/README.md` (putting rework is Active)
 **Pick up with:** this file + `plans/putting-rework-roadmap.md`
 
 ---
@@ -17,11 +17,11 @@
 - **Putt line aim (default):** bearing drag, distance locked to cup. F1 flag gone. Spec: `plans/putting-phase0-line-interaction.md` (signed off)
 - **Phase 1 contact:** Green curve in `resolve_distance` (THIN 1.06 / FAT 0.90 / MISS 0.78) + mishit line floor — playtested
 - **Phase 3 read camera:** book zoom + flag during aim; flag out on Confirm
-- **Phase 4 execute panel:** `SHOT_PANEL_H_PUTT` 640 (was 900) — playtest
+- **Phase 4 execute panel:** 640 reverted — all types use `SHOT_PANEL_H` 900 (`putt-panel-restore-900.md`)
 
 ### Still open / next
 
-1. **Restore execute panel to 900** — `plans/putt-panel-restore-900.md`. Phase 4 640 failed pace playtest; camera still fits. Putt then chip then flop on the same build.
+1. **Playtest 900 panel** — Practice Green 12 / 20 / 36 ft, then Short Game chip, then flop. Recon: `plans/recon_putt_pad_height.md`.
 2. **Phase 5** — short-putt glow / green-art bump (parked until 4 ships).
 3. **Green book polish** — arrow density (`GREEN_BOOK_ARROW_N`), wash alpha
 4. **Pin art** — optional PixelLab crisp pin

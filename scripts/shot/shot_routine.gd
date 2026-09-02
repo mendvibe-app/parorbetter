@@ -344,12 +344,7 @@ func layout_shot_chrome() -> void:
 		UiScale.SHOT_PAD_TOP_COMPACT if BallPhysics.uses_stroke_pad(shot_type)
 		else UiScale.SHOT_PAD_TOP
 	)
-	# Putt/chip/flop execute: shorter panel so remaining-fit camera owns more screen.
-	offset_top = -(
-		UiScale.SHOT_PANEL_H_PUTT
-		if BallPhysics.uses_stroke_pad(shot_type)
-		else UiScale.SHOT_PANEL_H
-	)
+	offset_top = -UiScale.SHOT_PANEL_H
 	if meter_display:
 		meter_display.offset_top = UiScale.METER_TOP
 		meter_display.offset_bottom = UiScale.METER_BOTTOM
