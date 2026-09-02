@@ -1,6 +1,6 @@
 # Putting Phase 4 — Execute camera + screen reclaim
 
-**Status:** CODE COMPLETE — playtest panel height  
+**Status:** REVERTED — 640 failed pace playtest. 900 restored: `plans/putt-panel-restore-900.md`.  
 **Roadmap:** `plans/putting-rework-roadmap.md`  
 **Do not** start Phase 5 polish in this PR.
 

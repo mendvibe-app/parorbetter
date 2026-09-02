@@ -53,7 +53,8 @@ def putt_frame_zoom(
 def main() -> int:
     assert "func _putt_frame_zoom" in CTRL
     assert "PUTT_SPAN_COEFF" not in CTRL
-    assert "SHOT_PANEL_H_PUTT" in CTRL
+    assert "SHOT_PANEL_H_PUTT" not in CTRL
+    assert "SHOT_PANEL_H" in CTRL.split("func _putt_bottom_chrome")[1].split("func ")[0]
     zoom_fn = CTRL.split("func _desired_camera_zoom")[1].split("func ")[0]
     assert "_greenside_book_frame" in zoom_fn or "not _is_putt_context()" in zoom_fn
     assert "_putt_frame_zoom" in zoom_fn
@@ -78,7 +79,7 @@ def main() -> int:
         span_floor=_const(CTRL, "PUTT_SPAN_FLOOR"),
         view_frac=_const(CTRL, "PUTT_VIEW_FRAC"),
         hud_h=_const(UI, "HUD_HEIGHT"),
-        chrome_h=_const(UI, "SHOT_PANEL_H_PUTT"),
+        chrome_h=_const(UI, "SHOT_PANEL_H"),
     )
     assert cap >= 100.0, cap
     assert _const(CTRL, "PINCH_ABS_ZOOM_MAX") >= cap - 0.01

@@ -17,11 +17,11 @@
 - **Putt line aim (default):** bearing drag, distance locked to cup. F1 flag gone. Spec: `plans/putting-phase0-line-interaction.md` (signed off)
 - **Phase 1 contact:** Green curve in `resolve_distance` (THIN 1.06 / FAT 0.90 / MISS 0.78) + mishit line floor — playtested
 - **Phase 3 read camera:** book zoom + flag during aim; flag out on Confirm
-- **Phase 4 execute panel:** `SHOT_PANEL_H_PUTT` 640 (was 900) — playtest
+- **Phase 4 execute panel:** 640 reverted — all types use `SHOT_PANEL_H` 900 (`putt-panel-restore-900.md`)
 
 ### Still open / next
 
-1. **Phase 4 playtest** — Confirm Aim: more green on screen, pad still usable on a 36-footer. Raise `SHOT_PANEL_H_PUTT` toward 720 if cramped; drop toward 560 if still letterboxed.
+1. **Playtest 900 panel** — Practice Green 12 / 20 / 36 ft, then Short Game chip, then flop.
 2. **Phase 5** — short-putt glow / green-art bump (parked until 4 ships).
 3. **Green book polish** — arrow density (`GREEN_BOOK_ARROW_N`), wash alpha
 4. **Pin art** — optional PixelLab crisp pin

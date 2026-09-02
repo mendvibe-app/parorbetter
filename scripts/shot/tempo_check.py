@@ -278,7 +278,7 @@ def main() -> int:
     assert "uses_stroke_pad" in layout
     assert "SHOT_PAD_TOP_COMPACT" in layout
     assert "pad_top := UiScale.SHOT_PAD_TOP if show_meter" not in layout
-    assert "SHOT_PANEL_H_PUTT" in layout
+    assert "SHOT_PANEL_H_PUTT" not in layout
     assert "SHOT_PANEL_H" in layout
     # Takeaway starts on axis lock (not finger-down) — pitch ghost wait no longer inflates 2:1.
     assert "VEL_TOP_EPS_PITCH" in GESTURE

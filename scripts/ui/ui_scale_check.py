@@ -56,12 +56,10 @@ def main() -> int:
     assert 'theme/custom="res://assets/ui/game_theme.tres"' in project
     assert "func screen_insets_to_viewport" in SRC
     assert "func apply_hole_safe_area" in SRC
-    # Phase 4: putt execute panel shorter than full-swing 900.
+    # One execute panel height — Phase 4 640 reclaim reverted.
     panel_h = float(re.search(r"const SHOT_PANEL_H := ([0-9.]+)", SRC).group(1))
-    putt_h = float(re.search(r"const SHOT_PANEL_H_PUTT := ([0-9.]+)", SRC).group(1))
     assert panel_h == 900.0, panel_h
-    assert 480.0 <= putt_h <= 720.0, putt_h
-    assert putt_h < panel_h, (putt_h, panel_h)
+    assert "SHOT_PANEL_H_PUTT" not in SRC
 
     # Full-bleed safe area → zero margins
     assert screen_insets_to_viewport((1080, 1920), (0, 0), (1080, 1920), (1080, 1920)) == (
