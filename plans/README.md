@@ -1,8 +1,8 @@
 # Plans — board
 
-**Status: putting rework is the open track.** Pickup:
-`HANDOFF-putting-true-scale.md`. Line + contact signed off. Phase 3 shipped.
-Phase 4 execute panel in build — playtest.
+**Status:** putting rework is the open track. Pickup:
+`HANDOFF-putting-true-scale.md`. Phase 4 640 playtest **failed pace** — restore 900:
+`putt-panel-restore-900.md`.
 
 **New track:** flop at chip distances — `flop-short-dial-phase1.md`
 (code). Flop joins chip’s `PuttStroke` pad; flight stays flop; `FLOP_MAX_YD` 30 is a ceiling not a floor.
@@ -21,7 +21,7 @@ Shipped epic/correction specs live in [`archive/`](archive/).
 
 | Doc | Status |
 |-----|--------|
-| `putting-rework-roadmap.md` | **ACTIVE** — Phases 0–3 shipped; Phase 4 playtest |
+| `putting-rework-roadmap.md` | **ACTIVE** — Phases 0–3 shipped; Phase 4 640 reverted (spec: restore 900) |
 | `green-slope-align-roadmap.md` | **SHIPPED** — Phases 1–3 (device playtest skipped) |
 | `flight-model-rebuild-roadmap.md` | COMPLETE (code) — Phases 0–7; pacing superseded by epic-real-time-pacing |
 | `swing-input-rework-roadmap.md` | COMPLETE (code) — Phases 0–6 |
@@ -52,7 +52,8 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `putting-phase0-line-interaction.md` | SHIPPED — line aim is default (signed off 2026-08-27) |
 | `putting-phase1-contact.md` | SHIPPED — playtest 2026-08-27 |
 | `putting-phase3-read-camera.md` | SHIPPED — book zoom + flag during aim |
-| `putting-phase4-execute-camera.md` | CODE COMPLETE — playtest `SHOT_PANEL_H_PUTT` 640 |
+| `putting-phase4-execute-camera.md` | REVERTING — 640 failed pace playtest; restore 900 (`putt-panel-restore-900.md`) |
+| `putt-panel-restore-900.md` | SPEC — one 900 panel for all shot types |
 | `putt-true-scale-phase1.md` | SHIPPED — true-scale ball/cup/capture |
 | `putt-true-scale-phase2.md` | SHIPPED — putt camera framing (mins/cap still playtest knobs) |
 | `lip-in-drop-variation-phase1.md` | SHIPPED — pour vs toilet-bowl (unit bug 2026-08-27) |

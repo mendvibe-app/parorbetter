@@ -21,7 +21,7 @@
 
 ### Still open / next
 
-1. **Phase 4 playtest** — Confirm Aim: more green on screen, pad still usable on a 36-footer. Raise `SHOT_PANEL_H_PUTT` toward 720 if cramped; drop toward 560 if still letterboxed.
+1. **Restore execute panel to 900** — `plans/putt-panel-restore-900.md`. Phase 4 640 failed pace playtest; camera still fits. Putt then chip then flop on the same build.
 2. **Phase 5** — short-putt glow / green-art bump (parked until 4 ships).
 3. **Green book polish** — arrow density (`GREEN_BOOK_ARROW_N`), wash alpha
 4. **Pin art** — optional PixelLab crisp pin

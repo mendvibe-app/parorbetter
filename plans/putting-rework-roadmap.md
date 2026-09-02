@@ -53,7 +53,7 @@ Same discipline as the flight and swing-input rebuilds:
 - **One phase = one PR = one playtest pass.**
 - **Every phase gets a build spec before code**, exact file paths and line numbers.
 - **Tuning constants are playtest targets**, flagged in comments.
-- **Do not start Phase 5 polish before Phase 4 panel height is playtested.**
+- **Phase 4 640 playtested — revert to 900** (`putt-panel-restore-900.md`). **Do not start Phase 5 polish until that restore ships.**
 
 ---
 
@@ -80,10 +80,10 @@ Spec: `plans/putting-phase3-read-camera.md`. Book zoom + flag during aim; flag
 out and book closed on Confirm. Was already in tree; contract locked in
 `green_book_check.py`.
 
-### Phase 4 — Execute-phase camera + screen reclaim — CODE COMPLETE
+### Phase 4 — Execute-phase camera + screen reclaim — REVERTING
 
-Spec: `plans/putting-phase4-execute-camera.md`. Confirm already cuts to
-true-scale zoom; putt ShotPanel `SHOT_PANEL_H_PUTT` 640 vs 900. Playtest next.
+640 failed pace playtest (`plans/recon_putt_pad_height.md`). Restore 900 for
+every shot type: `plans/putt-panel-restore-900.md`.
 
 ### Phase 5 — Revisit legibility polish (parked until 1–4 ship)
 

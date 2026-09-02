@@ -1,6 +1,6 @@
 # Putting Phase 4 — Execute camera + screen reclaim
 
-**Status:** CODE COMPLETE — playtest panel height. Recon: `plans/recon_putt_pad_height.md` (640 vs 900 is 34% less lane; same thumb miss → 1.51× ft error).  
+**Status:** REVERTING — 640 failed pace playtest. Restore 900: `plans/putt-panel-restore-900.md`.  
 **Roadmap:** `plans/putting-rework-roadmap.md`  
 **Do not** start Phase 5 polish in this PR.
 
