@@ -1,6 +1,6 @@
 # Recon: putt pad height vs distance difficulty
 
-**Status:** hypothesis confirmed. No code change in this pass.  
+**Status:** pace hypothesis confirmed; 640 is not required to fit ball→cup. No code change in this pass.  
 **Trigger:** playtest — hitting putt distance felt harder lately; guess was the shorter execute panel.  
 **Runnable:** `python3 scripts/shot/putt_pad_height_check.py`
 
