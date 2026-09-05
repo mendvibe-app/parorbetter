@@ -105,6 +105,11 @@ def main() -> int:
     assert "func _clears_bunkers" in CTRL
     assert "func _on_painted_sand" in CTRL
     assert "SAND_COLLISION_FRAC" in CTRL
+    assert "func _make_bunker_lobes" in CTRL
+    assert "func _raster_welded_bunker" in CTRL
+    assert "TEX_BUNKER_GRAIN" in CTRL
+    assert "BUNKER_LIP_COLOR" in CTRL
+    assert "bunker_hits_dilated_green" in CTRL
 
     # Cape + Leven water hazards epic.
     assert 'ROLE_DIAGONAL := "diagonal"' in DATA
@@ -125,11 +130,11 @@ def main() -> int:
     assert "func _water_area_is_wet" in BALL
     assert "_water_area_is_wet" in BALL.split('is_in_group("water")')[1].split("func ")[0]
 
-    # Island soft-lock fix: dry drop relief + approach tongue (not only last_safe).
+    # Dry drop after water; island rings retired from the randomizer.
     assert "func _water_drop_pos" in CTRL
     assert "func _hazard_drop_pos" in CTRL
     assert "func _is_dry_drop_spot" in CTRL
-    assert "gap_half" in CTRL  # island bottom wings leave fairway gap
+    assert "skip island_ring" in CTRL
     assert 'ball.reset_at(ball.get_last_safe(), "Fairway")' not in CTRL
 
     print("hazard_placement_check: ok")

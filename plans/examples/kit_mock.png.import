@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bfphypsubg74l"
-path="res://.godot/imported/water_tile.png-bc795616b9dc993bfa6975a83c16e326.ctex"
+uid="uid://djcqjgc4lbs2y"
+path="res://.godot/imported/kit_mock.png-e5729a4fc2dd46026e0a632e598fee7a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/terrain/water_tile.png"
-dest_files=["res://.godot/imported/water_tile.png-bc795616b9dc993bfa6975a83c16e326.ctex"]
+source_file="res://plans/examples/kit_mock.png"
+dest_files=["res://.godot/imported/kit_mock.png-e5729a4fc2dd46026e0a632e598fee7a.ctex"]
 
 [params]
 

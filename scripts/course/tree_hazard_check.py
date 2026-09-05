@@ -33,6 +33,9 @@ must("return 0.58" in PHYS, "trees distance mult")
 must("func _clears_bunkers" in CTRL, "_clears_bunkers")
 must("_clears_bunkers(" in CTRL, "tree place checks bunkers")
 must("BUNKER_TREE_PAD" in CTRL, "bunker-tree pad")
+must("_bunker_hits_water(try_c, TREE_WATER_PAD)" in CTRL, "tree water test is stamp center, not canopy")
+must("canopy := r * 1.15" not in CTRL, "do not require dry canopy")
+must("for dy in" in CTRL, "tree along-nudge off creek")
 
 
 def clears_bunkers(center, radius, bunkers, pad=6.0) -> bool:

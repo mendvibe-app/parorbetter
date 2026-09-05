@@ -21,6 +21,19 @@ const ROLE_ISLAND_RING := "island_ring"
 const ROLE_DIAGONAL := "diagonal"  ## Leven: angled band across landing
 const ROLE_SHORELINE := "shoreline"  ## Cape: elbow-hugging water panels
 
+## Hole-generator kit (Wave F) — five cuts, not a tube + halo.
+## rough / first-cut / fairway / collar / green.
+## First-cut is its OWN silhouette (not an offset of the fairway). Paint is live (T-junction
+## + pear apron); lie follows those polys in HoleController._classify_lie.
+## Seams (Phase 1+): fairway|first-cut = 1px mow; first-cut|rough = tile value; sand|grass =
+## 1px dark lip; water|grass = 1px deep lip; canopy shadow = thrown stencil (not trunk dither).
+## Illegal: bunker intersects dilated(green); bunker intersects water. Push or skip with reason.
+const ROLE_SIDE_LAKE := "side_lake"  ## Phase 3 path+width neighbor (one bank off-screen)
+const ROLE_POND := "pond"  ## Small one-body water off fairway (not edge-square / not island)
+## Thin grass collar between sand and putting surface (px). sand ∩ dilated(green) is illegal.
+const BUNKER_GREEN_COLLAR_PX := 8.0  ## PLAYTEST TARGET — Phase 2 paint must honor
+
+
 @export var hole_number: int = 1
 @export var par: int = 4
 @export var yardage: float = 400.0  ## White (middle) tee→green yards (layout length)
@@ -56,6 +69,14 @@ const ROLE_SHORELINE := "shoreline"  ## Cape: elbow-hugging water panels
 ## kind=sand|water|tree; role=greenside|landing|carry|edge|island_ring
 ## tree count = how many canopies to stamp around that role site (default 1).
 @export var hazards: Array = []
+## Kit widths (px outside fairway half). Phase 1: 0 = that side DIES (not FIRST_CUT_W).
+## Independent L/R first-cut — mid-hole envelope may also die so fairway meets rough.
+@export var first_cut_left: float = 0.0
+@export var first_cut_right: float = 0.0
+## First-cut apron plate scale vs green outer. 0 = use HoleController GREEN_APRON_SCALE.
+@export var apron_plate_scale: float = 0.0
+## Water as side neighbor: -1 left, 0 none, 1 right. Phase 3; unused in paint today.
+@export var water_neighbor_side: int = 0
 @export var complexity: float = 0.0  ## 0–1 difficulty composite
 @export var archetype: String = ""  ## generator identity (e.g. short_sharp)
 
@@ -220,3 +241,27 @@ func _influences_bi_tier(
 		"sigma": rmin * 0.4,
 	})
 	return out
+
+
+## Kit overlap helpers (Phase 2+ paint). Phase 0: named + checked; not wired to stamps yet.
+
+static func bunker_hits_dilated_green(
+	bunker_c: Vector2,
+	bunker_r: float,
+	green_c: Vector2,
+	green_rx: float,
+	green_ry: float,
+	collar_px: float = BUNKER_GREEN_COLLAR_PX
+) -> bool:
+	## True = illegal (sand would touch putting surface / sit inside collar).
+	var erx := maxf(green_rx, 1.0) + collar_px + bunker_r
+	var ery := maxf(green_ry, 1.0) + collar_px + bunker_r
+	var d := bunker_c - green_c
+	var nx := d.x / erx
+	var ny := d.y / ery
+	return nx * nx + ny * ny <= 1.0
+
+
+static func bunker_on_water_neighbor_side(bunker_side: int, water_side: int) -> bool:
+	## True = illegal when water is a side neighbor and bunker shares that side.
+	return water_side != 0 and bunker_side == water_side

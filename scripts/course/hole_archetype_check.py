@@ -65,6 +65,33 @@ def difficulty_t(hole_number: int, total_holes: int = 18) -> float:
     return u * u
 
 
+def spread_par(out: list[int], par: int) -> None:
+    for _ in range(8):
+        moved = False
+        for i in range(len(out) - 1):
+            if out[i] != par or out[i + 1] != par:
+                continue
+            for j in range(len(out)):
+                if j in (i, i + 1) or out[j] == par:
+                    continue
+                out[i + 1], out[j] = out[j], out[i + 1]
+                moved = True
+                break
+        if not moved:
+            return
+
+
+def max_run(pars: list[int], par: int) -> int:
+    best = cur = 0
+    for p in pars:
+        if p == par:
+            cur += 1
+            best = max(best, cur)
+        else:
+            cur = 0
+    return best
+
+
 def main() -> int:
     # Immediate previous same-par id is excluded.
     hist = [{"par": 4, "id": "short_sharp"}]
@@ -109,6 +136,15 @@ def main() -> int:
 
     assert len(picked) >= 8
     assert len(set(picked)) >= 4, f"par4 diversity too low: {picked}"
+
+    # Opening-3 used to pull every par 3 forward (playtest: holes 3–6 all par 3).
+    clumped = [3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5]
+    spread_par(clumped, 3)
+    spread_par(clumped, 5)
+    assert max_run(clumped, 3) <= 1, clumped
+    assert max_run(clumped, 5) <= 1, clumped
+    assert clumped.count(3) == 4 and clumped.count(5) == 4 and clumped.count(4) == 10
+
     print("hole_archetype_check: ok", f"par4={picked}")
     return 0
 

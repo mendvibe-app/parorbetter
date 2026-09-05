@@ -94,8 +94,7 @@ const ARCHETYPES: Dictionary = {
 			"green_size_bias": -0.12,
 			"bend": 0.5,
 			"hazard_side": 0.55,
-			"force_water": true,
-			# ~hole 9 on 18 (difficulty_t = u²); opening par-3s stay long-iron / short-pitch.
+			# Island layout retired — do not force water (was the repeating par-3 lake combo).
 			"min_t": 0.22,
 		},
 	],
@@ -294,7 +293,7 @@ static func generate_course(
 		if prev_complexity >= 0.0:
 			hole.complexity = maxf(hole.complexity, prev_complexity)
 		prev_complexity = hole.complexity
-		archetype_history.append({"par": hole.par, "id": hole.archetype})
+		archetype_history.append({"par": hole.par, "id": hole.archetype, "water": _water_role(hole.hazards)})
 		holes.append(hole)
 	return holes
 
@@ -334,7 +333,8 @@ static func generate_hole(
 		want_water = true
 	if t >= 0.55 and not want_bunker and not want_water:
 		want_bunker = true
-	if layout == HoleData.LayoutStyle.ISLAND or green_shape == HoleData.GreenShape.PENINSULA:
+	# Island layout retired — peninsula art no longer forces a water ring.
+	if layout == HoleData.LayoutStyle.ISLAND:
 		want_water = true
 	# Keep the roll so course seeds stay stable vs older generators.
 	if t >= 0.75 and want_bunker and want_water:
@@ -400,8 +400,13 @@ static func generate_hole(
 		elif rng.randf() < side_p:
 			hazard_bias = HoleData.HazardBias.LEFT if rng.randf() < 0.5 else HoleData.HazardBias.RIGHT
 
+	var last_water := ""
+	if not archetype_history.is_empty():
+		var prev = archetype_history[archetype_history.size() - 1]
+		if typeof(prev) == TYPE_DICTIONARY:
+			last_water = str(prev.get("water", ""))
 	var hazards := _build_hazards(
-		want_bunker, want_water, layout, t, hazard_bias, rng, corner_position, arch
+		want_bunker, want_water, layout, t, hazard_bias, rng, corner_position, arch, last_water
 	)
 	# Trees are hole design, not decoration — density by archetype (links open vs parkland chute).
 	for tr in _build_trees(layout, t, hazard_bias, rng, arch, corner_position):
@@ -448,6 +453,31 @@ static func generate_hole(
 	d.hazards = hazards
 	d.complexity = complexity
 	d.archetype = str(arch.get("id", ""))
+	# Kit Phase 1: independent first-cut widths + apron plate (0 = die that side).
+	d.first_cut_left = rng.randf_range(38.0, 78.0)
+	d.first_cut_right = rng.randf_range(38.0, 78.0)
+	# Phase 3: side-lake marks water_neighbor_side; first-cut dies on that bank.
+	d.water_neighbor_side = 0
+	for hz in hazards:
+		if typeof(hz) != TYPE_DICTIONARY:
+			continue
+		if str(hz.get("role", "")) == HoleData.ROLE_SIDE_LAKE or str(hz.get("role", "")) == HoleData.ROLE_SHORELINE:
+			var ws := int(hz.get("side", 0))
+			if ws != 0:
+				d.water_neighbor_side = ws
+				break
+	if d.water_neighbor_side < 0:
+		d.first_cut_left = 0.0
+	elif d.water_neighbor_side > 0:
+		d.first_cut_right = 0.0
+	else:
+		# Occasional one-sided die for variety when no water neighbor.
+		if rng.randf() < 0.18:
+			if rng.randf() < 0.5:
+				d.first_cut_left = 0.0
+			else:
+				d.first_cut_right = 0.0
+	d.apron_plate_scale = rng.randf_range(1.28, 1.48)
 	return d
 
 
@@ -518,36 +548,62 @@ static func _par_bag_for_course(hole_count: int, rng: RandomNumberGenerator) -> 
 
 
 static func _place_pars_by_band(bag: Array[int], hole_count: int, rng: RandomNumberGenerator) -> Array[int]:
-	## Keep exact counts; bias short/easy feel early and closers late via light swaps.
+	## Keep exact counts; one short opener, one long closer — not a par-3 front nine.
 	var out: Array[int] = bag.duplicate()
-	# Prefer a par 3 in the opening 3 if available.
+	var has_early := false
 	for i in mini(3, out.size()):
 		if out[i] == 3:
+			has_early = true
 			break
-		for j in range(i + 1, out.size()):
+	if not has_early:
+		for j in range(3, out.size()):
 			if out[j] == 3:
-				var tmp := out[i]
-				out[i] = out[j]
+				var tmp := out[0]
+				out[0] = out[j]
 				out[j] = tmp
 				break
-	# Prefer a par 5 in the finishing 3 if available.
 	var start := maxi(0, hole_count - 3)
-	for i in range(hole_count - 1, start - 1, -1):
+	var has_late := false
+	for i in range(start, hole_count):
 		if out[i] == 5:
+			has_late = true
 			break
-		for j in range(0, i):
+	if not has_late:
+		for j in range(0, start):
 			if out[j] == 5:
-				var tmp2 := out[i]
-				out[i] = out[j]
+				var tmp2 := out[hole_count - 1]
+				out[hole_count - 1] = out[j]
 				out[j] = tmp2
 				break
-	# Light shuffle within front / middle / back so it isn't rigid.
 	_shuffle_range(out, 0, mini(6, hole_count), rng)
 	if hole_count > 9:
 		_shuffle_range(out, 6, mini(12, hole_count), rng)
 	if hole_count > 12:
 		_shuffle_range(out, 12, hole_count, rng)
+	_spread_par(out, 3)
+	_spread_par(out, 5)
 	return out
+
+
+static func _spread_par(out: Array, par: int) -> void:
+	## Break adjacent same-par holes (playtest: four par 3s in a row).
+	for _pass in 8:
+		var moved := false
+		for i in range(out.size() - 1):
+			if int(out[i]) != par or int(out[i + 1]) != par:
+				continue
+			for j in range(out.size()):
+				if j == i or j == i + 1:
+					continue
+				if int(out[j]) == par:
+					continue
+				var tmp = out[i + 1]
+				out[i + 1] = out[j]
+				out[j] = tmp
+				moved = true
+				break
+		if not moved:
+			return
 
 
 static func _shuffle(arr: Array, rng: RandomNumberGenerator) -> void:
@@ -628,11 +684,8 @@ static func _layout_for_archetype(
 	t: float,
 	rng: RandomNumberGenerator
 ) -> HoleData.LayoutStyle:
-	if t >= 0.22 and (
-		shape == HoleData.GreenShape.PENINSULA or bool(arch.get("force_water", false))
-	):
-		if shape == HoleData.GreenShape.PENINSULA or rng.randf() < 0.65:
-			return HoleData.LayoutStyle.ISLAND
+	# Island layout retired from the randomizer (hand-built later if wanted).
+	# force_water / peninsula still get water via creek / side-lake / pond.
 	if bool(arch.get("prefer_dogleg", false)):
 		return (
 			HoleData.LayoutStyle.DOGLEG_LEFT
@@ -665,7 +718,8 @@ static func _layout_for_shape(
 ) -> HoleData.LayoutStyle:
 	match shape:
 		HoleData.GreenShape.PENINSULA:
-			return HoleData.LayoutStyle.ISLAND
+			# Peninsula green art OK; layout is standard corridor (no island ring).
+			return HoleData.LayoutStyle.STANDARD if rng.randf() < 0.55 else HoleData.LayoutStyle.BI_TIER
 		HoleData.GreenShape.TIERED, HoleData.GreenShape.COMPLEX:
 			return HoleData.LayoutStyle.BI_TIER
 		HoleData.GreenShape.L_SHAPED:
@@ -677,9 +731,16 @@ static func _layout_for_shape(
 				else HoleData.LayoutStyle.DOGLEG_RIGHT
 			)
 		_:
-			# Oval: escalate layout intensity with difficulty.
+			# Oval: escalate with difficulty. Early holes still mix dogleg so
+			# consecutive par 3s don't all read as the same straight tube.
 			if t < 0.25:
-				return HoleData.LayoutStyle.STANDARD
+				if rng.randf() < 0.42:
+					return HoleData.LayoutStyle.STANDARD
+				return (
+					HoleData.LayoutStyle.DOGLEG_LEFT
+					if rng.randf() < 0.5
+					else HoleData.LayoutStyle.DOGLEG_RIGHT
+				)
 			if t < 0.55:
 				return (
 					HoleData.LayoutStyle.DOGLEG_LEFT
@@ -688,7 +749,7 @@ static func _layout_for_shape(
 				)
 			if t < 0.8:
 				return HoleData.LayoutStyle.CHUTE if rng.randf() < 0.55 else HoleData.LayoutStyle.DOGLEG_RIGHT
-			return HoleData.LayoutStyle.ISLAND if rng.randf() < 0.4 else HoleData.LayoutStyle.BI_TIER
+			return HoleData.LayoutStyle.BI_TIER if rng.randf() < 0.55 else HoleData.LayoutStyle.CHUTE
 
 
 ## Approach length the green is sized for (par 3 = full yardage).
@@ -789,6 +850,15 @@ static func _pick_contour(
 	return pick_weighted(rng, items, weights)
 
 
+static func _water_role(hazards: Array) -> String:
+	for hz in hazards:
+		if typeof(hz) != TYPE_DICTIONARY:
+			continue
+		if str(hz.get("kind", "")) == "water":
+			return str(hz.get("role", ""))
+	return ""
+
+
 static func _build_hazards(
 	want_bunker: bool,
 	want_water: bool,
@@ -797,7 +867,8 @@ static func _build_hazards(
 	bias: HoleData.HazardBias,
 	rng: RandomNumberGenerator,
 	corner_position: float = 0.5,
-	arch: Dictionary = {}
+	arch: Dictionary = {},
+	last_water: String = ""
 ) -> Array:
 	var side := 1
 	if bias == HoleData.HazardBias.LEFT:
@@ -815,12 +886,11 @@ static func _build_hazards(
 	)
 	var dogleg_inside := -1 if layout == HoleData.LayoutStyle.DOGLEG_LEFT else 1
 
-	if is_island and want_water:
-		out.append(_haz("water", HoleData.ROLE_ISLAND_RING, 0, 0.05, 70.0, 0))
+	# Island ring retired from randomizer — never emit ROLE_ISLAND_RING.
 
 	# Cape before sand so _cull_hazards(3) cannot drop the identity water.
 	var force_cape := is_dogleg and bool(arch.get("force_cape", false))
-	if want_water and not is_island and force_cape:
+	if want_water and force_cape:
 		out.append(_haz(
 			"water",
 			HoleData.ROLE_SHORELINE,
@@ -862,22 +932,26 @@ static func _build_hazards(
 		if not added_sand:
 			out.append(_haz("sand", HoleData.ROLE_LANDING, side, 0.5, 42.0, 0))
 
-	if want_water and not is_island and not force_cape:
-		if layout == HoleData.LayoutStyle.CHUTE:
-			out.append(_haz("water", HoleData.ROLE_EDGE, -1, 0.4, 50.0, 0))
-			out.append(_haz("water", HoleData.ROLE_EDGE, 1, 0.4, 50.0, 0))
-		elif rng.randf() < lerpf(0.45, 0.75, t):
-			# Leven diagonal ~40% of dogleg carries; keep straight carry in rotation.
-			if is_dogleg and rng.randf() < 0.4:
+	if want_water and not force_cape:
+		# Crossings are a club-choice beat. After a side-lake, prefer a creek so
+		# consecutive holes don't read as the same water wall.
+		var creek_p := lerpf(0.48, 0.62, t)
+		if last_water == HoleData.ROLE_SIDE_LAKE or last_water == HoleData.ROLE_SHORELINE:
+			creek_p = 0.78
+		elif last_water == HoleData.ROLE_CARRY or last_water == HoleData.ROLE_DIAGONAL:
+			creek_p = 0.28
+		if rng.randf() < creek_p:
+			# Diagonal is a flow variety of carry, not dogleg-only.
+			if rng.randf() < 0.42:
 				var d_along := clampf(
 					corner_position + rng.randf_range(-0.05, 0.05), 0.12, 0.88
-				)
+				) if is_dogleg else rng.randf_range(0.28, 0.48)
 				out.append(_haz(
 					"water",
 					HoleData.ROLE_DIAGONAL,
-					dogleg_inside,
+					dogleg_inside if is_dogleg else side,
 					d_along,
-					lerpf(22.0, 36.0, t),
+					lerpf(9.0, 14.0, t),
 					0
 				))
 			else:
@@ -886,12 +960,30 @@ static func _build_hazards(
 					HoleData.ROLE_CARRY,
 					0,
 					rng.randf_range(0.28, 0.48),
-					lerpf(22.0, 36.0, t),
+					lerpf(9.0, 14.0, t),
 					0
 				))
+		elif (
+			last_water == HoleData.ROLE_SIDE_LAKE
+			or last_water == HoleData.ROLE_SHORELINE
+			or rng.randf() < 0.28
+		):
+			out.append(_haz(
+				"water",
+				HoleData.ROLE_POND,
+				side,
+				rng.randf_range(0.32, 0.58),
+				lerpf(28.0, 40.0, t),
+				0
+			))
 		else:
 			out.append(_haz(
-				"water", HoleData.ROLE_EDGE, side, rng.randf_range(0.25, 0.45), lerpf(40.0, 58.0, t), 0
+				"water",
+				HoleData.ROLE_SIDE_LAKE,
+				side,
+				rng.randf_range(0.28, 0.48),
+				lerpf(56.0, 78.0, t),
+				0
 			))
 
 	return _cull_hazards(out, 3)
@@ -995,6 +1087,10 @@ static func _cull_hazards(items: Array, max_n: int) -> Array:
 				break
 			if str(k.get("role", "")) == HoleData.ROLE_ISLAND_RING:
 				continue
+			# One water identity per hole — creek or pond or side-lake, never glued.
+			if str(h.get("kind", "")) == "water" and str(k.get("kind", "")) == "water":
+				ok = false
+				break
 			var da: float = absf(float(h.get("along", 0.0)) - float(k.get("along", 0.0)))
 			var same_side: bool = int(h.get("side", 0)) == int(k.get("side", 0))
 			if da < 0.12 and same_side and str(h.get("kind", "")) == str(k.get("kind", "")):

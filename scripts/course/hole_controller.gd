@@ -101,6 +101,7 @@ const TEX_ROUGH_DARK := preload("res://assets/terrain/rough_tile_b.png")
 const TEX_FAIRWAY := preload("res://assets/terrain/fairway_tile_a.png")
 const TEX_TEE := preload("res://assets/terrain/tee_tile.png")
 const TEX_WATER := preload("res://assets/terrain/water_tile.png")
+const TEX_SHORE := preload("res://assets/terrain/water_shore.png")
 const TEX_WATER_CREEK := preload("res://assets/hazards/water_creek.png")
 const TEX_WATER_POND := preload("res://assets/hazards/water_pond.png")
 const TEX_CUP := preload("res://assets/greens/cup.png")
@@ -118,9 +119,12 @@ const GREEN_SHAPE_TEXTURES := {
 const GREEN_DEFAULT := preload("res://assets/greens/green_oval.png")
 const BUNKER_TEXTURES := [
 	preload("res://assets/hazards/bunker_blob.png"),
-	preload("res://assets/hazards/bunker_crescent.png"),
-	preload("res://assets/hazards/bunker_cluster.png"),
+	preload("res://assets/hazards/bunker_crescent.png"),  ## RETIRED stamp; not used in Phase 2 paint
+	preload("res://assets/hazards/bunker_cluster.png"),  ## RETIRED stamp; not used in Phase 2 paint
 ]
+const TEX_BUNKER_GRAIN := preload("res://assets/hazards/bunker_blob.png")  ## kit tan fill only
+const BUNKER_LIP_COLOR := Color(26.0 / 255.0, 36.0 / 255.0, 24.0 / 255.0, 1.0)  ## #1A2418 vs grass
+
 const TREE_TEXTURES := [
 	preload("res://assets/background/tree_round.png"),
 	preload("res://assets/background/tree_pine.png"),
@@ -143,9 +147,14 @@ const TREE_CANOPY_H: Array[float] = [56.0, 72.0, 61.0, 65.0, 50.0, 63.0, 58.0, 8
 ##                                   round  pine cluster oak  airy  dark broad tall
 ## Portrait course framing. Split from overloaded SIDE_BELT_W (rough-base-layer P0):
 ## art width, camera pad, and tree line must move independently.
-const FIRST_CUT_W := 14.0  ## PLAYTEST TARGET — first-cut halo width (art only)
+const FIRST_CUT_W := 14.0  ## RETIRED halo width — kept for revert; paint uses HoleData.first_cut_*
+## Kit Phase 1: independent first-cut field. 0 on a side = that side dies (not FIRST_CUT_W).
 const CORRIDOR_PAD := 58.0  ## camera framing pad each side (was SIDE_BELT_W)
 const TREE_LINE_PAD := 20.0  ## was SIDE_BELT_W * 0.35 — tree offset beyond fairway edge
+const TREE_WATER_PAD := 4.0  ## stamp center on land; canopy may overhang the bank
+const WATER_OFFSCREEN := 3200.0  ## past corridor zoom-out; far bank + termini never read
+const CARRY_HALF_W_MAX := 6.0  ## ~12px full ≈ 5 yd / 16 ft — creek, not river (PX_PER_YARD 2.25)
+const SIDE_LAKE_INNER_MARGIN := 32.0  ## dry bank between fairway mow and water
 const CORRIDOR_SCREEN_FRAC := 0.43  ## fairway + pads in view (was 0.50 — long tee felt tight)
 const CORRIDOR_ZOOM_MIN := 1.05
 const CORRIDOR_ZOOM_MAX := 1.55  ## was 1.95
@@ -176,9 +185,14 @@ const SHORT_GAME_SURFACES := [
 const SHORT_GAME_DIST_ORDER := ["close", "medium", "full"]
 const SHORT_GAME_DIST_LABELS := {"close": "Close", "medium": "Medium", "full": "Full"}
 var _fairway_half: float = 70.0
+## Painted cut silhouettes for _classify_lie (world space). First-cut sausage includes fairway.
+var _fairway_poly: PackedVector2Array = PackedVector2Array()
+var _first_cut_poly: PackedVector2Array = PackedVector2Array()
+var _apron_poly: PackedVector2Array = PackedVector2Array()
+var _water_polys: Array = []  ## PackedVector2Array per water body
 var _flight_zoom_base: float = 1.2  ## captured at full-shot start; flight fracs scale from this
 var _flight_short_game: bool = false  ## chip/pitch/flop in-flight — remaining-fit like putt roll
-var _bunkers: Array = []  ## {c, r, sprite, img} — settle lie via paint alpha
+var _bunkers: Array = []  ## {c, r, sprite, img, lobes?} — settle lie via paint alpha (welded lobes)
 var _trees: Array = []  ## {c: Vector2, r: float} — collision + Trees lie
 var _green_book: Node2D  ## aim-only yardage-book overlay (height heat)
 var _putt_fall: _GreenBookDraw  ## local downhill at stance / mid (cup kept clear)
@@ -273,8 +287,13 @@ func _ready() -> void:
 	GameState.run_ended.connect(_on_run_ended)
 	_setup_aim_visuals()
 	_setup_club_select()
+	# UILayer stays at scene layer 10 — below main UIOverlay (Debug=20).
+	# Raising it to 20 put ClubSelect over Debug. Confirm stays high within this layer.
+	if ui_layer and ui_layer.layer > 10:
+		ui_layer.layer = 10
 	if confirm_aim_btn:
 		confirm_aim_btn.visible = false
+		confirm_aim_btn.z_index = 40
 		confirm_aim_btn.pressed.connect(_confirm_aim)
 	shot_routine.back_requested.connect(_on_back_requested)
 	_setup_change_club_btn()
@@ -296,7 +315,12 @@ func _ready() -> void:
 		ui_layer.move_child(_short_game_station_panel, -1)
 	if scorecard:
 		ui_layer.move_child(scorecard, -1)
+	# Confirm above HUD/map; ClubSelect modal last (top of hole UI only — not over Debug).
+	if confirm_aim_btn:
+		ui_layer.move_child(confirm_aim_btn, -1)
 	ui_layer.move_child(_club_select, -1)
+	if hud:
+		hud.z_index = 20  ## above hole_map (5) / wind; opaque strip covers side-lake under chrome
 	_apply_safe_area()
 	get_viewport().size_changed.connect(_apply_safe_area)
 
@@ -639,7 +663,11 @@ func _build_course() -> void:
 	_bunkers.clear()
 	_trees.clear()
 	_tee_pads.clear()
-	# Water areas rebuilt via _add_water_sprite / _add_rect; paint meta set per area.
+	_fairway_poly = PackedVector2Array()
+	_first_cut_poly = PackedVector2Array()
+	_apron_poly = PackedVector2Array()
+	_water_polys.clear()
+	# Water areas rebuilt via _add_water_poly; lie uses stored cut polys.
 
 	var fairway_w: float = hole.fairway_width
 	if GameState.debug_fairway_scale != null:
@@ -660,7 +688,7 @@ func _build_course() -> void:
 	_setup_tee_positions()
 	var course_len := (_tee_back_pos.y - GREEN_Y) + 180.0
 
-	# Base rough is the world (dark tile). Fairway is mown into it; first-cut is a halo.
+	# Base rough is the world (dark tile). Kit: first-cut field, then fairway arrives.
 	_add_rect(
 		course_root,
 		Rect2(0, GREEN_Y - 140, 1080, course_len + 220),
@@ -670,17 +698,15 @@ func _build_course() -> void:
 		GROUND_TILE_PX
 	)
 
-	# First-cut halo (lighter rough) between base and fairway — follow bend.
+	# Independent first-cut silhouette (rough_tile_a) — not a fairway-offset halo.
 	_add_first_cut()
-
-	# Bent / shaped fairway (lightest, striped)
-	_add_bent_fairway(fairway_w)
-	# Short-grass apron under/around the green so rough cannot form a dark ring
-	# at the shoulders (real aerials: green sits in continuous fairway/fringe).
+	# First-cut apron plate under the green (not TEX_FAIRWAY wrap).
 	_add_green_apron()
 
+	# Fairway (striped) — T-junction into the apron, does not wrap the green.
+	_add_bent_fairway(fairway_w)
+
 	# Green sprite (variant per layout) + detection area.
-	# Even edge value; fairway collar + apron flow under the silhouette.
 	_add_green(hole.green_radius_x + 14.0, hole.green_radius_y + 14.0)
 
 	# Sensor = dark hole only; sprite keeps full collar for rim/depth read.
@@ -751,8 +777,8 @@ func _green_outer_radii() -> Vector2:
 
 
 func _add_bent_fairway(width: float) -> void:
-	## Trapezoid / dogleg strip from tee into the green edge (true collar).
-	## Non-island: south silhouette collar so rough base never shows a moat.
+	## Trapezoid / dogleg strip from tee to apron front (T-junction).
+	## Non-island: does NOT wrap the green — first-cut plate owns shoulders.
 	## Island: stop short of water — apron tongue only (no collar into the ring).
 	## Fairway reaches Blue (back) tee so all three pads sit on the corridor.
 	var half := width * 0.5
@@ -778,13 +804,16 @@ func _add_bent_fairway(width: float) -> void:
 	var pts := PackedVector2Array()
 	pts.append(bot + Vector2(-half, 0))
 	pts.append(mid + Vector2(-half * 0.85, 0))
-	# True collar: all non-island greens (oval/kidney/tiered/L/complex).
-	# Prefer green outer width so the approach flanks the front of the green
-	# (real aerials: wide apron, not a thin tongue into a ring).
+	# Phase 1: fairway arrives at apron front (T-junction). No south-arc wrap under green.
 	if not _is_island_green():
-		var outer := _green_outer_radii()
-		var collar_half := maxf(minf(half * 1.05, outer.x * 1.02), outer.x * 0.72)
-		pts.append_array(_collar_arc_points(collar_half))
+		var plate := _apron_plate_scale()
+		var outer := _green_outer_radii() * plate
+		# South edge of the plate — fairway stops here; first-cut owns the shoulders.
+		var front_y := _green_center.y + outer.y * 0.92
+		var cx := _fairway_center_x(0.0)
+		var tip_half := minf(half * 0.92, outer.x * 0.55)
+		pts.append(Vector2(cx - tip_half, front_y))
+		pts.append(Vector2(cx + tip_half, front_y))
 	else:
 		pts.append(top + Vector2(-half * 0.7, 0))
 		pts.append(top + Vector2(half * 0.7, 0))
@@ -792,6 +821,7 @@ func _add_bent_fairway(width: float) -> void:
 	pts.append(bot + Vector2(half, 0))
 	poly.polygon = pts
 	course_root.add_child(poly)
+	_fairway_poly = pts
 	var area := Area2D.new()
 	area.collision_layer = 2
 	var cs := CollisionPolygon2D.new()
@@ -808,46 +838,50 @@ func _add_bent_fairway(width: float) -> void:
 const COLLAR_UNDERLAP := 1.04
 ## Apron ellipse scale vs outer green sprite — short grass ring under the green
 ## so sides/shoulders are not dark rough (playtest 2026-08-17 continuous approach).
-const GREEN_APRON_SCALE := 1.18  ## PLAYTEST TARGET
+const GREEN_APRON_SCALE := 1.35  ## PLAYTEST — default first-cut plate when apron_plate_scale == 0
+## Kit Phase 1: first-cut (rough_tile_a) apron plate; fairway does not wrap.
+
+
+func _apron_plate_scale() -> float:
+	## HoleData.apron_plate_scale when set; else GREEN_APRON_SCALE kit default.
+	var s := float(hole.apron_plate_scale) if hole else 0.0
+	return s if s > 0.05 else GREEN_APRON_SCALE
 
 
 func _add_green_apron() -> void:
-	## Fairway-textured ellipse under the green. The approach collar alone leaves
-	## rough wedges at SW/SE where the tongue meets the oval; real courses put the
-	## green in a continuous short-grass pad. Island keeps water ring (no apron).
+	## First-cut apron plate under the green (rough_tile_a). Wobbled pear + mild lobes —
+	## not a fairway ellipse wrap. Island keeps water ring (no apron).
 	if _is_island_green():
 		return
-	var outer := _green_outer_radii() * GREEN_APRON_SCALE
-	var n := 28
+	var plate := _apron_plate_scale()
+	var outer := _green_outer_radii() * plate
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("apron_%d_%d" % [hole.hole_number, int(outer.x * 10.0)])
+	# Slight offset so the green sits as a bean in the plate (not concentric donut).
+	var offset := Vector2(rng.randf_range(-outer.x * 0.06, outer.x * 0.06), rng.randf_range(0.0, outer.y * 0.04))
+	var n := 32
 	var pts := PackedVector2Array()
 	for i in n:
 		var th := TAU * float(i) / float(n)
 		var c := cos(th)
 		var s := sin(th)
-		var r := (outer.x * outer.y) / sqrt(pow(outer.y * c, 2.0) + pow(outer.x * s, 2.0))
-		pts.append(_green_center + Vector2(c, s) * r)
+		# Ellipse + soft lobes (pear/wobble) — still one silhouette, not nick noise.
+		var lobe := 1.0 + 0.07 * sin(th * 2.0 + rng.randf_range(-0.2, 0.2))
+		lobe += 0.04 * sin(th * 3.0 + 1.1)
+		var rx := outer.x * lobe
+		var ry := outer.y * (1.0 + 0.05 * cos(th * 2.0))
+		var r := (rx * ry) / sqrt(pow(ry * c, 2.0) + pow(rx * s, 2.0))
+		pts.append(_green_center + offset + Vector2(c, s) * r)
 	var poly := Polygon2D.new()
 	poly.color = Color(1, 1, 1)
-	poly.texture = TEX_FAIRWAY
-	poly.texture_scale = Vector2.ONE * (float(TEX_FAIRWAY.get_width()) / GROUND_TILE_PX)
+	poly.texture = TEX_ROUGH  ## rough_tile_a = first-cut
+	poly.texture_scale = Vector2.ONE * (float(TEX_ROUGH.get_width()) / GROUND_TILE_PX)
 	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
 	poly.polygon = pts
 	poly.z_index = 0
 	course_root.add_child(poly)
-	var area := Area2D.new()
-	area.position = _green_center
-	area.collision_layer = 2
-	var cs := CollisionPolygon2D.new()
-	# Local space for area (poly is in course root space — match world via offset)
-	var local_pts := PackedVector2Array()
-	for p in pts:
-		local_pts.append(p - _green_center)
-	cs.polygon = local_pts
-	area.add_child(cs)
-	area.add_to_group("fairway")
-	area.monitoring = false
-	area.monitorable = true
-	course_root.add_child(area)
+	_apron_poly = pts
+	# No fairway group — apron is first-cut visually; lie uses _apron_poly as Fairway.
 
 
 func _collar_arc_points(edge_half_width: float) -> PackedVector2Array:
@@ -1012,67 +1046,87 @@ const SAND_COLLISION_FRAC := 0.6
 
 func _clears_bunkers(center: Vector2, radius: float) -> bool:
 	for b in _bunkers:
-		var need := float(b["r"]) + radius + BUNKER_TREE_PAD
-		if center.distance_to(b["c"]) < need:
-			return false
+		var lobes: Array = b.get("lobes", [])
+		if lobes.is_empty():
+			var need := float(b["r"]) + radius + BUNKER_TREE_PAD
+			if center.distance_to(b["c"]) < need:
+				return false
+		else:
+			for lobe in lobes:
+				var need2 := float(lobe["r"]) + radius + BUNKER_TREE_PAD
+				if center.distance_to(lobe["c"]) < need2:
+					return false
 	return true
 
 
 func _place_hazards(adapt_bias: HoleData.HazardBias) -> void:
-	for spec in hole.hazards:
-		if typeof(spec) != TYPE_DICTIONARY:
-			continue
-		var role := str(spec.get("role", ""))
-		var kind := str(spec.get("kind", ""))
-		var side := int(spec.get("side", 0))
-		if side != 0:
-			if adapt_bias == HoleData.HazardBias.LEFT:
-				side = -1
-			elif adapt_bias == HoleData.HazardBias.RIGHT:
-				side = 1
-		var along := float(spec.get("along", 0.5))
-		var size := float(spec.get("size", 40.0))
-		var art := int(spec.get("art", 0))
-		match role:
-			HoleData.ROLE_ISLAND_RING:
-				_place_island_ring()
-			HoleData.ROLE_GREENSIDE:
-				if kind == "tree":
-					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
-				elif kind == "sand":
-					# Never silent-drop: push outward until clear, then place.
-					var c := _greenside_center(side if side != 0 else 1, size)
-					_add_bunker(c, size, art if art > 0 else 1)
-			HoleData.ROLE_LANDING:
-				if kind == "tree":
-					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
-				else:
-					var fc := _fairway_center_at(along)
-					var c2 := Vector2(fc.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.35), fc.y)
-					if kind == "sand" and _clears_green(c2, size):
-						_add_bunker(c2, size, art)
-			HoleData.ROLE_CARRY:
-				if kind == "water":
-					_place_carry_creek(along, size)
-			HoleData.ROLE_DIAGONAL:
-				if kind == "water":
-					_place_diagonal_creek(along, size, side if side != 0 else 1)
-			HoleData.ROLE_SHORELINE:
-				if kind == "water":
-					_place_shoreline(side if side != 0 else 1)
-			HoleData.ROLE_EDGE:
-				if kind == "tree":
-					_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
-				else:
-					var fc2 := _fairway_center_at(along)
-					var edge_c := Vector2(
-						fc2.x + float(side if side != 0 else 1) * (_fairway_half + size * 0.55),
-						fc2.y
-					)
+	## Water pass first so bunker∩water reject can see lakes/creeks/rings.
+	## Sand/trees second. Never paint sand on water.
+	for water_pass in [true, false]:
+		for spec in hole.hazards:
+			if typeof(spec) != TYPE_DICTIONARY:
+				continue
+			var role := str(spec.get("role", ""))
+			var kind := str(spec.get("kind", ""))
+			var is_water := kind == "water" or role == HoleData.ROLE_ISLAND_RING
+			if water_pass != is_water:
+				continue
+			var side := int(spec.get("side", 0))
+			if side != 0:
+				if adapt_bias == HoleData.HazardBias.LEFT:
+					side = -1
+				elif adapt_bias == HoleData.HazardBias.RIGHT:
+					side = 1
+			var along := float(spec.get("along", 0.5))
+			var size := float(spec.get("size", 40.0))
+			var art := int(spec.get("art", 0))
+			match role:
+				HoleData.ROLE_ISLAND_RING:
+					# Retired from randomizer — ignore legacy specs.
+					pass
+				HoleData.ROLE_POND:
 					if kind == "water":
-						_place_edge_pond(edge_c, size)
-					elif kind == "sand" and _clears_green(edge_c, size):
-						_add_bunker(edge_c, size, art)
+						_place_pond(along, size, side if side != 0 else 1)
+				HoleData.ROLE_GREENSIDE:
+					if kind == "tree":
+						_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
+					elif kind == "sand":
+						var s := side if side != 0 else 1
+						var c := _greenside_center(s, size * 1.15)
+						_add_bunker(c, size * 1.15, art, s, "greenside")
+				HoleData.ROLE_LANDING:
+					if kind == "tree":
+						_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
+					elif kind == "sand":
+						var fc := _fairway_center_at(along)
+						var s2 := side if side != 0 else 1
+						var c2 := Vector2(fc.x + float(s2) * _fairway_half, fc.y)
+						_add_bunker(c2, size, art, s2, "landing")
+				HoleData.ROLE_CARRY:
+					if kind == "water":
+						_place_carry_creek(along, size)
+				HoleData.ROLE_DIAGONAL:
+					if kind == "water":
+						_place_diagonal_creek(along, size, side if side != 0 else 1)
+				HoleData.ROLE_SHORELINE:
+					if kind == "water":
+						_place_shoreline(side if side != 0 else 1)
+				HoleData.ROLE_SIDE_LAKE:
+					if kind == "water":
+						_place_side_lake(side if side != 0 else 1, size)
+				HoleData.ROLE_EDGE:
+					if kind == "tree":
+						_place_tree_group(role, side if side != 0 else 1, along, size, art, int(spec.get("count", 1)))
+					elif kind == "sand":
+						var fc2 := _fairway_center_at(along)
+						var s3 := side if side != 0 else 1
+						var edge_c := Vector2(
+							fc2.x + float(s3) * (_fairway_half + size * 0.55),
+							fc2.y
+						)
+						_add_bunker(edge_c, size, art, s3, "edge")
+					# EDGE water ponds retired (plan D) — no _place_edge_pond.
+
 
 
 func _greenside_center(side: int, size: float) -> Vector2:
@@ -1114,69 +1168,267 @@ func _greenside_center(side: int, size: float) -> Vector2:
 	return best
 
 
+func _water_outer_x(side: int) -> float:
+	## Far bank past any corridor zoom-out. 1080+160 still showed on long-tee framing.
+	return (1080.0 + WATER_OFFSCREEN) if side > 0 else -WATER_OFFSCREEN
+
+
+func _shore_wobble(t: float, salt: int, amp: float = 14.0) -> float:
+	## Slow two-harmonic cut. Same language as bunker lobes: one body, no 1px nick noise.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("shore_%d_%d" % [hole.hole_number, salt])
+	var p0 := rng.randf_range(0.0, TAU)
+	var p1 := rng.randf_range(0.0, TAU)
+	return sin(t * TAU * 1.15 + p0) * amp + sin(t * TAU * 0.5 + p1) * amp * 0.4
+
+
+func _add_water_poly(pts: PackedVector2Array) -> void:
+	## Tiled water_tile polygon + matching wet volume. Do not stretch a sprite.
+	## World-aligned ↘ hatch (path UV cut tile seams across creeks). Stamp @ GROUND_TILE_PX.
+	## Collision is convex pieces — never AABB a lake (that wets the whole hole).
+	if pts.size() < 3:
+		return
+	var pieces: Array = Geometry2D.decompose_polygon_in_convex(pts)
+	if pieces.is_empty():
+		push_warning("skip water poly (convex decomp empty)")
+		return
+	var poly := Polygon2D.new()
+	poly.color = Color(1, 1, 1, 0.92)
+	poly.texture = TEX_WATER
+	poly.texture_scale = Vector2.ONE * (float(TEX_WATER.get_width()) / GROUND_TILE_PX)
+	poly.texture_rotation = 0.0  ## world-aligned ↘ hatch — path UV cut tile seams across creeks
+	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	poly.polygon = pts
+	poly.z_index = 0  ## under aim chrome / cup; UILayer CanvasLayer stays above
+	course_root.add_child(poly)
+	var area := Area2D.new()
+	area.collision_layer = 2
+	area.collision_mask = 0
+	var any := false
+	for piece in pieces:
+		if piece.size() < 3:
+			continue
+		var cs2 := CollisionPolygon2D.new()
+		cs2.polygon = piece
+		area.add_child(cs2)
+		any = true
+	if not any:
+		push_warning("skip water poly (no convex pieces)")
+		poly.queue_free()
+		area.queue_free()
+		return
+	area.monitoring = false
+	area.monitorable = true
+	area.add_to_group("water")
+	course_root.add_child(area)
+	_water_polys.append(pts)
+
+
+func _shore_polyline(pts: PackedVector2Array, into_water: Vector2) -> void:
+	if pts.size() < 2 or into_water.length_squared() < 0.01:
+		return
+	var want := into_water.normalized()
+	for i in range(pts.size() - 1):
+		var a: Vector2 = pts[i]
+		var b: Vector2 = pts[i + 1]
+		var delta := b - a
+		var length := delta.length()
+		if length < 18.0:
+			continue
+		# Skip sharp elbow segments — facing shore tiles read as a mid-bend seam.
+		if i > 0 and i < pts.size() - 2:
+			var prev: Vector2 = a - pts[i - 1]
+			if prev.length_squared() > 1.0:
+				var turn := absf(prev.normalized().angle_to(delta.normalized()))
+				if turn > 0.55:
+					continue
+		var bearing := delta.angle()
+		var nrm := Vector2(-sin(bearing), cos(bearing))
+		if nrm.dot(want) < 0.0:
+			nrm = -nrm
+		var mid := (a + b) * 0.5
+		var center := mid + nrm * (SHORE_WIDTH * 0.42)
+		_add_shore_sprite(center, Vector2(length * 1.02, SHORE_WIDTH), rad_to_deg(bearing))
+
+
+func _creek_path_offset(along: float, salt: int) -> float:
+	## Gentle on-screen meander. Tight / large kinks fold the ribbon into a fake pond.
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("creek_flow_%d_%d" % [hole.hole_number, salt])
+	var kind: int = absi(salt) % 3
+	var amp := rng.randf_range(48.0, 82.0)
+	var sign := 1.0 if rng.randf() < 0.5 else -1.0
+	var phase := rng.randf_range(-0.5, 0.5)
+	match kind:
+		1:
+			var u := clampf((along + 280.0) / 560.0, 0.0, 1.0)
+			var s := u * u * (3.0 - 2.0 * u)
+			return sign * amp * (s * 2.0 - 1.0)
+		2:
+			return sign * amp * (
+				0.82 * sin(along / 230.0 + phase) + 0.18 * sin(along / 110.0)
+			)
+		_:
+			return sign * amp * sin(along / 250.0 + phase)
+
+
+func _place_water_cut(center: Vector2, along_dir: Vector2, half_w: float, salt: int) -> void:
+	## Thin creek: one flowing ribbon, both ends off-frame. Extrude on local tangent
+	## so a meander never fills like a pond glued to a creek.
+	var dir := along_dir.normalized()
+	if dir.length_squared() < 0.01:
+		dir = Vector2.RIGHT
+	var perp0 := Vector2(-dir.y, dir.x)
+	var hw := clampf(half_w, 3.5, CARRY_HALF_W_MAX)
+	var half_len := 540.0 + WATER_OFFSCREEN
+	var n := 56
+	var spine := PackedVector2Array()
+	for i in n:
+		var t := float(i) / float(n - 1)
+		var along := lerpf(-half_len, half_len, t)
+		spine.append(center + dir * along + perp0 * _creek_path_offset(along, salt))
+	var bank_a := PackedVector2Array()
+	var bank_b := PackedVector2Array()
+	for i in n:
+		var tangent := dir
+		if i < n - 1:
+			var d1: Vector2 = spine[i + 1] - spine[i]
+			if d1.length_squared() > 0.0001:
+				tangent = d1.normalized()
+		elif i > 0:
+			var d0: Vector2 = spine[i] - spine[i - 1]
+			if d0.length_squared() > 0.0001:
+				tangent = d0.normalized()
+		var lp := Vector2(-tangent.y, tangent.x)
+		if lp.dot(perp0) < 0.0:
+			lp = -lp
+		var t2 := float(i) / float(n - 1)
+		var lip := 1.4
+		bank_a.append(spine[i] + lp * (hw + _shore_wobble(t2, salt, lip)))
+		bank_b.append(spine[i] - lp * (hw + _shore_wobble(t2, salt + 17, lip)))
+	var pts := PackedVector2Array()
+	for p in bank_a:
+		pts.append(p)
+	var j := bank_b.size() - 1
+	while j >= 0:
+		pts.append(bank_b[j])
+		j -= 1
+	_add_water_poly(pts)
+	# No shore tiles on a 5–15 ft creek — 52px lips overlap into a seamed second river.
+
+
 func _place_island_ring() -> void:
-	## Water flanks the island green but leaves a dry fairway tongue for approach
-	## (was: fat slabs + full-width bottom bar → soft-lock from left/short lies).
-	var water_tint := Color(1, 1, 1, 0.92)
+	## Retired from randomizer (Matthew/Range 2026-09-04). Hand-built island later if wanted.
+	push_warning("skip island_ring (retired from randomizer)")
+	return
+
+
+func _place_pond(along: float, size: float, side: int) -> void:
+	## Small one-body pond beside the corridor — real shore lip, not a wet shore-square.
+	## Off green hug; trees stay dry via TREE_WATER_PAD on tree place.
+	var s := side if side != 0 else 1
+	var a := clampf(along, 0.18, 0.72)
+	var fc := _fairway_center_at(a)
+	var r := clampf(size * 0.55, 22.0, 40.0)
+	var c := Vector2(fc.x + float(s) * (_fairway_half + r + 30.0), fc.y)
+	if not _clears_green(c, r + 18.0):
+		a = minf(a + 0.1, 0.7)
+		fc = _fairway_center_at(a)
+		c = Vector2(fc.x + float(s) * (_fairway_half + r + 30.0), fc.y)
+		if not _clears_green(c, r + 18.0):
+			return
+	var n := 14
+	var pts := PackedVector2Array()
+	for i in n:
+		var t := float(i) / float(n)
+		var ang := t * TAU
+		var wob := _shore_wobble(t, 61 + s, 5.0)
+		var rr := r * (0.82 + 0.18 * sin(ang * 2.0 + float(s))) + wob * 0.35
+		pts.append(c + Vector2(cos(ang) * rr, sin(ang) * rr * 0.78))
+	if pts.size() < 3:
+		return
+	_add_water_poly(pts)
+	var into := (c - fc).normalized()
+	if into.length_squared() < 0.01:
+		into = Vector2(float(s), 0.0)
+	_shore_polyline(pts, into)
+	# Close the lip ring (visual only — shore sprites are not wet).
+	_shore_polyline(PackedVector2Array([pts[pts.size() - 1], pts[0]]), into)
+
+
+func _place_side_lake(side: int, size: float) -> void:
+	## Wide side-lake: far bank + both ends leave the frame. No pipe-cap shoulder on screen.
+	## Inner shore follows the mow. Dry bank for trees. Still-water UV. Never a green box.
+	var s := side if side != 0 else 1
+	hole.water_neighbor_side = s
 	var gr := maxf(hole.green_radius_x, hole.green_radius_y)
-	var clear := gr + 10.0
-	var side_w := 58.0
-	var side_h := 128.0
-	var side_y := GREEN_Y - 22.0
-	_add_rect(
-		course_root,
-		Rect2(540.0 - clear - side_w, side_y, side_w, side_h),
-		water_tint,
-		"water",
-		TEX_WATER,
-		260.0
-	)
-	_add_rect(
-		course_root,
-		Rect2(540.0 + clear, side_y, side_w, side_h),
-		water_tint,
-		"water",
-		TEX_WATER,
-		260.0
-	)
-	# Bottom: two wings toward tee, gap on fairway centerline so a carry path exists.
-	var gap_half := maxf(_fairway_half * 0.72, 30.0)
-	var by := GREEN_Y + clear + 6.0
-	var bh := 50.0
-	var wing_inner := gap_half
-	var wing_outer := clear + side_w * 0.45
-	var left_w := wing_outer - wing_inner
-	if left_w > 18.0:
-		_add_rect(
-			course_root,
-			Rect2(540.0 - wing_outer, by, left_w, bh),
-			water_tint,
-			"water",
-			TEX_WATER,
-			260.0
-		)
-		_add_rect(
-			course_root,
-			Rect2(540.0 + wing_inner, by, left_w, bh),
-			water_tint,
-			"water",
-			TEX_WATER,
-			260.0
-		)
+	var green_bottom := _green_center.y + gr + float(HoleData.BUNKER_GREEN_COLLAR_PX) + 20.0
+	# Extra run past tee/green so the on-screen bottom/top already sweeps off-frame
+	# (pipe caps were the flat ends still inside the corridor zoom).
+	var top := GREEN_Y - WATER_OFFSCREEN * 1.35
+	var bot := _tee_back_pos.y + WATER_OFFSCREEN * 1.35
+	var n := 24
+	var inner := PackedVector2Array()
+	var margin := maxf(SIDE_LAKE_INNER_MARGIN, size * 0.35)
+	var outer_x := _water_outer_x(s)
+	# Keep a gap from the far bank so convex decomp never self-overlaps.
+	var outer_gap := 96.0
+	var ease_target := outer_x - float(s) * outer_gap
+	# Peel as we reach the green so a par-3 camera doesn't get a water backdrop.
+	# Linear 160px — quadratic over WATER_OFFSCREEN left a full-width band on screen.
+	var peel_y := GREEN_Y + 80.0
+	var ease_bot_y := _tee_back_pos.y - 220.0
+	for i in n:
+		var t := float(i) / float(n - 1)
+		var y := lerpf(top, bot, t)
+		var cx := _fairway_center_x(clampf(_along_from_y(y), 0.0, 1.0))
+		if y < GREEN_Y:
+			cx = _fairway_center_x(0.0)
+		elif y > _tee_back_pos.y:
+			cx = _fairway_center_x(1.0)
+		var wob := _shore_wobble(t, 21 + s, 14.0)
+		var bank := cx + float(s) * (_fairway_half + margin + wob)
+		if y < peel_y:
+			var u := clampf((peel_y - y) / 160.0, 0.0, 1.0)
+			bank = lerpf(bank, ease_target, u)
+		elif y > ease_bot_y:
+			var u2 := clampf((y - ease_bot_y) / maxf(bot - ease_bot_y, 1.0), 0.0, 1.0)
+			bank = lerpf(bank, ease_target, u2 * u2)
+		# Soft green clear: ease outward above the collar without a hard shelf.
+		if y < green_bottom and y >= GREEN_Y:
+			var g := (green_bottom - y) / maxf(green_bottom - GREEN_Y, 1.0)
+			bank += float(s) * g * g * 28.0
+		inner.append(Vector2(bank, y))
+	var pts := PackedVector2Array()
+	for p in inner:
+		pts.append(p)
+	# Far-bank closing edge — distinct from the eased termini (outer_gap).
+	pts.append(Vector2(outer_x, bot))
+	pts.append(Vector2(outer_x, top))
+	_add_water_poly(pts)
+	var shore_pts := PackedVector2Array()
+	for p in inner:
+		if p.y >= green_bottom - 8.0 and p.y <= _tee_back_pos.y + 80.0:
+			shore_pts.append(p)
+	if shore_pts.size() >= 2:
+		_shore_polyline(shore_pts, Vector2(float(s), 0.0))
 
 
 func _place_carry_creek(along: float, half_h: float) -> void:
+	## Thin flowing creek — not a ruler stripe. Slight heading mix; path offset owns the rest.
 	var fc := _fairway_center_at(along)
-	var w := _fairway_half * 2.0 + 80.0
-	var h := maxf(half_h, 18.0)
-	var rect := Rect2(fc.x - w * 0.5, fc.y - h * 0.5, w, h)
-	# Soft reject if creek would cover cup — push toward tee.
-	var creek_c := rect.get_center()
-	if not _clears_green(creek_c, maxf(w, h) * 0.35):
+	var full_h := maxf(half_h, 7.0)
+	var hw := clampf(full_h * 0.5, 3.5, CARRY_HALF_W_MAX)
+	if not _clears_green(fc, full_h + _fairway_half * 0.45):
 		along = minf(along + 0.12, 0.7)
 		fc = _fairway_center_at(along)
-		rect = Rect2(fc.x - w * 0.5, fc.y - h * 0.5, w, h)
-	_add_water_sprite(rect.get_center(), Vector2(w, h), TEX_WATER_CREEK)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("carry_heading_%d" % hole.hole_number)
+	var heading := Vector2.RIGHT
+	if rng.randf() < 0.55:
+		var deg := rng.randf_range(10.0, 26.0) * (-1.0 if rng.randf() < 0.5 else 1.0)
+		heading = Vector2.from_angle(deg_to_rad(deg))
+	_place_water_cut(fc, heading, hw, 31 + hole.hole_number)
 
 
 ## Leven: diagonal band across landing (Cape + Leven water hazards epic).
@@ -1186,17 +1438,16 @@ const DIAGONAL_SIDE_BIAS := 18.0  ## px toward inside cut so risk/reward reads
 
 func _place_diagonal_creek(along: float, half_h: float, side: int) -> void:
 	var s := float(side if side != 0 else 1)
-	var w := _fairway_half * 2.0 + 24.0  ## narrower than carry so the angle is legible
-	var h := maxf(half_h, 18.0)
+	var full_h := maxf(half_h, 7.0)
+	var hw := clampf(full_h * 0.5, 3.5, CARRY_HALF_W_MAX)
 	var fc := _fairway_center_at(along)
 	var center := Vector2(fc.x + s * DIAGONAL_SIDE_BIAS, fc.y)
-	if not _clears_green(center, maxf(w, h) * 0.35):
+	if not _clears_green(center, full_h + _fairway_half * 0.45):
 		along = minf(along + 0.12, 0.7)
 		fc = _fairway_center_at(along)
 		center = Vector2(fc.x + s * DIAGONAL_SIDE_BIAS, fc.y)
-	# Sign of angle follows side so left/right doglegs both cut across the fairway.
-	var rot := DIAGONAL_ANGLE_DEG * s
-	_add_water_sprite(center, Vector2(w, h), TEX_WATER_CREEK, rot)
+	var rot := deg_to_rad(DIAGONAL_ANGLE_DEG * s)
+	_place_water_cut(center, Vector2.from_angle(rot), hw, 43 + int(s))
 
 
 ## Cape: two panels along sharp-dogleg elbow (reads as one shoreline).
@@ -1206,17 +1457,61 @@ const SHORE_PINCH := 0.3  ## 0=tight at green, 1=tight at tee
 
 
 func _place_shoreline(side: int) -> void:
+	## One continuous side cut along the dogleg — no two-panel seam at the elbow.
 	if not _use_sharp_dogleg():
 		return
-	var s := float(side if side != 0 else 1)
-	var cp := clampf(hole.corner_position, 0.05, 0.95)
-	var p_green := _fairway_center_at(0.0)
-	var p_corner := _fairway_center_at(cp)
-	var p_tee := _fairway_center_at(1.0)
-	# Green-end panel (tighter via pinch).
-	_place_shore_segment(p_green, p_corner, s, lerpf(SHORE_MARGIN * 0.55, SHORE_MARGIN * 1.15, SHORE_PINCH))
-	# Tee-end panel (looser).
-	_place_shore_segment(p_corner, p_tee, s, lerpf(SHORE_MARGIN * 1.15, SHORE_MARGIN * 0.55, SHORE_PINCH))
+	var s := side if side != 0 else 1
+	var n := 16
+	var bank := PackedVector2Array()
+	var outer_x := _water_outer_x(s)
+	var outer_gap := 96.0
+	var ease_target := outer_x - float(s) * outer_gap
+	var top := GREEN_Y - WATER_OFFSCREEN * 0.85
+	var bot := _tee_back_pos.y + WATER_OFFSCREEN * 0.85
+	for i in n:
+		var t := float(i) / float(n - 1)
+		var along := t
+		var y: float
+		var cx: float
+		if t <= 0.0:
+			y = top
+			cx = _fairway_center_x(0.0)
+		elif t >= 1.0:
+			y = bot
+			cx = _fairway_center_x(1.0)
+		else:
+			var fc := _fairway_center_at(along)
+			y = fc.y
+			cx = fc.x
+		var pinch := lerpf(SHORE_MARGIN * 0.55, SHORE_MARGIN * 1.15, SHORE_PINCH)
+		# Mirror pinch past the corner so the band stays one language.
+		var cp := clampf(hole.corner_position, 0.05, 0.95)
+		var local_m := pinch
+		if along > cp:
+			local_m = lerpf(SHORE_MARGIN * 1.15, SHORE_MARGIN * 0.55, SHORE_PINCH)
+		var wob := _shore_wobble(t, 41 + s, 8.0)
+		var x := cx + float(s) * (_fairway_half + local_m + SHORE_WIDTH * 0.35 + wob)
+		# Sweep off-frame at both ends (same 160px peel as side-lake — no pipe caps).
+		if y < GREEN_Y + 80.0:
+			var u := clampf(((GREEN_Y + 80.0) - y) / 160.0, 0.0, 1.0)
+			x = lerpf(x, ease_target, u)
+		elif y > _tee_back_pos.y - 160.0:
+			var u2 := clampf((y - (_tee_back_pos.y - 160.0)) / maxf(bot - (_tee_back_pos.y - 160.0), 1.0), 0.0, 1.0)
+			x = lerpf(x, ease_target, u2 * u2)
+		bank.append(Vector2(x, y))
+	var pts := PackedVector2Array()
+	for p in bank:
+		pts.append(p)
+	pts.append(Vector2(outer_x, bot))
+	pts.append(Vector2(outer_x, top))
+	_add_water_poly(pts)
+	# Single continuous shore — skip facing elbow tiles that read as a mid-bend seam.
+	var shore_pts := PackedVector2Array()
+	for p in bank:
+		if p.y >= GREEN_Y and p.y <= _tee_back_pos.y:
+			shore_pts.append(p)
+	if shore_pts.size() >= 2:
+		_shore_polyline(shore_pts, Vector2(float(s), 0.0))
 
 
 func _place_shore_segment(a: Vector2, b: Vector2, side: float, margin: float) -> void:
@@ -1232,13 +1527,34 @@ func _place_shore_segment(a: Vector2, b: Vector2, side: float, margin: float) ->
 	var span := Vector2(length * 1.05, SHORE_WIDTH)
 	if not _clears_green(center, maxf(span.x, span.y) * 0.28):
 		return
-	_add_water_sprite(center, span, TEX_WATER, rad_to_deg(bearing))
+	_add_shore_sprite(center, span, rad_to_deg(bearing))
 
 
 func _place_edge_pond(center: Vector2, size: float) -> void:
-	if not _clears_green(center, size):
-		return
-	_add_water_sprite(center, Vector2(size * 1.6, size * 1.2), TEX_WATER_POND)
+	## Retired (water/sand fix D). Edge pond stamps caused sand∩water and
+	## circular blobs. Use side_lake / carry creek instead.
+	push_warning("skip edge pond (retired): use side_lake or carry creek")
+	return
+
+
+
+func _add_shore_sprite(center: Vector2, span: Vector2, rotation_deg: float = 0.0) -> void:
+	## Lip only — visual shore tile. NEVER wet (AABB dunks read as random square ponds).
+	var rot := deg_to_rad(rotation_deg)
+	var tex: Texture2D = TEX_SHORE
+	var tex_h := float(tex.get_height())
+	var texel := SHORE_WIDTH / tex_h
+	var spr := Sprite2D.new()
+	spr.texture = tex
+	spr.position = center
+	spr.rotation = rot
+	spr.centered = true
+	spr.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	spr.region_enabled = true
+	spr.region_rect = Rect2(0.0, 0.0, span.x / texel, tex_h)
+	spr.scale = Vector2(texel, texel)
+	spr.z_index = 1
+	course_root.add_child(spr)
 
 
 func _add_water_sprite(center: Vector2, span: Vector2, tex: Texture2D, rotation_deg: float = 0.0) -> void:
@@ -1295,18 +1611,292 @@ func _add_tee_boxes() -> void:
 		_add_circle(course_root, pos, mark_r, MARK[set], "")
 
 
-func _add_bunker(center: Vector2, radius: float, variant: int) -> void:
-	var tex: Texture2D = BUNKER_TEXTURES[variant % BUNKER_TEXTURES.size()]
+func _bunker_axis_angle(center: Vector2, role: String, side: int) -> float:
+	## Long axis follows green flank (greenside) or fairway mow (landing/edge).
+	if role == "greenside":
+		var tang := Vector2(-(center.y - _green_center.y), center.x - _green_center.x)
+		if tang.length_squared() < 0.01:
+			tang = Vector2(float(side if side != 0 else 1), 0.0)
+		return tang.angle()
+	var along := _along_from_y(center.y)
+	var a0 := _fairway_center_at(clampf(along - 0.04, 0.0, 1.0))
+	var a1 := _fairway_center_at(clampf(along + 0.04, 0.0, 1.0))
+	var d := a1 - a0
+	if d.length_squared() < 0.01:
+		return PI * 0.5
+	return d.angle()
+
+
+func _make_bunker_lobes(center: Vector2, radius: float, role: String, side: int, seed_key: int) -> Array:
+	## Kit pass (Bob Ross / v39): slight-arc spine, unequal boot ends, fat weld.
+	## Hard circle union only — no metaball, no crescents, no nick noise.
+	## Adjacent lobes MUST overlap 40–50% of the smaller r (one body, not coins).
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash("bunker_%d_%d_%d" % [hole.hole_number, seed_key, int(radius * 10.0)])
+	# Greenside always 3. Landing 2–3 (skip 4 unless it still reads as one body).
+	var n := 3 if role == "greenside" else rng.randi_range(2, 3)
+	var axis := _bunker_axis_angle(center, role, side)
+	var along_v := Vector2.from_angle(axis)
+	var perp := Vector2(-along_v.y, along_v.x)
+	# Slight arc: greenside curves with the green; landing mid sits off the mow axis.
+	var arc_sign := float(side if side != 0 else 1)
+	if role == "greenside":
+		# Bend toward green so the boot hugs the edge (collar still enforced later).
+		var to_green := (_green_center - center)
+		if to_green.length_squared() > 0.01:
+			arc_sign = signf(along_v.cross(to_green.normalized()))
+			if absf(arc_sign) < 0.1:
+				arc_sign = float(side if side != 0 else 1)
+	var arc_amt := rng.randf_range(0.22, 0.38) if role == "greenside" else rng.randf_range(0.12, 0.24)
+	var base_r := radius * rng.randf_range(0.50, 0.64)
+	var pinch_frac := rng.randf_range(0.40, 0.50)  ## fatter weld (high end of kit band)
+	var radii: Array = []
+	# Unequal ends (boot). Mid stays same size family as ends — never tiny-waist barbell.
+	var r_a := base_r * rng.randf_range(1.15, 1.40)
+	var r_b := base_r * rng.randf_range(0.85, 1.05)  ## smaller toe
+	if rng.randf() < 0.5:
+		var tmp := r_a
+		r_a = r_b
+		r_b = tmp
+	for i in n:
+		if i == 0:
+			radii.append(r_a)
+		elif i == n - 1:
+			radii.append(r_b)
+		else:
+			# Mid in same family as ends (not a skinny waist coin).
+			var mid_scale := rng.randf_range(0.88, 1.08)
+			radii.append(base_r * mid_scale)
+	# Chain with guaranteed fat overlap; place on a slight arc (perp offset by index).
+	var offsets: Array = [0.0]
+	for i in range(1, n):
+		var ra: float = float(radii[i - 1])
+		var rb: float = float(radii[i])
+		var pinch: float = pinch_frac * minf(ra, rb)
+		var dist: float = ra + rb - pinch
+		offsets.append(float(offsets[i - 1]) + dist)
+	var mid := float(offsets[n - 1]) * 0.5
+	var chain_len := maxf(float(offsets[n - 1]), 1.0)
+	var lobes: Array = []
+	for i in n:
+		var t := float(offsets[i]) / chain_len  ## 0..1 along chain
+		# Arc bulge: mid off-axis (n>=3); for n=2 put the toe off-spine so it isn't a barbell.
+		var arc_w := t if n == 2 else sin(t * PI)
+		var c := center + along_v * (float(offsets[i]) - mid)
+		c += perp * arc_sign * arc_amt * base_r * arc_w
+		lobes.append({"c": c, "r": float(radii[i])})
+	return lobes
+
+
+
+func _bunker_hits_water(center: Vector2, radius: float) -> bool:
+	## Reject sand∩water. Uses water areas under course_root.
+	for child in course_root.get_children():
+		if not (child is Area2D and child.is_in_group("water")):
+			continue
+		for cs in child.get_children():
+			if cs is CollisionShape2D and cs.shape is RectangleShape2D:
+				var half: Vector2 = (cs.shape as RectangleShape2D).size * 0.5
+				var local: Vector2 = (child as Node2D).to_local(center)
+				var dx := maxf(absf(local.x) - half.x, 0.0)
+				var dy := maxf(absf(local.y) - half.y, 0.0)
+				if dx * dx + dy * dy <= radius * radius:
+					return true
+			elif cs is CollisionPolygon2D:
+				var poly: PackedVector2Array = cs.polygon
+				if poly.size() < 3:
+					continue
+				var area_n := child as Node2D
+				if Geometry2D.is_point_in_polygon(area_n.to_local(center), poly):
+					return true
+				for i in 8:
+					var ang := TAU * float(i) / 8.0
+					var p := center + Vector2(cos(ang), sin(ang)) * radius
+					if Geometry2D.is_point_in_polygon(area_n.to_local(p), poly):
+						return true
+	return false
+
+
+func _bunker_illegal_reason(lobes: Array, side: int) -> String:
+	if HoleData.bunker_on_water_neighbor_side(side, hole.water_neighbor_side):
+		return "water-neighbor side"
+	var rx := hole.green_radius_x
+	var ry := hole.green_radius_y
+	for lobe in lobes:
+		var c: Vector2 = lobe["c"]
+		var r: float = float(lobe["r"])
+		if HoleData.bunker_hits_dilated_green(c, r, _green_center, rx, ry):
+			return "sand|dilated(green)"
+		if _bunker_hits_water(c, r):
+			return "sand|water"
+	return ""
+
+
+func _raster_welded_bunker(lobes: Array) -> Dictionary:
+	## Image of welded sand (even blob grain) + 1px dark lip vs grass.
+	var min_x := INF
+	var min_y := INF
+	var max_x := -INF
+	var max_y := -INF
+	for lobe in lobes:
+		var c: Vector2 = lobe["c"]
+		var r: float = float(lobe["r"])
+		min_x = minf(min_x, c.x - r)
+		min_y = minf(min_y, c.y - r)
+		max_x = maxf(max_x, c.x + r)
+		max_y = maxf(max_y, c.y + r)
+	var pad := 3.0
+	min_x -= pad
+	min_y -= pad
+	max_x += pad
+	max_y += pad
+	var w := maxi(int(ceil(max_x - min_x)) + 1, 8)
+	var h := maxi(int(ceil(max_y - min_y)) + 1, 8)
+	var img := Image.create(w, h, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var grain: Image = TEX_BUNKER_GRAIN.get_image()
+	if grain.get_format() != Image.FORMAT_RGBA8:
+		grain.convert(Image.FORMAT_RGBA8)
+	var gw := grain.get_width()
+	var gh := grain.get_height()
+	# Opaque-only stamp samples — bunker_blob is silhouette-on-clear, not a tile atlas.
+	var opaque: Array = []
+	# Stride sample — full 512² scan per bunker is too heavy on mobile.
+	var step := maxi(gw / 64, 2)
+	for gy0 in range(0, gh, step):
+		for gx0 in range(0, gw, step):
+			var gp := grain.get_pixel(gx0, gy0)
+			if gp.a >= 0.5:
+				opaque.append(Color(gp.r, gp.g, gp.b, 1.0))
+	var has_opaque := opaque.size() > 0
+	var sand_base := Color(0.72, 0.60, 0.42, 1.0)
+	if has_opaque:
+		var sr := 0.0
+		var sg := 0.0
+		var sb := 0.0
+		for oc_i in opaque.size():
+			var oc: Color = opaque[oc_i]
+			sr += oc.r
+			sg += oc.g
+			sb += oc.b
+		var on := float(opaque.size())
+		sand_base = Color(sr / on, sg / on, sb / on, 1.0)
+	for y in h:
+		for x in w:
+			var world := Vector2(min_x + float(x) + 0.5, min_y + float(y) + 0.5)
+			var inside := false
+			for lobe2 in lobes:
+				if world.distance_to(lobe2["c"]) <= float(lobe2["r"]):
+					inside = true
+					break
+			if not inside:
+				continue
+			var gc: Color
+			if has_opaque:
+				var idx := posmod(x * 374761 + y * 668265 + int(world.x) * 97, opaque.size())
+				gc = opaque[idx]
+				# Mild neighbor blend so it doesn't look like noise confetti.
+				var idx2 := posmod(x * 127 + y * 311 + 17, opaque.size())
+				var g2: Color = opaque[idx2]
+				gc = gc.lerp(g2, 0.35)
+			else:
+				var grain_n := float((x * 374761 + y * 668265) % 97) / 97.0
+				gc = Color(
+					sand_base.r + grain_n * 0.08 - 0.04,
+					sand_base.g + grain_n * 0.06 - 0.03,
+					sand_base.b + grain_n * 0.05 - 0.02,
+					1.0
+				)
+			img.set_pixel(x, y, gc)
+	var lipped := img.duplicate()
+	for y2 in h:
+		for x2 in w:
+			if img.get_pixel(x2, y2).a < 0.5:
+				continue
+			var edge := false
+			for oy in range(-1, 2):
+				for ox in range(-1, 2):
+					if ox == 0 and oy == 0:
+						continue
+					var nx := x2 + ox
+					var ny := y2 + oy
+					if nx < 0 or ny < 0 or nx >= w or ny >= h or img.get_pixel(nx, ny).a < 0.5:
+						edge = true
+						break
+				if edge:
+					break
+			if edge:
+				lipped.set_pixel(x2, y2, BUNKER_LIP_COLOR)
+	var center := Vector2((min_x + max_x) * 0.5, (min_y + max_y) * 0.5)
+	var extent := 0.0
+	for lobe3 in lobes:
+		extent = maxf(extent, center.distance_to(lobe3["c"]) + float(lobe3["r"]))
+	return {"img": lipped, "center": center, "extent": extent}
+
+
+
+func _add_bunker(
+	center: Vector2, radius: float, variant: int, side: int = 0, role: String = "landing"
+) -> void:
+	## Phase 2: welded multi-lobe silhouette + collar/water reject. Specced sand always stamps.
+	var place := center
+	var r_try := radius
+	var lobes: Array = []
+	var reason := "untried"
+	var s := float(side if side != 0 else 1)
+	for attempt in 16:
+		lobes = _make_bunker_lobes(place, r_try, role, side, attempt * 17 + variant)
+		if attempt >= 12 and not lobes.is_empty():
+			lobes = [lobes[int(lobes.size() / 2)]]
+			lobes[0]["r"] = minf(float(lobes[0]["r"]), r_try * 0.55)
+		reason = _bunker_illegal_reason(lobes, side)
+		if reason.is_empty():
+			break
+		if reason == "water-neighbor side" or reason == "sand|water":
+			place.x -= s * 12.0
+		else:
+			var push := (place - _green_center).normalized()
+			if push.length_squared() < 0.01:
+				push = Vector2(s, 0.0)
+			place += push * 10.0
+			r_try *= 0.9
+	if not reason.is_empty():
+		# kit: specced sand always stamps — walk a single lobe until legal.
+		var c := place
+		var rr := minf(r_try * 0.45, 16.0)
+		for k in 20:
+			lobes = [{"c": c, "r": rr}]
+			reason = _bunker_illegal_reason(lobes, 0)
+			if reason.is_empty():
+				break
+			if reason == "sand|water":
+				c.x -= s * 8.0
+			else:
+				var out := (c - _green_center).normalized()
+				if out.length_squared() < 0.01:
+					out = Vector2(s, 0.0)
+				c += out * 8.0
+				rr = maxf(rr * 0.92, 8.0)
+		if not reason.is_empty():
+			push_warning("bunker tight (%s) at %s: %s — stamp anyway" % [role, str(center), reason])
+	var baked: Dictionary = _raster_welded_bunker(lobes)
+	var img: Image = baked["img"]
+	var baked_c: Vector2 = baked["center"]
+	var extent: float = float(baked["extent"])
+	var tex := ImageTexture.create_from_image(img)
 	var spr := Sprite2D.new()
 	spr.texture = tex
-	spr.position = center
-	var max_dim := maxf(float(tex.get_width()), float(tex.get_height()))
-	spr.scale = Vector2.ONE * (radius * 2.3 / max_dim)
+	spr.position = baked_c
+	spr.centered = true
 	course_root.add_child(spr)
-	var img: Image = tex.get_image()
-	_bunkers.append({"c": center, "r": radius, "sprite": spr, "img": img})
-	# Broad enter-hint only; Sand lie / friction use paint via ground_lie_at + settle.
-	_add_circle(course_root, center, radius * SAND_COLLISION_FRAC, Color(0, 0, 0, 0), "sand")
+	_bunkers.append({
+		"c": baked_c,
+		"r": extent,
+		"sprite": spr,
+		"img": img,
+		"lobes": lobes,
+	})
+	_add_circle(course_root, baked_c, extent * SAND_COLLISION_FRAC, Color(0, 0, 0, 0), "sand")
 
 
 func _along_from_y(y: float) -> float:
@@ -1373,44 +1963,84 @@ func _green_book_bottom_chrome() -> float:
 	return absf(UiScale.CONFIRM_AIM_TOP)
 
 
+func _first_cut_side_width(side: int, along: float) -> float:
+	## Independent L/R first-cut width (px outside fairway half). side -1=left, +1=right.
+	## 0 on HoleData = that side DIES (fairway meets rough) — never fall back to FIRST_CUT_W.
+	var base := hole.first_cut_left if side < 0 else hole.first_cut_right
+	if base <= 0.05:
+		return 0.0
+	# Water as side neighbor kills first-cut on that bank (shore = fairway edge later).
+	if hole.water_neighbor_side != 0 and hole.water_neighbor_side == side:
+		return 0.0
+	var u := clampf(along, 0.0, 1.0)
+	# Green choke ~0.40 (Bob Ross kite) → approach rises → mid almost dies → tee pad returns.
+	# Apron plate owns the pear; corridor must not wing at along=0.
+	var env: float
+	if u < 0.20:
+		env = lerpf(0.40, 0.90, u / 0.20)
+	elif u < 0.52:
+		env = lerpf(0.90, 0.06, (u - 0.20) / 0.32)
+	else:
+		env = lerpf(0.06, 0.50, (u - 0.52) / 0.48)
+	return base * env
+
+
 func _add_first_cut() -> void:
-	## Light first-cut halo hugging fairway edge (follow bend). Not gameplay OOB.
-	## Brightness order outward: fairway > first cut > base rough (monotonic).
-	var step := 36.0
-	var y := GREEN_Y - 50.0
-	var y_end := _tee_back_pos.y + 70.0
-	while y < y_end:
-		var h := minf(step, y_end - y)
-		var along := _along_from_y(y + h * 0.5)
+	## Independent first-cut field (rough_tile_a). Not a constant-offset halo of the fairway.
+	## L/R widths from HoleData; mid-hole may die so fairway meets rough on purpose.
+	var samples := 18
+	var left_out := PackedVector2Array()
+	var right_out := PackedVector2Array()
+	var any := false
+	for i in samples:
+		var along := float(i) / float(samples - 1)
+		var y := _y_at(along)
 		var cx := _fairway_center_x(along)
 		var half := _fairway_half
-		_add_rect(
-			course_root,
-			Rect2(cx - half - FIRST_CUT_W, y, FIRST_CUT_W, h),
-			Color(1, 1, 1),
-			"",
-			TEX_ROUGH,  # lighter tile = first cut
-			GROUND_TILE_PX
-		)
-		_add_rect(
-			course_root,
-			Rect2(cx + half, y, FIRST_CUT_W, h),
-			Color(1, 1, 1),
-			"",
-			TEX_ROUGH,
-			GROUND_TILE_PX
-		)
-		y += step
+		# Pinch fairway feel mid-landing (tube kill is silhouette, not width const).
+		var pinch := 1.0
+		if along > 0.28 and along < 0.62:
+			var t := absf(along - 0.45) / 0.17
+			pinch = lerpf(0.88, 1.0, clampf(t, 0.0, 1.0))
+		var wl := _first_cut_side_width(-1, along)
+		var wr := _first_cut_side_width(1, along)
+		if wl > 0.5 or wr > 0.5:
+			any = true
+		left_out.append(Vector2(cx - half * pinch - wl, y))
+		right_out.append(Vector2(cx + half * pinch + wr, y))
+	if not any:
+		return
+	# Outer ring: left tee→green, then right green→tee.
+	var pts := PackedVector2Array()
+	for p in left_out:
+		pts.append(p)
+	var ri := right_out.size() - 1
+	while ri >= 0:
+		pts.append(right_out[ri])
+		ri -= 1
+	if pts.size() < 4:
+		return
+	var poly := Polygon2D.new()
+	poly.color = Color(1, 1, 1)
+	poly.texture = TEX_ROUGH
+	poly.texture_scale = Vector2.ONE * (float(TEX_ROUGH.get_width()) / GROUND_TILE_PX)
+	poly.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	poly.polygon = pts
+	poly.z_index = 0
+	course_root.add_child(poly)
+	_first_cut_poly = pts
 
 
 func _place_tree_group(
 	role: String, side: int, along: float, size: float, art: int, count: int
 ) -> void:
 	## Stamp 1..n canopies for a designed tree feature (edge line, landing clump, greenside).
+	## Center on land (bank OK); along-nudge if a creek drowns the stamp, else skip.
 	var rng := RandomNumberGenerator.new()
 	rng.seed = hash("tree_%s_%d_%d" % [role, hole.hole_number, int(along * 100.0)])
 	var n := maxi(count, 1)
 	var s := float(side if side != 0 else 1)
+	var water_side := hole.water_neighbor_side == int(s)
 	for i in n:
 		var a: float = along
 		if role == HoleData.ROLE_EDGE:
@@ -1425,22 +2055,42 @@ func _place_tree_group(
 			c.x += s * float(i) * 14.0
 		else:
 			var fc := _fairway_center_at(a)
-			var lat := _fairway_half + size * rng.randf_range(0.25, 0.55) + TREE_LINE_PAD
-			if role == HoleData.ROLE_LANDING and n > 1:
-				lat += float(i) * 8.0
+			var lat: float
+			if water_side:
+				# Sit on the dry bank between mow and water, not out in the lake.
+				lat = _fairway_half + rng.randf_range(6.0, maxf(SIDE_LAKE_INNER_MARGIN - 10.0, 8.0))
+			else:
+				lat = _fairway_half + size * rng.randf_range(0.25, 0.55) + TREE_LINE_PAD
+				if role == HoleData.ROLE_LANDING and n > 1:
+					lat += float(i) * 8.0
 			c = Vector2(fc.x + s * lat + rng.randf_range(-10.0, 10.0), fc.y + rng.randf_range(-14.0, 14.0))
 		var r := size * rng.randf_range(0.72, 1.05)
-		# Push off bunkers once or twice, then skip (no trees in sand).
+		var trunk := r * 0.72
+		# Center on land. Creek crosses the corridor — inland X stays wet, so nudge along.
 		var placed := false
-		for attempt in 3:
-			var try_c := c + Vector2(s * float(attempt) * 22.0, 0.0)
+		for attempt in 5:
+			var try_c := c + Vector2(-s * float(attempt) * 18.0, 0.0)
 			if not _clears_green(try_c, size * 0.55):
 				continue
-			if not _clears_bunkers(try_c, r * 0.72):
+			if not _clears_bunkers(try_c, trunk):
+				continue
+			if _bunker_hits_water(try_c, TREE_WATER_PAD):
 				continue
 			c = try_c
 			placed = true
 			break
+		if not placed:
+			for dy in [-40.0, 40.0, -80.0, 80.0]:
+				var try_c2 := c + Vector2(-s * 36.0, dy)
+				if not _clears_green(try_c2, size * 0.55):
+					continue
+				if not _clears_bunkers(try_c2, trunk):
+					continue
+				if _bunker_hits_water(try_c2, TREE_WATER_PAD):
+					continue
+				c = try_c2
+				placed = true
+				break
 		if not placed:
 			continue
 		var art_i := art if art >= 0 else rng.randi_range(0, TREE_TEXTURES.size() - 1)
@@ -1933,6 +2583,8 @@ func _begin_club_select() -> void:
 	var pin_dir := _cup_pos - ball.global_position
 	if pin_dir.length_squared() < 1.0:
 		pin_dir = Vector2.UP
+	# Keep modal top of hole UILayer only (layer 10). Debug stays on UIOverlay 20 above us.
+	ui_layer.move_child(_club_select, -1)
 	_club_select.present(lie, pin_yd, wind, ball.get_lie_severity(), pin_dir.normalized())
 
 
@@ -3852,6 +4504,9 @@ func _classify_lie(pos: Vector2) -> String:
 			continue
 		if _on_painted_sand(pos, b):
 			return "Sand"
+	for wpts in _water_polys:
+		if _point_in_cut(wpts, pos):
+			return "Water"
 	if _on_painted_green(pos):
 		return "Green"
 	# Any teeing ground (Blue / White / Red pads)
@@ -3862,20 +4517,20 @@ func _classify_lie(pos: Vector2) -> String:
 		var tp: Vector2 = p["pos"]
 		if absf(pos.x - tp.x) <= 26.0 and absf(pos.y - tp.y) <= 28.0:
 			return "Tee"
-	# Was a fixed green-end x offset regardless of the ball's y — read through
-	# _fairway_center_at() instead so this tracks the real centerline (matters
-	# for bent fairways in general, and is load-bearing for sharp-dogleg mode).
-	var along := clampf(inverse_lerp(GREEN_Y, _tee_back_pos.y, pos.y), 0.0, 1.0)
-	var fx := absf(pos.x - _fairway_center_at(along).x)
-	if fx <= _fairway_half + 20.0:
+	if _point_in_cut(_fairway_poly, pos):
 		return "Fairway"
-	if fx <= _fairway_half + 80.0:
-		return "Rough"
+	# First-cut / pear apron play as Fairway (old collar bucket). Texture is the read.
+	if _point_in_cut(_apron_poly, pos) or _point_in_cut(_first_cut_poly, pos):
+		return "Fairway"
 	return "Rough"
 
 
+func _point_in_cut(pts: PackedVector2Array, pos: Vector2) -> bool:
+	return pts.size() >= 3 and Geometry2D.is_point_in_polygon(pos, pts)
+
+
 func _on_painted_sand(pos: Vector2, bunker: Dictionary) -> bool:
-	## Painted bunker alpha (blob/crescent/cluster) — circle alone over-fires Sand.
+	## Painted bunker alpha (welded-lobe raster) — circle alone over-fires Sand.
 	var spr: Sprite2D = bunker.get("sprite") as Sprite2D
 	var img: Image = bunker.get("img") as Image
 	if spr == null or img == null:
