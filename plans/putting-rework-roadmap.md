@@ -1,7 +1,7 @@
 # Putting Rework — Roadmap
 
 **Status:** Line + contact signed off. Phase 3 read camera shipped. Phase 4
-execute panel in build (playtest). Pickup: `plans/HANDOFF-putting-true-scale.md`.
+640 reverted to 900. Pickup: `plans/HANDOFF-putting-true-scale.md`.
 Board: `plans/README.md`.
 **Owner:** Matt (design/diagnosis) → coding agent (implementation, one phase per PR)
 **Origin:** true-scale putt zoom investigation surfaced that only 1 of the 3 real putting
@@ -53,7 +53,7 @@ Same discipline as the flight and swing-input rebuilds:
 - **One phase = one PR = one playtest pass.**
 - **Every phase gets a build spec before code**, exact file paths and line numbers.
 - **Tuning constants are playtest targets**, flagged in comments.
-- **Phase 4 640 reverted.** **Do not start Phase 5 polish until 900 panel is playtested** (`putt-panel-restore-900.md`).
+- **Phase 4 640 reverted.** **Do not start Phase 5 polish until 900 panel is playtested** (`putt-panel-restore-900.md`). Recon: `recon_putt_pad_height.md`.
 
 ---
 
@@ -82,8 +82,8 @@ out and book closed on Confirm. Was already in tree; contract locked in
 
 ### Phase 4 — Execute-phase camera + screen reclaim — REVERTED
 
-640 failed pace playtest. All shot types use `SHOT_PANEL_H` 900 again.
-Spec: `plans/putt-panel-restore-900.md`.
+640 failed pace playtest (`plans/recon_putt_pad_height.md`). All shot types
+use `SHOT_PANEL_H` 900 again. Spec: `plans/putt-panel-restore-900.md`.
 
 ### Phase 5 — Revisit legibility polish (parked until 1–4 ship)
 

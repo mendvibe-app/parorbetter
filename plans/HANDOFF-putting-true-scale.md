@@ -1,6 +1,6 @@
 # Handoff — Putting / true-scale / green book (2026-08-27)
 
-**Board:** `plans/README.md` (putting rework is Active)  
+**Board:** `plans/README.md` (putting rework is Active)
 **Pick up with:** this file + `plans/putting-rework-roadmap.md`
 
 ---
@@ -21,7 +21,7 @@
 
 ### Still open / next
 
-1. **Playtest 900 panel** — Practice Green 12 / 20 / 36 ft, then Short Game chip, then flop.
+1. **Playtest 900 panel** — Practice Green 12 / 20 / 36 ft, then Short Game chip, then flop. Recon: `plans/recon_putt_pad_height.md`.
 2. **Phase 5** — short-putt glow / green-art bump (parked until 4 ships).
 3. **Green book polish** — arrow density (`GREEN_BOOK_ARROW_N`), wash alpha
 4. **Pin art** — optional PixelLab crisp pin

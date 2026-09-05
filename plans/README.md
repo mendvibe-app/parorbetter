@@ -53,6 +53,7 @@ Order was intentional — do not retune putt pace before green sizing next time.
 | `putting-phase3-read-camera.md` | SHIPPED — book zoom + flag during aim |
 | `putting-phase4-execute-camera.md` | REVERTED — 640 failed pace; 900 restored (`putt-panel-restore-900.md`) |
 | `putt-panel-restore-900.md` | SHIPPED — one 900 panel for all shot types |
+| `recon_putt_pad_height.md` | SHIPPED — 640 compressed pace; 900 still fits ball→cup |
 | `putt-true-scale-phase1.md` | SHIPPED — true-scale ball/cup/capture |
 | `putt-true-scale-phase2.md` | SHIPPED — putt camera framing (mins/cap still playtest knobs) |
 | `lip-in-drop-variation-phase1.md` | SHIPPED — pour vs toilet-bowl (unit bug 2026-08-27) |
